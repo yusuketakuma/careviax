@@ -16,7 +16,8 @@ import { japanDateKey } from '@/lib/utils/date-boundary';
 export type PartnerVisitPhysicianReportDraftErrorCode =
   | 'PARTNER_VISIT_RECORD_NOT_FOUND'
   | 'PARTNER_VISIT_RECORD_NOT_CONFIRMED'
-  | 'PARTNER_VISIT_SOURCE_INACTIVE';
+  | 'PARTNER_VISIT_SOURCE_INACTIVE'
+  | 'PATIENT_IDENTITY_STALE';
 
 export class PartnerVisitPhysicianReportDraftError extends Error {
   constructor(
@@ -63,6 +64,7 @@ const partnerVisitRecordSelect = {
           name: true,
           birth_date: true,
           gender: true,
+          updated_at: true,
         },
       },
       base_case: {
@@ -506,7 +508,7 @@ async function markVisitRequestPhysicianReportCreated(
 export async function createPartnerVisitPhysicianReportDraft(
   tx: Prisma.TransactionClient,
   ctx: Pick<AuthContext, 'orgId' | 'userId' | 'ipAddress' | 'userAgent'>,
-  input: { partnerVisitRecordId: string },
+  input: { partnerVisitRecordId: string; expectedPatientUpdatedAt: string },
 ): Promise<CreatePartnerVisitPhysicianReportDraftResult> {
   const record = await tx.partnerVisitRecord.findFirst({
     where: { id: input.partnerVisitRecordId, org_id: ctx.orgId },
@@ -516,6 +518,13 @@ export async function createPartnerVisitPhysicianReportDraft(
     throw new PartnerVisitPhysicianReportDraftError(
       'PARTNER_VISIT_RECORD_NOT_FOUND',
       '協力訪問記録が見つかりません',
+    );
+  }
+  if (record.share_case.base_patient.updated_at.toISOString() !== input.expectedPatientUpdatedAt) {
+    throw new PartnerVisitPhysicianReportDraftError(
+      'PATIENT_IDENTITY_STALE',
+      '対象患者情報が更新されています。再読み込みしてください',
+      { blocker: 'patient_identity_stale' },
     );
   }
   assertRecordCanGenerateDraft(record);

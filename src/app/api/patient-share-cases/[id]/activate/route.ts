@@ -1,6 +1,8 @@
+import { z } from 'zod';
 import { unstable_rethrow } from 'next/navigation';
 import { withAuthContext } from '@/lib/auth/context';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
+import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { conflict, internalError, notFound, success, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
@@ -11,6 +13,10 @@ import {
   evaluatePatientShareCaseActivation,
   resolvePatientShareCaseTransition,
 } from '@/server/services/pharmacy-partnerships';
+
+const activatePatientShareCaseSchema = z.object({
+  expected_patient_updated_at: z.string().datetime('患者版情報が不正です'),
+});
 
 function isDateAfter(left: Date, right: Date) {
   return left.getTime() > right.getTime();
@@ -34,10 +40,19 @@ function hasAcceptedIdentityProof(snapshot: unknown) {
 }
 
 const authenticatedPOST = withAuthContext<{ id: string }>(
-  async (_req, ctx, { params }) => {
+  async (req, ctx, { params }) => {
     const { id: rawId } = await params;
     const id = normalizeRequiredRouteParam(rawId);
     if (!id) return withSensitiveNoStore(validationError('患者共有ケースIDが不正です'));
+
+    const payload = await readJsonObjectRequestBody(req);
+    if (!payload) return withSensitiveNoStore(validationError('リクエストボディが不正です'));
+    const parsed = activatePatientShareCaseSchema.safeParse(payload);
+    if (!parsed.success) {
+      return withSensitiveNoStore(
+        validationError('入力値が不正です', parsed.error.flatten().fieldErrors),
+      );
+    }
 
     const now = new Date();
     const today = utcDateFromLocalKey(localDateKey(now));
@@ -51,6 +66,7 @@ const authenticatedPOST = withAuthContext<{ id: string }>(
           ends_at: true,
           base_pharmacy_approved_by: true,
           partner_pharmacy_approved_by: true,
+          base_patient: { select: { updated_at: true } },
           partnership: {
             select: {
               id: true,
@@ -84,6 +100,15 @@ const authenticatedPOST = withAuthContext<{ id: string }>(
       });
 
       if (!shareCase) return { response: notFound('患者共有ケースが見つかりません') };
+      if (
+        shareCase.base_patient.updated_at.toISOString() !== parsed.data.expected_patient_updated_at
+      ) {
+        return {
+          response: conflict('対象患者情報が更新されています。再読み込みしてください', {
+            blocker: 'patient_identity_stale',
+          }),
+        };
+      }
       if (
         shareCase.partnership.status !== 'active' ||
         shareCase.partnership.partner_pharmacy.status !== 'active'
@@ -160,14 +185,33 @@ const authenticatedPOST = withAuthContext<{ id: string }>(
         };
       }
 
-      const activated = await tx.patientShareCase.update({
-        where: { id_org_id: { id, org_id: ctx.orgId } },
+      const activatedCount = await tx.patientShareCase.updateMany({
+        where: {
+          id,
+          org_id: ctx.orgId,
+          status: shareCase.status,
+          base_patient: { updated_at: shareCase.base_patient.updated_at },
+        },
         data: {
           status: activationTransition.nextStatus,
           consent_verified_at: now,
           activated_at: now,
           updated_by: ctx.userId,
         },
+      });
+      if (activatedCount.count !== 1) {
+        return {
+          response: conflict(
+            '対象患者情報または共有ケースが更新されています。再読み込みしてください',
+            {
+              blocker: 'patient_identity_stale',
+            },
+          ),
+        };
+      }
+
+      const activated = await tx.patientShareCase.findUniqueOrThrow({
+        where: { id_org_id: { id, org_id: ctx.orgId } },
         select: {
           id: true,
           status: true,

@@ -59,11 +59,16 @@ function createRouteContext(recordId = 'partner_visit_record_1') {
 
 const routeContext = createRouteContext();
 const CURRENT_UPDATED_AT = '2026-06-18T00:00:00.000Z';
+const PATIENT_UPDATED_AT = '2026-06-17T00:00:00.000Z';
 
 function createRequest(body: unknown, recordId = 'partner_visit_record_1') {
   const requestBody =
-    body && typeof body === 'object' && !Array.isArray(body) && !('expected_updated_at' in body)
-      ? { expected_updated_at: CURRENT_UPDATED_AT, ...body }
+    body && typeof body === 'object' && !Array.isArray(body)
+      ? {
+          expected_updated_at: CURRENT_UPDATED_AT,
+          expected_patient_updated_at: PATIENT_UPDATED_AT,
+          ...body,
+        }
       : body;
   return new NextRequest(
     `http://localhost/api/partner-visit-records/${encodeURIComponent(recordId)}/review`,
@@ -89,7 +94,10 @@ describe('/api/partner-visit-records/[id]/review POST', () => {
       owner_partner_pharmacy_id: 'partner_pharmacy_1',
       visit_at: new Date('2026-06-20T01:30:00.000Z'),
       revision_no: 1,
-      share_case: { status: 'active' },
+      share_case: {
+        status: 'active',
+        base_patient: { updated_at: new Date(PATIENT_UPDATED_AT) },
+      },
       owner_partner_pharmacy: { name: '協力薬局', status: 'active' },
       visit_request: {
         status: 'submitted',
@@ -149,7 +157,7 @@ describe('/api/partner-visit-records/[id]/review POST', () => {
       owner_partner_pharmacy_id: 'partner_pharmacy_1',
       visit_at: new Date('2026-06-20T01:30:00.000Z'),
       revision_no: 1,
-      share_case: { status: 'active' },
+      share_case: { status: 'active', base_patient: { updated_at: new Date(PATIENT_UPDATED_AT) } },
       owner_partner_pharmacy: { name: '協力薬局', status: 'active' },
       visit_request: {
         status: 'submitted',
@@ -210,7 +218,10 @@ describe('/api/partner-visit-records/[id]/review POST', () => {
         org_id: 'org_1',
         status: 'submitted',
         updated_at: new Date(CURRENT_UPDATED_AT),
-        share_case: { status: 'active' },
+        share_case: {
+          status: 'active',
+          base_patient: { updated_at: new Date(PATIENT_UPDATED_AT) },
+        },
         owner_partner_pharmacy: { status: 'active' },
         visit_request: {
           status: 'submitted',
@@ -344,7 +355,7 @@ describe('/api/partner-visit-records/[id]/review POST', () => {
       owner_partner_pharmacy_id: 'partner_pharmacy_1',
       visit_at: new Date('2026-06-20T01:30:00.000Z'),
       revision_no: 1,
-      share_case: { status: 'active' },
+      share_case: { status: 'active', base_patient: { updated_at: new Date(PATIENT_UPDATED_AT) } },
       owner_partner_pharmacy: { name: '協力薬局', status: 'active' },
       visit_request: {
         status: 'submitted',
@@ -402,7 +413,7 @@ describe('/api/partner-visit-records/[id]/review POST', () => {
       owner_partner_pharmacy_id: 'partner_pharmacy_1',
       visit_at: new Date('2026-06-19T15:30:00.000Z'),
       revision_no: 1,
-      share_case: { status: 'active' },
+      share_case: { status: 'active', base_patient: { updated_at: new Date(PATIENT_UPDATED_AT) } },
       owner_partner_pharmacy: { name: '協力薬局', status: 'active' },
       visit_request: {
         status: 'submitted',
@@ -516,7 +527,7 @@ describe('/api/partner-visit-records/[id]/review POST', () => {
       owner_partner_pharmacy_id: 'partner_pharmacy_1',
       visit_at: new Date('2026-06-20T01:30:00.000Z'),
       revision_no: 1,
-      share_case: { status: 'active' },
+      share_case: { status: 'active', base_patient: { updated_at: new Date(PATIENT_UPDATED_AT) } },
       owner_partner_pharmacy: { name: '協力薬局', status: 'active' },
       visit_request: {
         status: 'submitted',
@@ -596,6 +607,25 @@ describe('/api/partner-visit-records/[id]/review POST', () => {
     expect(dispatchNotificationEventMock).not.toHaveBeenCalled();
     expect(partnerVisitRecordFindUniqueOrThrowMock).not.toHaveBeenCalled();
     expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects a stale patient identity before reviewing the visit record', async () => {
+    const current = await partnerVisitRecordFindFirstMock();
+    partnerVisitRecordFindFirstMock.mockResolvedValueOnce({
+      ...current,
+      share_case: {
+        ...current.share_case,
+        base_patient: { updated_at: new Date('2026-06-17T00:01:00.000Z') },
+      },
+    });
+
+    const response = await rawPOST(createRequest({ decision: 'confirm' }), routeContext);
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      details: { blocker: 'patient_identity_stale' },
+    });
+    expect(partnerVisitRecordUpdateManyMock).not.toHaveBeenCalled();
   });
 
   it('returns a sanitized no-store 500 when review reads fail unexpectedly', async () => {

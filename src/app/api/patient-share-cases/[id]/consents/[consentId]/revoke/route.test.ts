@@ -59,6 +59,7 @@ import { POST as rawPOST } from './route';
 const routeContext = {
   params: Promise.resolve({ id: 'share_case_1', consentId: 'share_consent_1' }),
 };
+const PATIENT_UPDATED_AT = '2026-06-18T00:00:00.000Z';
 
 function createRequest(body: unknown = {}) {
   return new NextRequest(
@@ -66,7 +67,11 @@ function createRequest(body: unknown = {}) {
     {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(body),
+      body: JSON.stringify(
+        body && typeof body === 'object' && !Array.isArray(body)
+          ? { expected_patient_updated_at: PATIENT_UPDATED_AT, ...body }
+          : body,
+      ),
     },
   );
 }
@@ -82,7 +87,11 @@ describe('/api/patient-share-cases/[id]/consents/[consentId]/revoke POST', () =>
       revoked_at: null,
       revoked_by: null,
       updated_at: new Date('2026-06-19T00:00:00.000Z'),
-      share_case: { id: 'share_case_1', status: 'active' },
+      share_case: {
+        id: 'share_case_1',
+        status: 'active',
+        base_patient: { updated_at: new Date(PATIENT_UPDATED_AT) },
+      },
     });
     patientShareConsentUpdateManyMock.mockResolvedValue({ count: 1 });
     patientShareConsentFindUniqueOrThrowMock.mockResolvedValue({
@@ -130,6 +139,9 @@ describe('/api/patient-share-cases/[id]/consents/[consentId]/revoke POST', () =>
         org_id: 'org_1',
         share_case_id: 'share_case_1',
         revoked_at: null,
+        share_case: {
+          base_patient: { updated_at: new Date(PATIENT_UPDATED_AT) },
+        },
       },
       data: { revoked_at: expect.any(Date), revoked_by: 'user_1' },
     });
@@ -178,7 +190,11 @@ describe('/api/patient-share-cases/[id]/consents/[consentId]/revoke POST', () =>
       revoked_at: new Date('2026-06-18T01:00:00.000Z'),
       revoked_by: 'user_2',
       updated_at: new Date('2026-06-18T01:00:00.000Z'),
-      share_case: { id: 'share_case_1', status: 'revoked' },
+      share_case: {
+        id: 'share_case_1',
+        status: 'revoked',
+        base_patient: { updated_at: new Date(PATIENT_UPDATED_AT) },
+      },
     });
 
     const response = await rawPOST(createRequest(), routeContext);
@@ -199,6 +215,25 @@ describe('/api/patient-share-cases/[id]/consents/[consentId]/revoke POST', () =>
     expect(body).not.toHaveProperty('consent');
     expect(body).not.toHaveProperty('share_case_status');
     expect(body).not.toHaveProperty('already_revoked');
+  });
+
+  it('rejects a stale patient identity before revoking consent', async () => {
+    const current = await patientShareConsentFindFirstMock();
+    patientShareConsentFindFirstMock.mockResolvedValueOnce({
+      ...current,
+      share_case: {
+        ...current.share_case,
+        base_patient: { updated_at: new Date('2026-06-18T00:01:00.000Z') },
+      },
+    });
+
+    const response = await rawPOST(createRequest({ reason: '本人から撤回連絡' }), routeContext);
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      details: { blocker: 'patient_identity_stale' },
+    });
+    expect(patientShareConsentUpdateManyMock).not.toHaveBeenCalled();
   });
 
   it('returns a sanitized no-store 500 when consent revocation fails unexpectedly', async () => {

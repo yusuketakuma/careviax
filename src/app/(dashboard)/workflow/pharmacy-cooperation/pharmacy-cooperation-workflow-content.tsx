@@ -3236,10 +3236,11 @@ export function PharmacyCooperationWorkflowContent() {
   };
 
   const activateShareCaseMutation = useMutation({
-    mutationFn: async (id: string) => {
+    mutationFn: async ({ id, patientUpdatedAt }: { id: string; patientUpdatedAt: string }) => {
       const response = await fetch(`/api/patient-share-cases/${id}/activate`, {
         method: 'POST',
-        headers: buildOrgHeaders(orgId),
+        headers: buildOrgHeaders(orgId, { 'content-type': 'application/json' }),
+        body: JSON.stringify({ expected_patient_updated_at: patientUpdatedAt }),
       });
       return readApiJson(response, {
         fallbackMessage: '患者共有ケースの有効化に失敗しました',
@@ -3261,17 +3262,20 @@ export function PharmacyCooperationWorkflowContent() {
       decision,
       acceptForm,
       declineReason,
+      patientUpdatedAt,
     }: {
       id: string;
       decision: 'base_approve' | 'accept' | 'decline';
       acceptForm?: LinkAcceptForm;
       declineReason?: string;
+      patientUpdatedAt: string;
     }) => {
       const response = await fetch(`/api/patient-share-cases/${id}/patient-link`, {
         method: 'PATCH',
         headers: buildOrgHeaders(orgId, { 'content-type': 'application/json' }),
         body: JSON.stringify({
           decision,
+          expected_patient_updated_at: patientUpdatedAt,
           ...(decision === 'accept' && acceptForm
             ? {
                 partner_patient_id: acceptForm.partnerPatientId,
@@ -3353,10 +3357,12 @@ export function PharmacyCooperationWorkflowContent() {
       shareCaseId,
       consentId,
       reason,
+      patientUpdatedAt,
     }: {
       shareCaseId: string;
       consentId: string;
       reason: string;
+      patientUpdatedAt: string;
     }) => {
       const trimmedReason = reason.trim();
       if (!trimmedReason) throw new Error('撤回理由を入力してください');
@@ -3366,7 +3372,10 @@ export function PharmacyCooperationWorkflowContent() {
         {
           method: 'POST',
           headers: buildOrgHeaders(orgId, { 'content-type': 'application/json' }),
-          body: JSON.stringify({ reason: trimmedReason }),
+          body: JSON.stringify({
+            reason: trimmedReason,
+            expected_patient_updated_at: patientUpdatedAt,
+          }),
         },
       );
       return readApiJson(response, {
@@ -3531,11 +3540,13 @@ export function PharmacyCooperationWorkflowContent() {
       id,
       decision,
       expectedUpdatedAt,
+      patientUpdatedAt,
       declineReason,
     }: {
       id: string;
       decision: 'accept' | 'decline';
       expectedUpdatedAt: string;
+      patientUpdatedAt: string;
       declineReason?: string;
     }) => {
       const response = await fetch(`/api/pharmacy-visit-requests/${id}/decision`, {
@@ -3544,6 +3555,7 @@ export function PharmacyCooperationWorkflowContent() {
         body: JSON.stringify({
           decision,
           expected_updated_at: expectedUpdatedAt,
+          expected_patient_updated_at: patientUpdatedAt,
           ...(declineReason ? { decline_reason: declineReason } : {}),
         }),
       });
@@ -3562,11 +3574,22 @@ export function PharmacyCooperationWorkflowContent() {
   });
 
   const submitRecordMutation = useMutation({
-    mutationFn: async ({ id, expectedUpdatedAt }: { id: string; expectedUpdatedAt: string }) => {
+    mutationFn: async ({
+      id,
+      expectedUpdatedAt,
+      patientUpdatedAt,
+    }: {
+      id: string;
+      expectedUpdatedAt: string;
+      patientUpdatedAt: string;
+    }) => {
       const response = await fetch(buildPartnerVisitRecordApiPath(id, '/submit'), {
         method: 'POST',
         headers: buildOrgHeaders(orgId, { 'content-type': 'application/json' }),
-        body: JSON.stringify({ expected_updated_at: expectedUpdatedAt }),
+        body: JSON.stringify({
+          expected_updated_at: expectedUpdatedAt,
+          expected_patient_updated_at: patientUpdatedAt,
+        }),
       });
       return readApiJson(response, {
         fallbackMessage: '協力訪問記録の提出に失敗しました',
@@ -3589,12 +3612,14 @@ export function PharmacyCooperationWorkflowContent() {
       expectedUpdatedAt,
       returnReason,
       doctorReportRequired,
+      patientUpdatedAt,
     }: {
       id: string;
       decision: 'confirm' | 'return';
       expectedUpdatedAt: string;
       returnReason?: string;
       doctorReportRequired?: boolean;
+      patientUpdatedAt: string;
     }) => {
       const response = await fetch(buildPartnerVisitRecordApiPath(id, '/review'), {
         method: 'POST',
@@ -3602,6 +3627,7 @@ export function PharmacyCooperationWorkflowContent() {
         body: JSON.stringify({
           decision,
           expected_updated_at: expectedUpdatedAt,
+          expected_patient_updated_at: patientUpdatedAt,
           ...(returnReason ? { return_reason: returnReason } : {}),
           doctor_report_required: Boolean(doctorReportRequired),
         }),
@@ -3621,10 +3647,11 @@ export function PharmacyCooperationWorkflowContent() {
   });
 
   const createReportDraftMutation = useMutation({
-    mutationFn: async (id: string) => {
+    mutationFn: async ({ id, patientUpdatedAt }: { id: string; patientUpdatedAt: string }) => {
       const response = await fetch(buildPartnerVisitRecordApiPath(id, '/physician-report-draft'), {
         method: 'POST',
-        headers: buildOrgHeaders(orgId),
+        headers: buildOrgHeaders(orgId, { 'content-type': 'application/json' }),
+        body: JSON.stringify({ expected_patient_updated_at: patientUpdatedAt }),
       });
       return readApiJson<ReportDraftResult>(response, {
         fallbackMessage: '報告書ドラフトの作成に失敗しました',
@@ -3660,12 +3687,16 @@ export function PharmacyCooperationWorkflowContent() {
 
     switch (pendingWorkflowAction.kind) {
       case 'activateShareCase':
-        activateShareCaseMutation.mutate(pendingWorkflowAction.shareCase.id);
+        activateShareCaseMutation.mutate({
+          id: pendingWorkflowAction.shareCase.id,
+          patientUpdatedAt: pendingWorkflowAction.shareCase.patient_safe_display.updated_at,
+        });
         return;
       case 'baseApproveLink':
         patientLinkMutation.mutate({
           id: pendingWorkflowAction.shareCase.id,
           decision: 'base_approve',
+          patientUpdatedAt: pendingWorkflowAction.shareCase.patient_safe_display.updated_at,
         });
         return;
       case 'acceptLink':
@@ -3673,6 +3704,7 @@ export function PharmacyCooperationWorkflowContent() {
           id: pendingWorkflowAction.shareCase.id,
           decision: 'accept',
           acceptForm: pendingWorkflowAction.acceptForm,
+          patientUpdatedAt: pendingWorkflowAction.shareCase.patient_safe_display.updated_at,
         });
         return;
       case 'declineLink':
@@ -3680,6 +3712,7 @@ export function PharmacyCooperationWorkflowContent() {
           id: pendingWorkflowAction.shareCase.id,
           decision: 'decline',
           declineReason: pendingWorkflowAction.declineReason.trim(),
+          patientUpdatedAt: pendingWorkflowAction.shareCase.patient_safe_display.updated_at,
         });
         return;
       case 'revokePatientShareConsent':
@@ -3687,6 +3720,7 @@ export function PharmacyCooperationWorkflowContent() {
           shareCaseId: pendingWorkflowAction.consent.share_case_id,
           consentId: pendingWorkflowAction.consent.id,
           reason: pendingWorkflowAction.reason.trim(),
+          patientUpdatedAt: pendingWorkflowAction.shareCase!.patient_safe_display.updated_at,
         });
         return;
       case 'acceptVisitRequest':
@@ -3694,6 +3728,7 @@ export function PharmacyCooperationWorkflowContent() {
           id: pendingWorkflowAction.request.id,
           decision: 'accept',
           expectedUpdatedAt: pendingWorkflowAction.request.updated_at,
+          patientUpdatedAt: pendingWorkflowAction.request.patient_safe_display.updated_at,
         });
         return;
       case 'declineVisitRequest':
@@ -3702,12 +3737,14 @@ export function PharmacyCooperationWorkflowContent() {
           decision: 'decline',
           expectedUpdatedAt: pendingWorkflowAction.request.updated_at,
           declineReason: pendingWorkflowAction.declineReason.trim(),
+          patientUpdatedAt: pendingWorkflowAction.request.patient_safe_display.updated_at,
         });
         return;
       case 'submitPartnerVisitRecord':
         submitRecordMutation.mutate({
           id: pendingWorkflowAction.record.id,
           expectedUpdatedAt: pendingWorkflowAction.record.updated_at,
+          patientUpdatedAt: pendingWorkflowAction.record.patient_safe_display.updated_at,
         });
         return;
       case 'confirmPartnerVisitRecord':
@@ -3716,6 +3753,7 @@ export function PharmacyCooperationWorkflowContent() {
           decision: 'confirm',
           expectedUpdatedAt: pendingWorkflowAction.record.updated_at,
           doctorReportRequired: pendingWorkflowAction.doctorReportRequired,
+          patientUpdatedAt: pendingWorkflowAction.record.patient_safe_display.updated_at,
         });
         return;
       case 'returnPartnerVisitRecord':
@@ -3724,10 +3762,14 @@ export function PharmacyCooperationWorkflowContent() {
           decision: 'return',
           expectedUpdatedAt: pendingWorkflowAction.record.updated_at,
           returnReason: pendingWorkflowAction.returnReason.trim(),
+          patientUpdatedAt: pendingWorkflowAction.record.patient_safe_display.updated_at,
         });
         return;
       case 'createReportDraft':
-        createReportDraftMutation.mutate(pendingWorkflowAction.record.id);
+        createReportDraftMutation.mutate({
+          id: pendingWorkflowAction.record.id,
+          patientUpdatedAt: pendingWorkflowAction.record.patient_safe_display.updated_at,
+        });
         return;
     }
   };

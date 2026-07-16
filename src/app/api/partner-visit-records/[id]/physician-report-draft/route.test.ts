@@ -56,6 +56,8 @@ vi.mock('@/server/services/partner-visit-report-drafts', () => ({
 
 import { POST as rawPOST } from './route';
 
+const PATIENT_UPDATED_AT = '2026-06-18T00:00:00.000Z';
+
 function routeContext(id: string | undefined = 'partner_visit_record_1') {
   return { params: Promise.resolve({ id }) };
 }
@@ -63,7 +65,11 @@ function routeContext(id: string | undefined = 'partner_visit_record_1') {
 function createRequest() {
   return new NextRequest(
     'http://localhost/api/partner-visit-records/partner_visit_record_1/physician-report-draft',
-    { method: 'POST' },
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ expected_patient_updated_at: PATIENT_UPDATED_AT }),
+    },
   );
 }
 
@@ -101,7 +107,10 @@ describe('/api/partner-visit-records/[id]/physician-report-draft POST', () => {
     expect(createPartnerVisitPhysicianReportDraftMock).toHaveBeenCalledWith(
       { tx: true },
       expect.objectContaining({ orgId: 'org_1', userId: 'user_1' }),
-      { partnerVisitRecordId: 'partner_visit_record_1' },
+      {
+        partnerVisitRecordId: 'partner_visit_record_1',
+        expectedPatientUpdatedAt: PATIENT_UPDATED_AT,
+      },
     );
     await expect(response.json()).resolves.toMatchObject({
       data: {

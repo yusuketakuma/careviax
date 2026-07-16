@@ -931,6 +931,7 @@ describe('PharmacyCooperationWorkflowContent', () => {
       expect(revokeConsentCall).toBeTruthy();
       expect(JSON.parse(String(revokeConsentCall?.[1]?.body))).toEqual({
         reason: '撤回連絡あり',
+        expected_patient_updated_at: '2026-06-18T00:00:00.000Z',
       });
     });
   });
@@ -1362,6 +1363,7 @@ describe('PharmacyCooperationWorkflowContent', () => {
       expect(JSON.parse(String(decisionCall?.[1]?.body))).toEqual({
         decision: 'accept',
         expected_updated_at: '2026-06-18T00:00:00.000Z',
+        expected_patient_updated_at: '2026-06-18T00:00:00.000Z',
       });
     });
   });
@@ -1481,6 +1483,7 @@ describe('PharmacyCooperationWorkflowContent', () => {
       expect(JSON.parse(String(declineCall?.[1]?.body))).toEqual({
         decision: 'decline',
         decline_reason: '同一患者として扱えません',
+        expected_patient_updated_at: '2026-06-18T00:00:00.000Z',
       });
     });
 
@@ -1523,7 +1526,7 @@ describe('PharmacyCooperationWorkflowContent', () => {
     expect(screen.getByRole('heading', { name: '患者リンクを協力受諾します' })).toBeTruthy();
     expect(screen.getByText('共有ケース: share_case_accept_ready')).toBeTruthy();
     expect(screen.getByText('協力側ID: partner_patient_1')).toBeTruthy();
-    const identityDialog = screen.getByRole('dialog');
+    const identityDialog = screen.getByRole('alertdialog');
     expect(within(identityDialog).getByText('基幹薬局側患者（正本）')).toBeTruthy();
     expect(within(identityDialog).getByText('協力薬局側患者')).toBeTruthy();
     expect(within(identityDialog).getByText('山田 花子')).toBeTruthy();
@@ -1595,6 +1598,7 @@ describe('PharmacyCooperationWorkflowContent', () => {
       expect(JSON.parse(String(declineCall?.[1]?.body))).toEqual({
         decision: 'decline',
         expected_updated_at: '2026-06-18T00:00:00.000Z',
+        expected_patient_updated_at: '2026-06-18T00:00:00.000Z',
         decline_reason: '協力薬局の訪問枠が不足しています',
       });
     });
@@ -2095,6 +2099,7 @@ describe('PharmacyCooperationWorkflowContent', () => {
       expect(submitCall).toBeTruthy();
       expect(JSON.parse(String(submitCall?.[1]?.body))).toEqual({
         expected_updated_at: '2026-06-20T01:30:00.000Z',
+        expected_patient_updated_at: '2026-06-18T00:00:00.000Z',
       });
     });
 
@@ -2126,6 +2131,7 @@ describe('PharmacyCooperationWorkflowContent', () => {
       expect(JSON.parse(String(confirmCall?.[1]?.body))).toMatchObject({
         decision: 'confirm',
         expected_updated_at: '2026-06-20T03:00:00.000Z',
+        expected_patient_updated_at: '2026-06-18T00:00:00.000Z',
         doctor_report_required: false,
       });
     });

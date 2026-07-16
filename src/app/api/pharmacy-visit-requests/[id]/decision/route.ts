@@ -21,6 +21,7 @@ const updateVisitRequestDecisionSchema = z
   .object({
     decision: visitRequestDecisionSchema,
     expected_updated_at: z.string().datetime('版情報が不正です'),
+    expected_patient_updated_at: z.string().datetime('患者版情報が不正です'),
     pharmacist_id: z.unknown().optional(),
     decline_reason: z.string().trim().max(1000).optional(),
   })
@@ -110,7 +111,9 @@ const authenticatedPOST = withAuthContext<{ id: string }>(
           partnership_id: true,
           partner_pharmacy_id: true,
           updated_at: true,
-          share_case: { select: { status: true } },
+          share_case: {
+            select: { status: true, base_patient: { select: { updated_at: true } } },
+          },
           partnership: {
             select: {
               status: true,
@@ -121,6 +124,16 @@ const authenticatedPOST = withAuthContext<{ id: string }>(
       });
 
       if (!visitRequest) return { response: notFound('訪問依頼が見つかりません') };
+      if (
+        visitRequest.share_case.base_patient.updated_at.toISOString() !==
+        parsed.data.expected_patient_updated_at
+      ) {
+        return {
+          response: conflict('対象患者情報が更新されています。再読み込みしてください', {
+            blocker: 'patient_identity_stale',
+          }),
+        };
+      }
       const expectedUpdatedAt = new Date(parsed.data.expected_updated_at);
       if (visitRequest.updated_at.toISOString() !== expectedUpdatedAt.toISOString()) {
         return { response: conflict('訪問依頼が更新されています。再読み込みしてください') };
@@ -169,7 +182,17 @@ const authenticatedPOST = withAuthContext<{ id: string }>(
           org_id: ctx.orgId,
           status: transition.currentStatus,
           updated_at: expectedUpdatedAt,
-          share_case: activeShareCaseWhere ? { is: activeShareCaseWhere } : { status: 'active' },
+          share_case: activeShareCaseWhere
+            ? {
+                is: {
+                  ...activeShareCaseWhere,
+                  base_patient: { updated_at: visitRequest.share_case.base_patient.updated_at },
+                },
+              }
+            : {
+                status: 'active',
+                base_patient: { updated_at: visitRequest.share_case.base_patient.updated_at },
+              },
           partnership: {
             status: 'active',
             partner_pharmacy: { status: 'active' },

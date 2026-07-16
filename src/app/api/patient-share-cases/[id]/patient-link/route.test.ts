@@ -55,12 +55,17 @@ const ACTIVE_CONSENT = {
   valid_until: null,
   revoked_at: null,
 };
+const PATIENT_UPDATED_AT = '2026-06-18T00:00:00.000Z';
 
 function createRequest(body: unknown) {
   return new NextRequest('http://localhost/api/patient-share-cases/share_case_1/patient-link', {
     method: 'PATCH',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(body),
+    body: JSON.stringify(
+      body && typeof body === 'object' && !Array.isArray(body)
+        ? { expected_patient_updated_at: PATIENT_UPDATED_AT, ...body }
+        : body,
+    ),
   });
 }
 
@@ -72,6 +77,12 @@ describe('/api/patient-share-cases/[id]/patient-link PATCH', () => {
     authContextFailureMock.mockReset();
     patientShareCaseFindFirstMock.mockResolvedValue({
       id: 'share_case_1',
+      base_patient: {
+        name: '山田 花子',
+        name_kana: 'ヤマダ ハナコ',
+        birth_date: new Date('1950-01-02T00:00:00.000Z'),
+        updated_at: new Date(PATIENT_UPDATED_AT),
+      },
       status: 'partner_confirmation_pending',
       base_pharmacy_approved_by: null,
       partner_pharmacy_approved_by: null,
@@ -123,6 +134,9 @@ describe('/api/patient-share-cases/[id]/patient-link PATCH', () => {
         share_case_id: 'share_case_1',
         org_id: 'org_1',
         match_status: 'pending',
+        share_case: {
+          base_patient: { updated_at: new Date(PATIENT_UPDATED_AT) },
+        },
       },
       data: {
         approved_by_base: 'user_1',
@@ -175,6 +189,12 @@ describe('/api/patient-share-cases/[id]/patient-link PATCH', () => {
   it('accepts only pending links and writes compact audit metadata without snapshots', async () => {
     patientShareCaseFindFirstMock.mockResolvedValue({
       id: 'share_case_1',
+      base_patient: {
+        name: '山田 花子',
+        name_kana: 'ヤマダ ハナコ',
+        birth_date: new Date('1950-01-02T00:00:00.000Z'),
+        updated_at: new Date(PATIENT_UPDATED_AT),
+      },
       status: 'partner_confirmation_pending',
       base_pharmacy_approved_by: 'base_user',
       partner_pharmacy_approved_by: null,
@@ -217,6 +237,9 @@ describe('/api/patient-share-cases/[id]/patient-link PATCH', () => {
         share_case_id: 'share_case_1',
         org_id: 'org_1',
         match_status: 'pending',
+        share_case: {
+          base_patient: { updated_at: new Date(PATIENT_UPDATED_AT) },
+        },
       },
       data: expect.objectContaining({
         match_status: 'accepted',
@@ -285,6 +308,9 @@ describe('/api/patient-share-cases/[id]/patient-link PATCH', () => {
         share_case_id: 'share_case_1',
         org_id: 'org_1',
         match_status: 'pending',
+        share_case: {
+          base_patient: { updated_at: new Date(PATIENT_UPDATED_AT) },
+        },
       },
       data: expect.objectContaining({
         match_status: 'declined',
@@ -319,6 +345,12 @@ describe('/api/patient-share-cases/[id]/patient-link PATCH', () => {
   it('rejects partner acceptance without identity proof before update or audit side effects', async () => {
     patientShareCaseFindFirstMock.mockResolvedValue({
       id: 'share_case_1',
+      base_patient: {
+        name: '山田 花子',
+        name_kana: 'ヤマダ ハナコ',
+        birth_date: new Date('1950-01-02T00:00:00.000Z'),
+        updated_at: new Date(PATIENT_UPDATED_AT),
+      },
       status: 'partner_confirmation_pending',
       base_pharmacy_approved_by: 'base_user',
       partner_pharmacy_approved_by: null,
@@ -353,6 +385,12 @@ describe('/api/patient-share-cases/[id]/patient-link PATCH', () => {
   it('rejects mismatched partner identity without an override reason', async () => {
     patientShareCaseFindFirstMock.mockResolvedValue({
       id: 'share_case_1',
+      base_patient: {
+        name: '山田 花子',
+        name_kana: 'ヤマダ ハナコ',
+        birth_date: new Date('1950-01-02T00:00:00.000Z'),
+        updated_at: new Date(PATIENT_UPDATED_AT),
+      },
       status: 'partner_confirmation_pending',
       base_pharmacy_approved_by: 'base_user',
       partner_pharmacy_approved_by: null,
@@ -395,6 +433,12 @@ describe('/api/patient-share-cases/[id]/patient-link PATCH', () => {
   it('rejects terminal link transitions before update or audit side effects', async () => {
     patientShareCaseFindFirstMock.mockResolvedValue({
       id: 'share_case_1',
+      base_patient: {
+        name: '山田 花子',
+        name_kana: 'ヤマダ ハナコ',
+        birth_date: new Date('1950-01-02T00:00:00.000Z'),
+        updated_at: new Date(PATIENT_UPDATED_AT),
+      },
       status: 'partner_confirmation_pending',
       base_pharmacy_approved_by: 'base_user',
       partner_pharmacy_approved_by: 'partner_user',
@@ -416,6 +460,25 @@ describe('/api/patient-share-cases/[id]/patient-link PATCH', () => {
     expectSensitiveNoStore(response);
     expect(patientLinkUpdateManyMock).not.toHaveBeenCalled();
     expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects a stale canonical patient before updating the patient link', async () => {
+    const current = await patientShareCaseFindFirstMock();
+    patientShareCaseFindFirstMock.mockResolvedValueOnce({
+      ...current,
+      base_patient: {
+        ...current.base_patient,
+        updated_at: new Date('2026-06-18T00:01:00.000Z'),
+      },
+    });
+
+    const response = await rawPATCH(createRequest({ decision: 'base_approve' }), routeContext);
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      details: { blocker: 'patient_identity_stale' },
+    });
+    expect(patientLinkUpdateManyMock).not.toHaveBeenCalled();
   });
 
   it('sanitizes unexpected patient-link failures and keeps sensitive responses no-store', async () => {

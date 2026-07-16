@@ -1,9 +1,11 @@
 import { Prisma } from '@prisma/client';
+import { z } from 'zod';
 import { unstable_rethrow } from 'next/navigation';
 import { withAuthContext } from '@/lib/auth/context';
 import { conflict, internalError, notFound, success, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
+import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { withOrgContext } from '@/lib/db/rls';
 import {
   createPartnerVisitPhysicianReportDraft,
@@ -15,7 +17,12 @@ const DRAFT_ERROR_MESSAGES = {
   PARTNER_VISIT_RECORD_NOT_CONFIRMED: '確認済みの協力訪問記録のみ医師向け報告書を作成できます',
   PARTNER_VISIT_SOURCE_INACTIVE:
     '有効な患者共有ケースと確認済み協力訪問のみ医師向け報告書を作成できます',
+  PATIENT_IDENTITY_STALE: '対象患者情報が更新されています。再読み込みしてください',
 } as const;
+
+const createReportDraftSchema = z.object({
+  expected_patient_updated_at: z.string().datetime('患者版情報が不正です'),
+});
 
 const SAFE_WORKFLOW_DETAIL_KEYS = [
   'status',
@@ -24,6 +31,7 @@ const SAFE_WORKFLOW_DETAIL_KEYS = [
   'partnership_status',
   'partner_pharmacy_status',
   'owner_partner_pharmacy_status',
+  'blocker',
 ] as const;
 
 const SAFE_WORKFLOW_STATUS_PATTERN = /^[a-z][a-z0-9_]{0,63}$/;
@@ -48,22 +56,35 @@ function draftErrorResponse(error: PartnerVisitPhysicianReportDraftError) {
       return notFound(DRAFT_ERROR_MESSAGES.PARTNER_VISIT_RECORD_NOT_FOUND);
     case 'PARTNER_VISIT_RECORD_NOT_CONFIRMED':
     case 'PARTNER_VISIT_SOURCE_INACTIVE':
+    case 'PATIENT_IDENTITY_STALE':
       return conflict(DRAFT_ERROR_MESSAGES[error.code], sanitizeWorkflowDetails(error.details));
   }
 }
 
 const authenticatedPOST = withAuthContext<{ id: string }>(
-  async (_req, ctx, { params }) => {
+  async (req, ctx, { params }) => {
     const { id: rawId } = await params;
     const id = normalizeRequiredRouteParam(rawId);
     if (!id) {
       return withSensitiveNoStore(validationError('協力訪問記録IDが不正です'));
     }
+    const payload = await readJsonObjectRequestBody(req);
+    if (!payload) return withSensitiveNoStore(validationError('リクエストボディが不正です'));
+    const parsed = createReportDraftSchema.safeParse(payload);
+    if (!parsed.success) {
+      return withSensitiveNoStore(
+        validationError('入力値が不正です', parsed.error.flatten().fieldErrors),
+      );
+    }
 
     try {
       const result = await withOrgContext(
         ctx.orgId,
-        (tx) => createPartnerVisitPhysicianReportDraft(tx, ctx, { partnerVisitRecordId: id }),
+        (tx) =>
+          createPartnerVisitPhysicianReportDraft(tx, ctx, {
+            partnerVisitRecordId: id,
+            expectedPatientUpdatedAt: parsed.data.expected_patient_updated_at,
+          }),
         { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
       );
 

@@ -16,6 +16,7 @@ import { resolvePatientShareCaseTransition } from '@/server/services/pharmacy-pa
 
 const revokePatientShareConsentSchema = z.object({
   reason: z.string().trim().max(500).optional(),
+  expected_patient_updated_at: z.string().datetime('患者版情報が不正です'),
 });
 
 function toSafeRevokedConsent(row: {
@@ -68,11 +69,23 @@ const authenticatedPOST = withAuthContext<{ id: string; consentId: string }>(
           revoked_at: true,
           revoked_by: true,
           updated_at: true,
-          share_case: { select: { id: true, status: true } },
+          share_case: {
+            select: { id: true, status: true, base_patient: { select: { updated_at: true } } },
+          },
         },
       });
 
       if (!existing) return { response: notFound('患者共有同意が見つかりません') };
+      if (
+        existing.share_case.base_patient.updated_at.toISOString() !==
+        parsed.data.expected_patient_updated_at
+      ) {
+        return {
+          response: conflict('対象患者情報が更新されています。再読み込みしてください', {
+            blocker: 'patient_identity_stale',
+          }),
+        };
+      }
       if (existing.revoked_at) {
         return {
           consent: {
@@ -88,7 +101,15 @@ const authenticatedPOST = withAuthContext<{ id: string; consentId: string }>(
       }
 
       const updatedCount = await tx.patientShareConsent.updateMany({
-        where: { id: consentId, org_id: ctx.orgId, share_case_id: id, revoked_at: null },
+        where: {
+          id: consentId,
+          org_id: ctx.orgId,
+          share_case_id: id,
+          revoked_at: null,
+          share_case: {
+            base_patient: { updated_at: existing.share_case.base_patient.updated_at },
+          },
+        },
         data: { revoked_at: now, revoked_by: ctx.userId },
       });
       if (updatedCount.count !== 1) {

@@ -23,6 +23,7 @@ const reviewPartnerVisitRecordSchema = z
   .object({
     decision: reviewDecisionSchema,
     expected_updated_at: z.string().datetime('版情報が不正です'),
+    expected_patient_updated_at: z.string().datetime('患者版情報が不正です'),
     return_reason: z.string().trim().max(1000).optional(),
     doctor_report_required: z.boolean().default(false),
   })
@@ -132,7 +133,9 @@ const authenticatedPOST = withAuthContext<{ id: string }>(
             owner_partner_pharmacy_id: true,
             visit_at: true,
             revision_no: true,
-            share_case: { select: { status: true } },
+            share_case: {
+              select: { status: true, base_patient: { select: { updated_at: true } } },
+            },
             owner_partner_pharmacy: { select: { name: true, status: true } },
             visit_request: {
               select: {
@@ -152,6 +155,16 @@ const authenticatedPOST = withAuthContext<{ id: string }>(
         });
 
         if (!record) return { response: notFound('協力訪問記録が見つかりません') };
+        if (
+          record.share_case.base_patient.updated_at.toISOString() !==
+          parsed.data.expected_patient_updated_at
+        ) {
+          return {
+            response: conflict('対象患者情報が更新されています。再読み込みしてください', {
+              blocker: 'patient_identity_stale',
+            }),
+          };
+        }
         const expectedUpdatedAt = new Date(parsed.data.expected_updated_at);
         if (record.updated_at.toISOString() !== expectedUpdatedAt.toISOString()) {
           return { response: conflict('協力訪問記録が更新されています。再読み込みしてください') };
@@ -202,7 +215,10 @@ const authenticatedPOST = withAuthContext<{ id: string }>(
             org_id: ctx.orgId,
             status: recordTransition.currentStatus,
             updated_at: expectedUpdatedAt,
-            share_case: { status: 'active' },
+            share_case: {
+              status: 'active',
+              base_patient: { updated_at: record.share_case.base_patient.updated_at },
+            },
             owner_partner_pharmacy: { status: 'active' },
             visit_request: {
               status: requestTransition.currentStatus,

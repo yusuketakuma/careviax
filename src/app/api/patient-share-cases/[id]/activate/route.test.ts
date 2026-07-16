@@ -6,13 +6,15 @@ const {
   authPlumbingFailureRef,
   withOrgContextMock,
   patientShareCaseFindFirstMock,
-  patientShareCaseUpdateMock,
+  patientShareCaseUpdateManyMock,
+  patientShareCaseFindUniqueOrThrowMock,
   createAuditLogEntryMock,
 } = vi.hoisted(() => ({
   authPlumbingFailureRef: { current: null as Error | null },
   withOrgContextMock: vi.fn(),
   patientShareCaseFindFirstMock: vi.fn(),
-  patientShareCaseUpdateMock: vi.fn(),
+  patientShareCaseUpdateManyMock: vi.fn(),
+  patientShareCaseFindUniqueOrThrowMock: vi.fn(),
   createAuditLogEntryMock: vi.fn(),
 }));
 
@@ -48,10 +50,13 @@ import { POST as rawPOST } from './route';
 
 const routeContext = { params: Promise.resolve({ id: 'share_case_1' }) };
 const ORIGINAL_TZ = process.env.TZ;
+const PATIENT_UPDATED_AT = '2026-06-18T00:00:00.000Z';
 
 function createRequest() {
   return new NextRequest('http://localhost/api/patient-share-cases/share_case_1/activate', {
     method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ expected_patient_updated_at: PATIENT_UPDATED_AT }),
   });
 }
 
@@ -75,6 +80,7 @@ describe('/api/patient-share-cases/[id]/activate POST', () => {
     authPlumbingFailureRef.current = null;
     patientShareCaseFindFirstMock.mockResolvedValue({
       id: 'share_case_1',
+      base_patient: { updated_at: new Date(PATIENT_UPDATED_AT) },
       status: 'partner_confirmation_pending',
       starts_at: new Date('2026-06-01T00:00:00.000Z'),
       ends_at: new Date('2026-06-19T00:00:00.000Z'),
@@ -112,7 +118,8 @@ describe('/api/patient-share-cases/[id]/activate POST', () => {
         },
       },
     });
-    patientShareCaseUpdateMock.mockResolvedValue({
+    patientShareCaseUpdateManyMock.mockResolvedValue({ count: 1 });
+    patientShareCaseFindUniqueOrThrowMock.mockResolvedValue({
       id: 'share_case_1',
       status: 'active',
       consent_verified_at: new Date('2026-06-19T00:00:00.000Z'),
@@ -124,7 +131,8 @@ describe('/api/patient-share-cases/[id]/activate POST', () => {
       callback({
         patientShareCase: {
           findFirst: patientShareCaseFindFirstMock,
-          update: patientShareCaseUpdateMock,
+          updateMany: patientShareCaseUpdateManyMock,
+          findUniqueOrThrow: patientShareCaseFindUniqueOrThrowMock,
         },
       }),
     );
@@ -133,6 +141,7 @@ describe('/api/patient-share-cases/[id]/activate POST', () => {
   it('rejects activation without active consent before update or audit side effects', async () => {
     patientShareCaseFindFirstMock.mockResolvedValue({
       id: 'share_case_1',
+      base_patient: { updated_at: new Date(PATIENT_UPDATED_AT) },
       status: 'partner_confirmation_pending',
       starts_at: new Date('2026-06-01T00:00:00.000Z'),
       ends_at: new Date('2026-12-31T00:00:00.000Z'),
@@ -169,13 +178,14 @@ describe('/api/patient-share-cases/[id]/activate POST', () => {
       code: 'WORKFLOW_CONFLICT',
       details: { blocker: 'missing_active_consent' },
     });
-    expect(patientShareCaseUpdateMock).not.toHaveBeenCalled();
+    expect(patientShareCaseUpdateManyMock).not.toHaveBeenCalled();
     expect(createAuditLogEntryMock).not.toHaveBeenCalled();
   });
 
   it('rejects activation when share-case and patient-link approvals drift', async () => {
     patientShareCaseFindFirstMock.mockResolvedValue({
       id: 'share_case_1',
+      base_patient: { updated_at: new Date(PATIENT_UPDATED_AT) },
       status: 'partner_confirmation_pending',
       starts_at: new Date('2026-06-01T00:00:00.000Z'),
       ends_at: new Date('2026-12-31T00:00:00.000Z'),
@@ -216,12 +226,13 @@ describe('/api/patient-share-cases/[id]/activate POST', () => {
     await expect(response.json()).resolves.toMatchObject({
       details: { blocker: 'approval_mismatch' },
     });
-    expect(patientShareCaseUpdateMock).not.toHaveBeenCalled();
+    expect(patientShareCaseUpdateManyMock).not.toHaveBeenCalled();
   });
 
   it('rejects activation for inactive partner pharmacies before update or audit side effects', async () => {
     patientShareCaseFindFirstMock.mockResolvedValue({
       id: 'share_case_1',
+      base_patient: { updated_at: new Date(PATIENT_UPDATED_AT) },
       status: 'partner_confirmation_pending',
       starts_at: new Date('2026-06-01T00:00:00.000Z'),
       ends_at: new Date('2026-12-31T00:00:00.000Z'),
@@ -259,13 +270,14 @@ describe('/api/patient-share-cases/[id]/activate POST', () => {
     const response = await rawPOST(createRequest(), routeContext);
 
     expect(response.status).toBe(409);
-    expect(patientShareCaseUpdateMock).not.toHaveBeenCalled();
+    expect(patientShareCaseUpdateManyMock).not.toHaveBeenCalled();
     expect(createAuditLogEntryMock).not.toHaveBeenCalled();
   });
 
   it('rejects activation without partner identity proof before update or audit side effects', async () => {
     patientShareCaseFindFirstMock.mockResolvedValue({
       id: 'share_case_1',
+      base_patient: { updated_at: new Date(PATIENT_UPDATED_AT) },
       status: 'partner_confirmation_pending',
       starts_at: new Date('2026-06-01T00:00:00.000Z'),
       ends_at: new Date('2026-12-31T00:00:00.000Z'),
@@ -299,7 +311,7 @@ describe('/api/patient-share-cases/[id]/activate POST', () => {
     await expect(response.json()).resolves.toMatchObject({
       details: { blocker: 'patient_link_identity_proof_missing' },
     });
-    expect(patientShareCaseUpdateMock).not.toHaveBeenCalled();
+    expect(patientShareCaseUpdateManyMock).not.toHaveBeenCalled();
     expect(createAuditLogEntryMock).not.toHaveBeenCalled();
   });
 
@@ -310,13 +322,14 @@ describe('/api/patient-share-cases/[id]/activate POST', () => {
 
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
-    expect(patientShareCaseUpdateMock).toHaveBeenCalled();
+    expect(patientShareCaseUpdateManyMock).toHaveBeenCalled();
   });
 
   it('treats same local-day @db.Date start dates as valid during JST morning', async () => {
     vi.setSystemTime(new Date('2026-06-20T08:00:00+09:00'));
     patientShareCaseFindFirstMock.mockResolvedValue({
       id: 'share_case_1',
+      base_patient: { updated_at: new Date(PATIENT_UPDATED_AT) },
       status: 'partner_confirmation_pending',
       starts_at: new Date('2026-06-20T00:00:00.000Z'),
       ends_at: new Date('2026-06-20T00:00:00.000Z'),
@@ -358,7 +371,7 @@ describe('/api/patient-share-cases/[id]/activate POST', () => {
     const response = await rawPOST(createRequest(), routeContext);
 
     expect(response.status).toBe(200);
-    expect(patientShareCaseUpdateMock).toHaveBeenCalled();
+    expect(patientShareCaseUpdateManyMock).toHaveBeenCalled();
   });
 
   it('activates a share case only after consent, accepted link, and both approvals', async () => {
@@ -370,20 +383,18 @@ describe('/api/patient-share-cases/[id]/activate POST', () => {
       where: { id: 'share_case_1', org_id: 'org_1' },
       select: expect.any(Object),
     });
-    expect(patientShareCaseUpdateMock).toHaveBeenCalledWith({
-      where: { id_org_id: { id: 'share_case_1', org_id: 'org_1' } },
+    expect(patientShareCaseUpdateManyMock).toHaveBeenCalledWith({
+      where: {
+        id: 'share_case_1',
+        org_id: 'org_1',
+        status: 'partner_confirmation_pending',
+        base_patient: { updated_at: new Date(PATIENT_UPDATED_AT) },
+      },
       data: {
         status: 'active',
         consent_verified_at: new Date('2026-06-19T00:00:00.000Z'),
         activated_at: new Date('2026-06-19T00:00:00.000Z'),
         updated_by: 'user_1',
-      },
-      select: {
-        id: true,
-        status: true,
-        consent_verified_at: true,
-        activated_at: true,
-        updated_at: true,
       },
     });
     expect(createAuditLogEntryMock).toHaveBeenCalledWith(
@@ -429,8 +440,23 @@ describe('/api/patient-share-cases/[id]/activate POST', () => {
     expect(bodyText).not.toContain('identity_proof');
   });
 
+  it('rejects a stale patient identity revision before activation writes', async () => {
+    patientShareCaseFindFirstMock.mockResolvedValueOnce({
+      ...(await patientShareCaseFindFirstMock()),
+      base_patient: { updated_at: new Date('2026-06-18T00:01:00.000Z') },
+    });
+
+    const response = await rawPOST(createRequest(), routeContext);
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      details: { blocker: 'patient_identity_stale' },
+    });
+    expect(patientShareCaseUpdateManyMock).not.toHaveBeenCalled();
+  });
+
   it('returns a sanitized no-store 500 when activation update fails unexpectedly', async () => {
-    patientShareCaseUpdateMock.mockRejectedValueOnce(
+    patientShareCaseUpdateManyMock.mockRejectedValueOnce(
       new Error('raw patient_share_case activation patient 山田太郎 token secret identity_proof'),
     );
 
@@ -473,7 +499,7 @@ describe('/api/patient-share-cases/[id]/activate POST', () => {
     expect(serializedBody).not.toContain('山田太郎');
     expect(serializedBody).not.toContain('token secret');
     expect(withOrgContextMock).not.toHaveBeenCalled();
-    expect(patientShareCaseUpdateMock).not.toHaveBeenCalled();
+    expect(patientShareCaseUpdateManyMock).not.toHaveBeenCalled();
     expect(createAuditLogEntryMock).not.toHaveBeenCalled();
   });
 });

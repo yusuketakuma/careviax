@@ -57,11 +57,16 @@ import { expectSensitiveNoStore } from '@/test/api-response-assertions';
 
 const routeContext = { params: Promise.resolve({ id: 'visit_request_1' }) };
 const CURRENT_UPDATED_AT = '2026-06-18T00:00:00.000Z';
+const PATIENT_UPDATED_AT = '2026-06-17T00:00:00.000Z';
 
 function createRequest(body: unknown) {
   const requestBody =
-    body && typeof body === 'object' && !Array.isArray(body) && !('expected_updated_at' in body)
-      ? { expected_updated_at: CURRENT_UPDATED_AT, ...body }
+    body && typeof body === 'object' && !Array.isArray(body)
+      ? {
+          expected_updated_at: CURRENT_UPDATED_AT,
+          expected_patient_updated_at: PATIENT_UPDATED_AT,
+          ...body,
+        }
       : body;
   return new NextRequest('http://localhost/api/pharmacy-visit-requests/visit_request_1/decision', {
     method: 'POST',
@@ -112,7 +117,10 @@ describe('/api/pharmacy-visit-requests/[id]/decision POST', () => {
       partnership_id: 'partnership_1',
       partner_pharmacy_id: 'partner_pharmacy_1',
       updated_at: new Date(CURRENT_UPDATED_AT),
-      share_case: { status: 'active' },
+      share_case: {
+        status: 'active',
+        base_patient: { updated_at: new Date(PATIENT_UPDATED_AT) },
+      },
       partnership: {
         status: 'active',
         partner_pharmacy: { status: 'active' },
@@ -181,6 +189,7 @@ describe('/api/pharmacy-visit-requests/[id]/decision POST', () => {
         share_case: {
           is: {
             ...activeShareCaseMutationWhere(),
+            base_patient: { updated_at: new Date(PATIENT_UPDATED_AT) },
           },
         },
         partnership: {
@@ -312,7 +321,12 @@ describe('/api/pharmacy-visit-requests/[id]/decision POST', () => {
     expect(patientShareCaseFindFirstMock).not.toHaveBeenCalled();
     expect(pharmacyVisitRequestUpdateManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: expect.objectContaining({ share_case: { status: 'active' } }),
+        where: expect.objectContaining({
+          share_case: {
+            status: 'active',
+            base_patient: { updated_at: new Date(PATIENT_UPDATED_AT) },
+          },
+        }),
         data: expect.objectContaining({
           status: 'declined',
           declined_by: 'user_1',
@@ -341,7 +355,7 @@ describe('/api/pharmacy-visit-requests/[id]/decision POST', () => {
       partnership_id: 'partnership_1',
       partner_pharmacy_id: 'partner_pharmacy_1',
       updated_at: new Date(CURRENT_UPDATED_AT),
-      share_case: { status: 'active' },
+      share_case: { status: 'active', base_patient: { updated_at: new Date(PATIENT_UPDATED_AT) } },
       partnership: {
         status: 'active',
         partner_pharmacy: { status: 'active' },
@@ -407,6 +421,25 @@ describe('/api/pharmacy-visit-requests/[id]/decision POST', () => {
     expect(pharmacyVisitRequestFindFirstMock).not.toHaveBeenCalled();
     expect(pharmacyVisitRequestUpdateManyMock).not.toHaveBeenCalled();
     expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects a stale patient identity before deciding the visit request', async () => {
+    const current = await pharmacyVisitRequestFindFirstMock();
+    pharmacyVisitRequestFindFirstMock.mockResolvedValueOnce({
+      ...current,
+      share_case: {
+        ...current.share_case,
+        base_patient: { updated_at: new Date('2026-06-17T00:01:00.000Z') },
+      },
+    });
+
+    const response = await rawPOST(createRequest({ decision: 'accept' }), routeContext);
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      details: { blocker: 'patient_identity_stale' },
+    });
+    expect(pharmacyVisitRequestUpdateManyMock).not.toHaveBeenCalled();
   });
 
   it('sanitizes unexpected decision failures and keeps sensitive responses no-store', async () => {

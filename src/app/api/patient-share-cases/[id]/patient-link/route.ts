@@ -31,6 +31,7 @@ const updatePatientLinkSchema = z
     partner_patient_snapshot: partnerPatientSnapshotSchema.optional(),
     identity_mismatch_override_reason: z.string().trim().min(1).max(500).optional(),
     decline_reason: z.string().trim().min(1).max(500).optional(),
+    expected_patient_updated_at: z.string().datetime('患者版情報が不正です'),
   })
   .superRefine((value, ctx) => {
     if (value.decision === 'accept' && !value.partner_patient_id) {
@@ -166,13 +167,24 @@ const authenticatedPATCH = withAuthContext<{ id: string }>(
               match_status: true,
               approved_by_base: true,
               approved_by_partner: true,
-              base_patient_snapshot: true,
             },
+          },
+          base_patient: {
+            select: { name: true, name_kana: true, birth_date: true, updated_at: true },
           },
         },
       });
 
       if (!shareCase) return { response: notFound('患者共有ケースが見つかりません') };
+      if (
+        shareCase.base_patient.updated_at.toISOString() !== parsed.data.expected_patient_updated_at
+      ) {
+        return {
+          response: conflict('対象患者情報が更新されています。再読み込みしてください', {
+            blocker: 'patient_identity_stale',
+          }),
+        };
+      }
       if (!shareCase.patient_link) {
         return { response: conflict('患者リンクが作成されていません') };
       }
@@ -225,7 +237,11 @@ const authenticatedPATCH = withAuthContext<{ id: string }>(
       const partnerSnapshotProof =
         parsed.data.decision === 'accept'
           ? buildPartnerSnapshotWithIdentityProof({
-              basePatientSnapshot: link.base_patient_snapshot,
+              basePatientSnapshot: {
+                name: shareCase.base_patient.name,
+                name_kana: shareCase.base_patient.name_kana,
+                birth_date: shareCase.base_patient.birth_date.toISOString().slice(0, 10),
+              },
               partnerPatientSnapshot: parsed.data.partner_patient_snapshot!,
               checkedAt: now,
               checkedBy: ctx.userId,
@@ -275,6 +291,9 @@ const authenticatedPATCH = withAuthContext<{ id: string }>(
           share_case_id: id,
           org_id: ctx.orgId,
           match_status: 'pending',
+          share_case: {
+            base_patient: { updated_at: shareCase.base_patient.updated_at },
+          },
         },
         data: patientLinkUpdate,
       });

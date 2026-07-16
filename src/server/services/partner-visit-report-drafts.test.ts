@@ -53,6 +53,7 @@ function confirmedPartnerVisitRecord(overrides: Record<string, unknown> = {}) {
         name: '山田花子',
         birth_date: new Date('1940-01-01T00:00:00.000Z'),
         gender: 'female',
+        updated_at: new Date('2026-06-18T00:00:00.000Z'),
       },
       base_case: {
         id: 'case_1',
@@ -164,6 +165,7 @@ describe('createPartnerVisitPhysicianReportDraft', () => {
   it('creates a physician report draft from a confirmed partner visit record without leaking content in response or audit', async () => {
     const result = await createPartnerVisitPhysicianReportDraft(tx(), ctx, {
       partnerVisitRecordId: 'partner_visit_record_1',
+      expectedPatientUpdatedAt: '2026-06-18T00:00:00.000Z',
     });
 
     expect(result).toMatchObject({
@@ -249,6 +251,7 @@ describe('createPartnerVisitPhysicianReportDraft', () => {
 
     await createPartnerVisitPhysicianReportDraft(tx(), ctx, {
       partnerVisitRecordId: 'partner_visit_record_1',
+      expectedPatientUpdatedAt: '2026-06-18T00:00:00.000Z',
     });
 
     expect(careReportCreateMock).toHaveBeenCalledWith(
@@ -293,6 +296,7 @@ describe('createPartnerVisitPhysicianReportDraft', () => {
 
     await createPartnerVisitPhysicianReportDraft(tx(), ctx, {
       partnerVisitRecordId: 'partner_visit_record_1',
+      expectedPatientUpdatedAt: '2026-06-18T00:00:00.000Z',
     });
 
     expect(careReportCreateMock).toHaveBeenCalledWith(
@@ -317,6 +321,7 @@ describe('createPartnerVisitPhysicianReportDraft', () => {
 
     const result = await createPartnerVisitPhysicianReportDraft(tx(), ctx, {
       partnerVisitRecordId: 'partner_visit_record_1',
+      expectedPatientUpdatedAt: '2026-06-18T00:00:00.000Z',
     });
 
     expect(result).toMatchObject({
@@ -324,6 +329,32 @@ describe('createPartnerVisitPhysicianReportDraft', () => {
       report: { id: 'report_existing', partner_visit_record_id: 'partner_visit_record_1' },
     });
     expect(partnerVisitRecordFindFirstMock).toHaveBeenCalled();
+    expect(careReportCreateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects a stale patient identity before report or audit side effects', async () => {
+    const record = confirmedPartnerVisitRecord();
+    partnerVisitRecordFindFirstMock.mockResolvedValue({
+      ...record,
+      share_case: {
+        ...record.share_case,
+        base_patient: {
+          ...record.share_case.base_patient,
+          updated_at: new Date('2026-06-18T00:01:00.000Z'),
+        },
+      },
+    });
+
+    await expect(
+      createPartnerVisitPhysicianReportDraft(tx(), ctx, {
+        partnerVisitRecordId: 'partner_visit_record_1',
+        expectedPatientUpdatedAt: '2026-06-18T00:00:00.000Z',
+      }),
+    ).rejects.toMatchObject({
+      code: 'PATIENT_IDENTITY_STALE',
+      details: { blocker: 'patient_identity_stale' },
+    });
     expect(careReportCreateMock).not.toHaveBeenCalled();
     expect(auditLogCreateMock).not.toHaveBeenCalled();
   });
@@ -336,6 +367,7 @@ describe('createPartnerVisitPhysicianReportDraft', () => {
     await expect(
       createPartnerVisitPhysicianReportDraft(tx(), ctx, {
         partnerVisitRecordId: 'partner_visit_record_1',
+        expectedPatientUpdatedAt: '2026-06-18T00:00:00.000Z',
       }),
     ).rejects.toMatchObject({
       code: 'PARTNER_VISIT_RECORD_NOT_CONFIRMED',
@@ -356,6 +388,7 @@ describe('createPartnerVisitPhysicianReportDraft', () => {
 
     const result = await createPartnerVisitPhysicianReportDraft(tx(), ctx, {
       partnerVisitRecordId: 'partner_visit_record_1',
+      expectedPatientUpdatedAt: '2026-06-18T00:00:00.000Z',
     });
 
     expect(result).toMatchObject({
