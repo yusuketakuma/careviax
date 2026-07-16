@@ -23,7 +23,47 @@ const {
 }));
 
 vi.mock('@/lib/auth/context', () => ({
-  requireAuthContext: requireAuthContextMock,
+  withAuthContext: (
+    handler: (
+      req: NextRequest,
+      ctx: { orgId: string; userId: string; role: string },
+    ) => Promise<Response>,
+    options: unknown,
+  ) => {
+    return async (req: NextRequest) => {
+      let response: Response;
+      try {
+        const authResult = await requireAuthContextMock(req, options);
+        response =
+          authResult && typeof authResult === 'object' && 'response' in authResult
+            ? authResult.response
+            : await handler(req, authResult.ctx);
+      } catch (error) {
+        loggerErrorMock(
+          {
+            event: 'route_handler_unhandled_error',
+            route: req.nextUrl.pathname,
+            method: req.method,
+            requestId: '00000000-0000-4000-8000-000000000001',
+            correlationId: 'billing_rules_test',
+          },
+          error,
+        );
+        response = new Response(
+          JSON.stringify({
+            code: 'INTERNAL_ERROR',
+            message: 'サーバー内部でエラーが発生しました',
+          }),
+          { status: 500, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
+      response.headers.set('Cache-Control', 'private, no-store, max-age=0');
+      response.headers.set('Pragma', 'no-cache');
+      response.headers.set('X-Request-Id', '00000000-0000-4000-8000-000000000001');
+      response.headers.set('X-Correlation-Id', 'billing_rules_test');
+      return response;
+    };
+  },
 }));
 
 vi.mock('@/lib/db/rls', () => ({
@@ -50,6 +90,7 @@ function createRequest(url = 'http://localhost/api/billing-rules', body?: unknow
     method: body === undefined ? 'GET' : 'POST',
     headers: {
       'x-org-id': 'org_1',
+      'x-correlation-id': 'billing_rules_test',
       ...(body === undefined ? {} : { 'content-type': 'application/json' }),
     },
   };
@@ -64,6 +105,7 @@ function createMalformedJsonPostRequest() {
     method: 'POST',
     headers: {
       'x-org-id': 'org_1',
+      'x-correlation-id': 'billing_rules_test',
       'content-type': 'application/json',
     },
     body: '{bad json',
@@ -159,7 +201,7 @@ describe('/api/billing-rules', () => {
     );
   });
 
-  it('seeds and returns billing SSOT rules on GET', async () => {
+  it('returns billing SSOT rules without mutating the catalog on GET', async () => {
     const response = await GET(
       createRequest('http://localhost/api/billing-rules?billing_scope=home_care_ssot'),
     );
@@ -168,7 +210,11 @@ describe('/api/billing-rules', () => {
     const resolvedResponse = response as Response;
     expect(resolvedResponse.status).toBe(200);
     expectNoStore(resolvedResponse);
-    expect(ensureHomeCareBillingSsotMock).toHaveBeenCalledWith(expect.anything(), 'org_1');
+    expect(resolvedResponse.headers.get('X-Request-Id')).toBe(
+      '00000000-0000-4000-8000-000000000001',
+    );
+    expect(resolvedResponse.headers.get('X-Correlation-Id')).toBe('billing_rules_test');
+    expect(ensureHomeCareBillingSsotMock).not.toHaveBeenCalled();
     const body = await resolvedResponse.json();
     expect(body).toMatchObject({
       data: [
@@ -254,9 +300,32 @@ describe('/api/billing-rules', () => {
     expect(billingRuleFindManyMock).not.toHaveBeenCalled();
   });
 
+  it('rejects duplicate and non-boolean GET filters before billing rule lookup', async () => {
+    const response = await GET(
+      createRequest(
+        'http://localhost/api/billing-rules?rule_type=base&rule_type=addition&include_inactive=yes',
+      ),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expectNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      details: {
+        rule_type: ['rule_type が不正です'],
+        include_inactive: ['include_inactive が不正です'],
+      },
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(ensureHomeCareBillingSsotMock).not.toHaveBeenCalled();
+    expect(getHomeCareBillingSsotSummaryMock).not.toHaveBeenCalled();
+    expect(billingRuleFindManyMock).not.toHaveBeenCalled();
+  });
+
   it('returns a sanitized no-store 500 when GET throws unexpectedly', async () => {
     const rawMessage = 'raw billing SQL stack';
-    ensureHomeCareBillingSsotMock.mockRejectedValueOnce(new Error(rawMessage));
+    getHomeCareBillingSsotSummaryMock.mockRejectedValueOnce(new Error(rawMessage));
 
     const response = await GET(createRequest());
 
@@ -264,9 +333,9 @@ describe('/api/billing-rules', () => {
     await expectInternalError(response as Response, rawMessage);
     expect(loggerErrorMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        event: 'billing_rules_get_unhandled_error',
+        event: 'route_handler_unhandled_error',
         route: '/api/billing-rules',
-        status: 500,
+        method: 'GET',
       }),
       expect.any(Error),
     );
@@ -396,9 +465,9 @@ describe('/api/billing-rules', () => {
     await expectInternalError(response as Response, rawMessage);
     expect(loggerErrorMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        event: 'billing_rules_post_unhandled_error',
+        event: 'route_handler_unhandled_error',
         route: '/api/billing-rules',
-        status: 500,
+        method: 'POST',
       }),
       expect.any(Error),
     );
