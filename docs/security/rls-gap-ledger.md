@@ -26,7 +26,7 @@ W1-7 で ENABLE+FORCE+tenant_isolation policy を追加する。
 
 | テーブル | finding | 分類 | PHI | 理由 | 対応予定（W1-7） |
 | --- | --- | --- | :---: | --- | --- |
-| `IntegrationJob` | machine-derived | 運用データ | ⚠️ 有 | ジョブ実行台帳。org_id は nullable。runner.ts が withOrgContext の外で base prisma を使い create/update する。/api/jobs 管理者経路（refreshMedicalInstitutionMaster/refreshCareServiceOfficeMaster が targetOrgIds:[ctx.orgId] → runJob(..., orgId)）は非 NULL org_id を書き込むため、fail-close の FORCE RLS を張ると当該 INSERT が RLS context missing で throw → master-refresh が 500。input/output(Json?) は job_type 次第で PHI を保持しうるため DB backstop は望ましいが、runner が RLS 対応するまで fail-close RLS は unsafe。 | runner.ts の runJobOnce で orgId が非 NULL のとき create/update を withOrgContext(orgId, tx=>…) に包む（NULL の system 行は base prisma のまま）改修を先行。その後に ENABLE+FORCE+tenant_isolation を追加。 |
+| `IntegrationJob` | machine-derived | 運用データ | ⚠️ 有 | ジョブ実行台帳。tenant runJob と薬歴PDF workerのread/create/updateはwithOrgContext対応済みだが、org_id NULLのsystem-wide jobを同じtableへbase Prismaで保存する。input/output(Json?)はjob_type次第でPHIを保持しうるためtenant rowのDB backstopは必須だが、単一app roleのままfail-close FORCE RLSを追加するとsystem ledgerのread/writeが停止する。 | org_id NULLのsystem ledgerを専用tableまたは専用DB roleへ分離し、IntegrationJobをorg_id NOT NULLへ移行する。その後ENABLE+FORCE+app_enforced_org_id() policyとNOBYPASSRLS実DB proofを追加する。 |
 | `PrescriberInstitution` | CXR2-RLS01 | design 判定要 | — | 処方元医療機関。org-scoped（拠点別ディレクトリ）か global master かで RLS 適用要否が変わる。要 design 判定。 | W1-7 前に design 判定。org-scoped なら tenant_isolation、global master なら org_id 列自体の撤去/意図明示。 |
 | `User` | CXR2-RLS02 | design 判定要 | — | 認証/identity テーブル。org_id 列有だが RLS 適用は auth 境界に触れるため慎重。cross-org ユーザー参照の要件を含め design review が必要。 | auth 境界レーンで human 承認のもと design review。RLS 適用可否・cross-org 参照要件を確定してから migration。 |
 

@@ -27,6 +27,15 @@ type RunJobResult =
   | { processedCount: 0; skipped: true };
 const activeJobRuns = new Map<string, Promise<RunJobResult>>();
 
+type JobLedgerDb = Pick<Prisma.TransactionClient, 'integrationJob'>;
+
+function withJobLedgerDb<T>(
+  orgId: string | undefined,
+  work: (db: JobLedgerDb) => Promise<T>,
+): Promise<T> {
+  return orgId ? withOrgContext(orgId, work) : work(prisma);
+}
+
 function getValidatedJobRequestTrace(): RequestTraceContext | undefined {
   const trace = getRequestTraceContext();
   if (
@@ -59,15 +68,17 @@ function resolveJobStaleLockMs(value: string | undefined = process.env.JOB_STALE
  */
 async function isJobAlreadyRunning(jobType: string, orgId?: string): Promise<boolean> {
   const lockedAfter = new Date(Date.now() - resolveJobStaleLockMs());
-  const existing = await prisma.integrationJob.findFirst({
-    where: {
-      job_type: jobType,
-      status: 'running',
-      ...(orgId ? { org_id: orgId } : {}),
-      OR: [{ locked_at: null }, { locked_at: { gt: lockedAfter } }],
-    },
-    select: { id: true },
-  });
+  const existing = await withJobLedgerDb(orgId, (db) =>
+    db.integrationJob.findFirst({
+      where: {
+        job_type: jobType,
+        status: 'running',
+        ...(orgId ? { org_id: orgId } : {}),
+        OR: [{ locked_at: null }, { locked_at: { gt: lockedAfter } }],
+      },
+      select: { id: true },
+    }),
+  );
   return existing !== null;
 }
 
@@ -95,57 +106,63 @@ async function runJobOnce(
     return { processedCount: 0, skipped: true };
   }
 
-  const job = await prisma.integrationJob.create({
-    data: {
-      job_type: jobType,
-      dedupe_key: dedupeKey ?? null,
-      status: 'running',
-      org_id: orgId,
-      max_retries: MAX_RETRIES,
-      run_at: new Date(),
-      locked_at: new Date(),
-      started_at: new Date(),
-      ...(requestTrace
-        ? {
-            input: {
-              request_trace: {
-                request_id: requestTrace.requestId,
-                correlation_id: requestTrace.correlationId,
+  const job = await withJobLedgerDb(orgId, (db) =>
+    db.integrationJob.create({
+      data: {
+        job_type: jobType,
+        dedupe_key: dedupeKey ?? null,
+        status: 'running',
+        org_id: orgId,
+        max_retries: MAX_RETRIES,
+        run_at: new Date(),
+        locked_at: new Date(),
+        started_at: new Date(),
+        ...(requestTrace
+          ? {
+              input: {
+                request_trace: {
+                  request_id: requestTrace.requestId,
+                  correlation_id: requestTrace.correlationId,
+                },
               },
-            },
-          }
-        : {}),
-    },
-  });
+            }
+          : {}),
+      },
+    }),
+  );
 
   let lastError: unknown;
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     try {
       const result = await fn();
-      await prisma.integrationJob.update({
-        where: { id: job.id },
-        data: {
-          status: 'completed',
-          output: toPrismaJsonInput(result),
-          completed_at: new Date(),
-          locked_at: null,
-          retry_count: attempt,
-        },
-      });
+      await withJobLedgerDb(orgId, (db) =>
+        db.integrationJob.update({
+          where: { id: job.id },
+          data: {
+            status: 'completed',
+            output: toPrismaJsonInput(result),
+            completed_at: new Date(),
+            locked_at: null,
+            retry_count: attempt,
+          },
+        }),
+      );
       return result;
     } catch (error) {
       lastError = error;
 
       if (attempt < MAX_RETRIES) {
         // Update retry count and continue to next attempt
-        await prisma.integrationJob.update({
-          where: { id: job.id },
-          data: {
-            retry_count: attempt + 1,
-            error_log: `Attempt ${attempt + 1}/${MAX_RETRIES} failed: ${JOB_EXECUTION_FAILED_MESSAGE}`,
-          },
-        });
+        await withJobLedgerDb(orgId, (db) =>
+          db.integrationJob.update({
+            where: { id: job.id },
+            data: {
+              retry_count: attempt + 1,
+              error_log: `Attempt ${attempt + 1}/${MAX_RETRIES} failed: ${JOB_EXECUTION_FAILED_MESSAGE}`,
+            },
+          }),
+        );
         continue;
       }
 
@@ -154,16 +171,18 @@ async function runJobOnce(
       // (a) leave the row stuck as 'running' silently while still throwing the
       // wrong error upstream, nor (b) overwrite the original failure.
       try {
-        await prisma.integrationJob.update({
-          where: { id: job.id },
-          data: {
-            status: 'failed',
-            error_log: `All ${MAX_RETRIES} retries exhausted. Last error: ${JOB_EXECUTION_FAILED_MESSAGE}`,
-            completed_at: new Date(),
-            locked_at: null,
-            retry_count: attempt + 1,
-          },
-        });
+        await withJobLedgerDb(orgId, (db) =>
+          db.integrationJob.update({
+            where: { id: job.id },
+            data: {
+              status: 'failed',
+              error_log: `All ${MAX_RETRIES} retries exhausted. Last error: ${JOB_EXECUTION_FAILED_MESSAGE}`,
+              completed_at: new Date(),
+              locked_at: null,
+              retry_count: attempt + 1,
+            },
+          }),
+        );
       } catch (cleanupError) {
         logger.error(
           {
@@ -254,10 +273,14 @@ async function notifyAdminsOfJobFailure(jobType: string, orgId?: string) {
       membershipFilter.org_id = orgId;
     }
 
-    const adminMemberships = await prisma.membership.findMany({
-      where: membershipFilter,
-      select: { user_id: true, org_id: true },
-    });
+    const listAdminMemberships = (db: Pick<Prisma.TransactionClient, 'membership'>) =>
+      db.membership.findMany({
+        where: membershipFilter,
+        select: { user_id: true, org_id: true },
+      });
+    const adminMemberships = orgId
+      ? await withOrgContext(orgId, listAdminMemberships)
+      : await listAdminMemberships(prisma);
     if (adminMemberships.length === 0) {
       return;
     }

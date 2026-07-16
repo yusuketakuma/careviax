@@ -95,15 +95,13 @@ export const RLS_MISSING_GAPS: readonly RlsMissingGap[] = [
     category: 'tenant-operational',
     phi: true,
     reason:
-      'ジョブ実行台帳。org_id は nullable。runner.ts が withOrgContext の外で base prisma を使い create/update する。' +
-      '/api/jobs 管理者経路（refreshMedicalInstitutionMaster/refreshCareServiceOfficeMaster が ' +
-      'targetOrgIds:[ctx.orgId] → runJob(..., orgId)）は非 NULL org_id を書き込むため、fail-close の ' +
-      'FORCE RLS を張ると当該 INSERT が RLS context missing で throw → master-refresh が 500。' +
-      'input/output(Json?) は job_type 次第で PHI を保持しうるため DB backstop は望ましいが、' +
-      'runner が RLS 対応するまで fail-close RLS は unsafe。',
+      'ジョブ実行台帳。tenant runJob と薬歴PDF workerのread/create/updateはwithOrgContext対応済みだが、' +
+      'org_id NULLのsystem-wide jobを同じtableへbase Prismaで保存する。input/output(Json?)はjob_type次第で' +
+      'PHIを保持しうるためtenant rowのDB backstopは必須だが、単一app roleのままfail-close FORCE RLSを' +
+      '追加するとsystem ledgerのread/writeが停止する。',
     plannedAction:
-      'runner.ts の runJobOnce で orgId が非 NULL のとき create/update を withOrgContext(orgId, tx=>…) に包む' +
-      '（NULL の system 行は base prisma のまま）改修を先行。その後に ENABLE+FORCE+tenant_isolation を追加。',
+      'org_id NULLのsystem ledgerを専用tableまたは専用DB roleへ分離し、IntegrationJobをorg_id NOT NULLへ' +
+      '移行する。その後ENABLE+FORCE+app_enforced_org_id() policyとNOBYPASSRLS実DB proofを追加する。',
   },
   {
     table: 'PrescriberInstitution',
@@ -157,9 +155,9 @@ export const RLS_NULLABLE_ORG_ID_GAPS: readonly RlsNullableOrgIdGap[] = [
   {
     table: 'IntegrationJob',
     reason:
-      'system job と org-scoped job を同じ table で保持する既存設計。org_id NULL 行は system-wide job に使われる。',
+      'tenant runnerはRLS transaction対応済みだが、system jobとorg-scoped jobを同じtableで保持し、org_id NULL行をsystem-wide jobに使う。',
     plannedAction:
-      'runner の withOrgContext 対応後、system job contract を明示し、org-scoped job の org_id NOT NULL 化または table 分離を行う。',
+      'system job ledgerを専用tableまたは専用roleへ分離し、tenant IntegrationJobをorg_id NOT NULL + FORCE RLSへ移行する。',
   },
 ];
 

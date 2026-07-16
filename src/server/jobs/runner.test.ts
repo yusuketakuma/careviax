@@ -72,7 +72,16 @@ describe('runJob', () => {
     membershipFindManyMock.mockResolvedValue([]);
     dispatchNotificationEventMock.mockResolvedValue([]);
     withOrgContextMock.mockImplementation((_orgId: string, fn: (tx: unknown) => Promise<unknown>) =>
-      fn({}),
+      fn({
+        integrationJob: {
+          findFirst: integrationJobFindFirstMock,
+          create: integrationJobCreateMock,
+          update: integrationJobUpdateMock,
+        },
+        membership: {
+          findMany: membershipFindManyMock,
+        },
+      }),
     );
     consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
   });
@@ -95,6 +104,32 @@ describe('runJob', () => {
         retry_count: 0,
       }),
     });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+  });
+
+  it('runs every tenant ledger operation inside the explicit organization context', async () => {
+    await expect(
+      runJob('tenant_job', async () => ({ processedCount: 2 }), 'org_1'),
+    ).resolves.toEqual({ processedCount: 2 });
+
+    expect(withOrgContextMock).toHaveBeenCalledTimes(3);
+    expect(withOrgContextMock.mock.calls.every(([orgId]) => orgId === 'org_1')).toBe(true);
+    expect(integrationJobFindFirstMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ org_id: 'org_1' }),
+      }),
+    );
+    expect(integrationJobCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ org_id: 'org_1' }),
+      }),
+    );
+    expect(integrationJobUpdateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'job_1' },
+        data: expect.objectContaining({ status: 'completed' }),
+      }),
+    );
   });
 
   it('persists only a validated request trace in the job input', async () => {
@@ -260,6 +295,7 @@ describe('runJob', () => {
     // Delivery is routed through the shared pipeline (in-app + web-push) inside an
     // org-scoped RLS transaction, with admins as explicit recipients.
     expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function));
+    expect(withOrgContextMock.mock.calls.every(([orgId]) => orgId === 'org_1')).toBe(true);
     expect(dispatchNotificationEventMock).toHaveBeenCalledTimes(1);
     expect(dispatchNotificationEventMock).toHaveBeenCalledWith(
       expect.anything(),
