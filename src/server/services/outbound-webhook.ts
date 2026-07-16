@@ -12,6 +12,7 @@ import { readJsonObject } from '@/lib/db/json';
 import { mapWithConcurrency, normalizeConcurrencyLimit } from '@/lib/utils/concurrency';
 import { logger } from '@/lib/utils/logger';
 import { createFetchTimeout } from './fetch-timeout';
+import { sendPinnedWebhookRequest } from './webhook-pinned-request';
 import { readWebhookSigningSecret } from './webhook-secret-encryption';
 
 export const WEBHOOK_EVENT_TYPES = [
@@ -288,23 +289,31 @@ export function redactWebhookUrlForDisplay(rawUrl: string) {
  * to prevent SSRF attacks.
  */
 export async function isAllowedWebhookUrl(rawUrl: string): Promise<boolean> {
+  return (await resolveAllowedWebhookDestination(rawUrl)) !== null;
+}
+
+async function resolveAllowedWebhookDestination(rawUrl: string) {
   try {
     const url = new URL(rawUrl);
     if (url.protocol !== 'https:') return false;
-    if (hasWebhookUrlCredentials(rawUrl)) return false;
+    if (hasWebhookUrlCredentials(rawUrl)) return null;
     const hostname = normalizeHostname(url.hostname);
     if (hostname === 'localhost') return false;
 
     if (isIP(hostname)) {
-      return !isUnsafeIpAddress(hostname);
+      return isUnsafeIpAddress(hostname)
+        ? null
+        : { url: url.toString(), addresses: [{ address: hostname, family: isIP(hostname) }] };
     }
 
-    const addresses = await lookup(hostname, { all: true, verbatim: true });
-    if (addresses.length === 0) return false;
+    const addresses = await lookup(hostname, { all: true, order: 'verbatim' });
+    if (addresses.length === 0) return null;
 
-    return addresses.every((address) => !isUnsafeIpAddress(address.address));
+    return addresses.every((address) => !isUnsafeIpAddress(address.address))
+      ? { url: url.toString(), addresses }
+      : null;
   } catch {
-    return false;
+    return null;
   }
 }
 
@@ -688,7 +697,8 @@ async function dispatchToEndpoint(
   try {
     await recordWebhookDeliveryPending(registration, payload);
 
-    if (!(await isAllowedWebhookUrl(registration.url))) {
+    const destination = await resolveAllowedWebhookDestination(registration.url);
+    if (!destination) {
       const blocked = {
         ...base,
         error: 'Blocked unsafe webhook destination',
@@ -707,9 +717,10 @@ async function dispatchToEndpoint(
     });
 
     const abort = createFetchTimeout(WEBHOOK_DELIVERY_TIMEOUT_MS);
-    let response: Response;
+    let response: { status: number; ok: boolean };
     try {
-      response = await fetch(registration.url, {
+      response = await sendPinnedWebhookRequest(destination.url, {
+        addresses: destination.addresses,
         method: 'POST',
         redirect: 'manual',
         headers: {
@@ -733,12 +744,18 @@ async function dispatchToEndpoint(
       result.success ? 'succeeded' : 'failed',
     );
     return result;
-  } catch {
+  } catch (error) {
+    const peerMismatch = error instanceof Error && error.name === 'WebhookPeerMismatchError';
     const result = {
       ...base,
-      error: WEBHOOK_DELIVERY_FAILED_MESSAGE,
+      error: peerMismatch ? 'Blocked unsafe webhook destination' : WEBHOOK_DELIVERY_FAILED_MESSAGE,
     };
-    await recordWebhookDeliveryResult(registration, payload, result, 'failed');
+    await recordWebhookDeliveryResult(
+      registration,
+      payload,
+      result,
+      peerMismatch ? 'blocked' : 'failed',
+    );
     return result;
   }
 }

@@ -8,7 +8,7 @@ const {
   webhookDeliveryUpdateMock,
   webhookDeliveryUpsertMock,
   webhookRegistrationFindManyMock,
-  fetchMock,
+  sendPinnedWebhookRequestMock,
 } = vi.hoisted(() => ({
   lookupMock: vi.fn(),
   webhookDeliveryFindManyMock: vi.fn(),
@@ -16,11 +16,15 @@ const {
   webhookDeliveryUpdateMock: vi.fn(),
   webhookDeliveryUpsertMock: vi.fn(),
   webhookRegistrationFindManyMock: vi.fn(),
-  fetchMock: vi.fn(),
+  sendPinnedWebhookRequestMock: vi.fn(),
 }));
 
 vi.mock('node:dns/promises', () => ({
   lookup: lookupMock,
+}));
+
+vi.mock('./webhook-pinned-request', () => ({
+  sendPinnedWebhookRequest: sendPinnedWebhookRequestMock,
 }));
 
 vi.mock('@/lib/db/client', () => ({
@@ -64,7 +68,6 @@ describe('outbound-webhook', () => {
     originalEncryptionKey = process.env.ENCRYPTION_KEY;
     originalWebhookEncryptionKey = process.env.WEBHOOK_SECRET_ENCRYPTION_KEY;
     delete process.env.WEBHOOK_SECRET_ENCRYPTION_KEY;
-    vi.stubGlobal('fetch', fetchMock);
     webhookDeliveryFindManyMock.mockResolvedValue([]);
     webhookDeliveryUpdateManyMock.mockResolvedValue({ count: 1 });
     webhookDeliveryUpsertMock.mockResolvedValue({});
@@ -72,7 +75,6 @@ describe('outbound-webhook', () => {
   });
 
   afterEach(() => {
-    vi.unstubAllGlobals();
     vi.restoreAllMocks();
     if (originalEncryptionKey === undefined) {
       delete process.env.ENCRYPTION_KEY;
@@ -145,6 +147,68 @@ describe('outbound-webhook', () => {
     await expect(isAllowedWebhookUrl('https://partner.example.com/webhook')).resolves.toBe(true);
   });
 
+  it('rejects mixed public and private A/AAAA answers instead of pinning a convenient subset', async () => {
+    lookupMock.mockResolvedValue([
+      { address: '8.8.8.8', family: 4 },
+      { address: 'fd00::8', family: 6 },
+    ]);
+
+    await expect(isAllowedWebhookUrl('https://partner.example.com/webhook')).resolves.toBe(false);
+  });
+
+  it('re-resolves on every delivery attempt and blocks public-to-private DNS rebinding', async () => {
+    lookupMock
+      .mockResolvedValueOnce([{ address: '8.8.8.8', family: 4 }])
+      .mockResolvedValueOnce([{ address: '10.0.0.8', family: 4 }]);
+    sendPinnedWebhookRequestMock.mockResolvedValue({ status: 202, ok: true });
+    const registration = {
+      id: 'webhook_1',
+      orgId: 'org_1',
+      url: 'https://hooks.example.com/patient',
+      secret: 'secret_1',
+      events: ['patient.created'] as ['patient.created'],
+      isActive: true,
+      createdAt: new Date('2026-04-05T00:00:00.000Z'),
+    };
+
+    const first = await dispatchWebhookEvent([registration], 'patient.created', 'org_1', {});
+    const second = await dispatchWebhookEvent([registration], 'patient.created', 'org_1', {});
+
+    expect(first[0]).toMatchObject({ success: true, statusCode: 202 });
+    expect(second[0]).toMatchObject({
+      success: false,
+      error: 'Blocked unsafe webhook destination',
+    });
+    expect(lookupMock).toHaveBeenCalledTimes(2);
+    expect(sendPinnedWebhookRequestMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('classifies a connected peer mismatch as blocked instead of retryable delivery failure', async () => {
+    lookupMock.mockResolvedValue([{ address: '8.8.8.8', family: 4 }]);
+    const peerMismatch = new Error('peer mismatch');
+    peerMismatch.name = 'WebhookPeerMismatchError';
+    sendPinnedWebhookRequestMock.mockRejectedValue(peerMismatch);
+    const registration = {
+      id: 'webhook_1',
+      orgId: 'org_1',
+      url: 'https://hooks.example.com/patient',
+      secret: 'secret_1',
+      events: ['patient.created'] as ['patient.created'],
+      isActive: true,
+      createdAt: new Date('2026-04-05T00:00:00.000Z'),
+    };
+
+    const result = await dispatchWebhookEvent([registration], 'patient.created', 'org_1', {});
+
+    expect(result[0]).toMatchObject({
+      success: false,
+      error: 'Blocked unsafe webhook destination',
+    });
+    expect(webhookDeliveryUpdateMock).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ status: 'blocked' }) }),
+    );
+  });
+
   it('loads org registrations and dispatches only matching webhook events', async () => {
     webhookRegistrationFindManyMock.mockResolvedValue([
       {
@@ -167,7 +231,7 @@ describe('outbound-webhook', () => {
       },
     ]);
     lookupMock.mockResolvedValue([{ address: '8.8.8.8', family: 4 }]);
-    fetchMock.mockResolvedValue({ status: 202, ok: true });
+    sendPinnedWebhookRequestMock.mockResolvedValue({ status: 202, ok: true });
 
     const result = await dispatchWebhookEventForOrg('org_1', 'patient.created', {
       patientId: 'patient_1',
@@ -190,7 +254,7 @@ describe('outbound-webhook', () => {
         created_at: true,
       },
     });
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(sendPinnedWebhookRequestMock).toHaveBeenCalledTimes(1);
     expect(webhookDeliveryUpsertMock).toHaveBeenCalledWith(
       expect.objectContaining({
         create: expect.objectContaining({
@@ -215,7 +279,7 @@ describe('outbound-webhook', () => {
         }),
       }),
     );
-    expect(fetchMock).toHaveBeenCalledWith(
+    expect(sendPinnedWebhookRequestMock).toHaveBeenCalledWith(
       'https://hooks.example.com/patient',
       expect.objectContaining({
         method: 'POST',
@@ -247,13 +311,13 @@ describe('outbound-webhook', () => {
       },
     ]);
     lookupMock.mockResolvedValue([{ address: '8.8.8.8', family: 4 }]);
-    fetchMock.mockResolvedValue({ status: 202, ok: true });
+    sendPinnedWebhookRequestMock.mockResolvedValue({ status: 202, ok: true });
 
     const result = await dispatchWebhookEventForOrg('org_1', 'patient.created', {
       patientId: 'patient_1',
     });
 
-    expect(fetchMock).toHaveBeenCalledWith(
+    expect(sendPinnedWebhookRequestMock).toHaveBeenCalledWith(
       'https://hooks.example.com/patient?token=super-secret#ignored',
       expect.any(Object),
     );
@@ -291,7 +355,7 @@ describe('outbound-webhook', () => {
       },
     ]);
     lookupMock.mockResolvedValue([{ address: '8.8.8.8', family: 4 }]);
-    fetchMock.mockResolvedValue({
+    sendPinnedWebhookRequestMock.mockResolvedValue({
       status: 302,
       ok: false,
       headers: new Headers({ location: 'http://169.254.169.254/latest/meta-data/' }),
@@ -301,15 +365,15 @@ describe('outbound-webhook', () => {
       patientId: 'patient_1',
     });
 
-    expect(fetchMock).toHaveBeenCalledWith(
+    expect(sendPinnedWebhookRequestMock).toHaveBeenCalledWith(
       'https://hooks.example.com/patient',
       expect.objectContaining({
         method: 'POST',
         redirect: 'manual',
       }),
     );
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(fetchMock).not.toHaveBeenCalledWith(
+    expect(sendPinnedWebhookRequestMock).toHaveBeenCalledTimes(1);
+    expect(sendPinnedWebhookRequestMock).not.toHaveBeenCalledWith(
       'http://169.254.169.254/latest/meta-data/',
       expect.anything(),
     );
@@ -349,7 +413,7 @@ describe('outbound-webhook', () => {
     ]);
     lookupMock.mockResolvedValue([{ address: '8.8.8.8', family: 4 }]);
     const rawFailure = new Error('partner network failed token=secret db_password=value');
-    fetchMock.mockRejectedValue(rawFailure);
+    sendPinnedWebhookRequestMock.mockRejectedValue(rawFailure);
 
     const result = await dispatchWebhookEventForOrg('org_1', 'patient.created', {
       patientId: 'patient_1',
@@ -393,7 +457,7 @@ describe('outbound-webhook', () => {
       },
     ]);
     lookupMock.mockResolvedValue([{ address: '8.8.8.8', family: 4 }]);
-    fetchMock.mockResolvedValue({ status: 202, ok: true });
+    sendPinnedWebhookRequestMock.mockResolvedValue({ status: 202, ok: true });
 
     const unref = vi.fn();
     const timeoutHandle = { unref } as unknown as ReturnType<typeof setTimeout>;
@@ -408,7 +472,7 @@ describe('outbound-webhook', () => {
 
     await dispatchWebhookEventForOrg('org_1', 'patient.created', { patientId: 'patient_1' });
 
-    expect(fetchMock).toHaveBeenCalledWith(
+    expect(sendPinnedWebhookRequestMock).toHaveBeenCalledWith(
       'https://hooks.example.com/patient',
       expect.objectContaining({
         signal: expect.any(AbortSignal),
@@ -427,7 +491,7 @@ describe('outbound-webhook', () => {
     const releases: Array<() => void> = [];
     let activeFetches = 0;
     let maxActiveFetches = 0;
-    fetchMock.mockImplementation(
+    sendPinnedWebhookRequestMock.mockImplementation(
       () =>
         new Promise((resolve) => {
           activeFetches += 1;
@@ -470,7 +534,7 @@ describe('outbound-webhook', () => {
 
     releases.splice(0).forEach((release) => release());
     await expect(resultPromise).resolves.toHaveLength(6);
-    expect(fetchMock).toHaveBeenCalledTimes(6);
+    expect(sendPinnedWebhookRequestMock).toHaveBeenCalledTimes(6);
     expect(maxActiveFetches).toBeLessThanOrEqual(4);
   });
 
@@ -490,14 +554,14 @@ describe('outbound-webhook', () => {
       },
     ]);
     lookupMock.mockResolvedValue([{ address: '8.8.8.8', family: 4 }]);
-    fetchMock.mockResolvedValue({ status: 202, ok: true });
+    sendPinnedWebhookRequestMock.mockResolvedValue({ status: 202, ok: true });
 
     await dispatchWebhookEventForOrg('org_1', 'patient.created', { patientId: 'patient_1' });
 
-    const [, init] = fetchMock.mock.calls[0]!;
+    const [, init] = sendPinnedWebhookRequestMock.mock.calls[0]!;
     const body = (init as RequestInit).body;
     expect(typeof body).toBe('string');
-    expect(fetchMock).toHaveBeenCalledWith(
+    expect(sendPinnedWebhookRequestMock).toHaveBeenCalledWith(
       'https://hooks.example.com/patient',
       expect.objectContaining({
         headers: expect.objectContaining({
@@ -531,14 +595,14 @@ describe('outbound-webhook', () => {
       },
     ]);
     lookupMock.mockResolvedValue([{ address: '8.8.8.8', family: 4 }]);
-    fetchMock.mockResolvedValue({ status: 202, ok: true });
+    sendPinnedWebhookRequestMock.mockResolvedValue({ status: 202, ok: true });
 
     const result = await dispatchWebhookEventForOrg('org_1', 'patient.created', {
       patientId: 'patient_1',
     });
 
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(fetchMock).toHaveBeenCalledWith(
+    expect(sendPinnedWebhookRequestMock).toHaveBeenCalledTimes(1);
+    expect(sendPinnedWebhookRequestMock).toHaveBeenCalledWith(
       'https://hooks.example.com/patient',
       expect.objectContaining({
         headers: expect.objectContaining({
@@ -577,7 +641,7 @@ describe('outbound-webhook', () => {
       patientId: 'patient_1',
     });
 
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(sendPinnedWebhookRequestMock).not.toHaveBeenCalled();
     expect(webhookDeliveryUpsertMock).toHaveBeenCalledWith(
       expect.objectContaining({
         create: expect.objectContaining({
@@ -635,7 +699,7 @@ describe('outbound-webhook', () => {
       },
     ]);
     lookupMock.mockResolvedValue([{ address: '8.8.8.8', family: 4 }]);
-    fetchMock.mockResolvedValue({ status: 204, ok: true });
+    sendPinnedWebhookRequestMock.mockResolvedValue({ status: 204, ok: true });
 
     const summary = await retryDueWebhookDeliveries({
       orgId: 'org_1',
@@ -670,7 +734,7 @@ describe('outbound-webhook', () => {
         next_attempt_at: null,
       },
     });
-    expect(fetchMock).toHaveBeenCalledWith(
+    expect(sendPinnedWebhookRequestMock).toHaveBeenCalledWith(
       'https://hooks.example.com/patient',
       expect.objectContaining({
         headers: expect.objectContaining({
@@ -745,7 +809,7 @@ describe('outbound-webhook', () => {
       now: new Date('2026-04-06T00:00:00.000Z'),
     });
 
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(sendPinnedWebhookRequestMock).not.toHaveBeenCalled();
     expect(webhookDeliveryUpsertMock).not.toHaveBeenCalled();
     expect(webhookDeliveryUpdateMock).not.toHaveBeenCalled();
     expect(summary).toEqual({
@@ -788,7 +852,7 @@ describe('outbound-webhook', () => {
 
     const summary = await retryDueWebhookDeliveries({ now: new Date('2026-04-06T00:00:00.000Z') });
 
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(sendPinnedWebhookRequestMock).not.toHaveBeenCalled();
     expect(webhookDeliveryUpdateMock).toHaveBeenCalledWith({
       where: { id: 'delivery_row_bad' },
       data: expect.objectContaining({
