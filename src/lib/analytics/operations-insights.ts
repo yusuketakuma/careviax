@@ -1,4 +1,5 @@
-import { addMonths, differenceInMinutes, format, startOfMonth } from 'date-fns';
+import { differenceInMinutes } from 'date-fns';
+import { japanDateKey, japanMonthInstantRange } from '@/lib/utils/date-boundary';
 
 /**
  * p1_06「在宅業務の動きを見る」の集計純関数。
@@ -13,10 +14,14 @@ export type MonthlyVisitBucket = {
 
 /** 直近 monthsBack ヶ月(当月含む)の空バケットを作る。 */
 export function buildMonthlyBuckets(now: Date, monthsBack = 5): MonthlyVisitBucket[] {
-  const start = startOfMonth(now);
+  const [year, month] = japanDateKey(now).slice(0, 7).split('-').map(Number);
   return Array.from({ length: monthsBack }, (_, index) => {
-    const month = addMonths(start, index - (monthsBack - 1));
-    return { key: format(month, 'yyyy-MM'), label: `${month.getMonth() + 1}月`, count: 0 };
+    const bucketMonth = new Date(Date.UTC(year, month - 1 + index - (monthsBack - 1), 1));
+    return {
+      key: `${bucketMonth.getUTCFullYear()}-${String(bucketMonth.getUTCMonth() + 1).padStart(2, '0')}`,
+      label: `${bucketMonth.getUTCMonth() + 1}月`,
+      count: 0,
+    };
   });
 }
 
@@ -26,7 +31,7 @@ export function tallyMonthlyVisits(
 ): MonthlyVisitBucket[] {
   const byKey = new Map(buckets.map((bucket) => [bucket.key, { ...bucket }]));
   for (const visitDate of visitDates) {
-    const key = format(visitDate, 'yyyy-MM');
+    const key = japanDateKey(visitDate).slice(0, 7);
     const bucket = byKey.get(key);
     if (bucket) bucket.count += 1;
   }
@@ -38,7 +43,40 @@ export type ProcessDuration = {
   label: string;
   averageMinutes: number;
   sampleCount: number;
+  startedEvent?: string;
+  completedEvent?: string;
 };
+
+export type ComparableVisitWindow = {
+  currentCount: number;
+  previousCount: number;
+  currentStart: Date;
+  currentEnd: Date;
+  previousStart: Date;
+  previousEnd: Date;
+};
+
+export function buildComparableVisitWindows(now: Date) {
+  const currentMonthKey = japanDateKey(now).slice(0, 7);
+  const [currentYear, currentMonth] = currentMonthKey.split('-').map(Number);
+  const current = japanMonthInstantRange(currentMonthKey);
+  const previousMonthDate = new Date(Date.UTC(currentYear, currentMonth - 2, 1));
+  const previousMonthKey = `${previousMonthDate.getUTCFullYear()}-${String(
+    previousMonthDate.getUTCMonth() + 1,
+  ).padStart(2, '0')}`;
+  const previous = japanMonthInstantRange(previousMonthKey);
+  const elapsed = Math.min(
+    Math.max(0, now.getTime() - current.gte.getTime()),
+    previous.lt.getTime() - previous.gte.getTime(),
+  );
+  return {
+    current: { gte: current.gte, lt: new Date(current.gte.getTime() + elapsed) },
+    previous: {
+      gte: previous.gte,
+      lt: new Date(previous.gte.getTime() + elapsed),
+    },
+  };
+}
 
 export type OperationsInsightSummary = {
   currentMonthLabel: string;
@@ -78,11 +116,12 @@ export function formatOperationDuration(minutes: number): string {
 export function buildImprovementHints(args: {
   monthlyVisits: MonthlyVisitBucket[];
   processes: ProcessDuration[];
+  comparison?: ComparableVisitWindow;
 }): string[] {
   const hints: string[] = [];
 
   const slowest = [...args.processes]
-    .filter((process) => process.sampleCount > 0)
+    .filter((process) => process.sampleCount >= 3)
     .sort((left, right) => right.averageMinutes - left.averageMinutes)[0];
   if (slowest) {
     hints.push(
@@ -92,10 +131,8 @@ export function buildImprovementHints(args: {
     );
   }
 
-  const last = args.monthlyVisits.at(-1);
-  const previous = args.monthlyVisits.at(-2);
-  if (last && previous && previous.count > 0) {
-    const delta = last.count - previous.count;
+  if (args.comparison && args.comparison.previousCount >= 3) {
+    const delta = args.comparison.currentCount - args.comparison.previousCount;
     hints.push(
       delta >= 0
         ? `訪問件数は前月より${delta}件増えています`
@@ -114,16 +151,21 @@ export function buildImprovementHints(args: {
 export function summarizeOperationsInsights(args: {
   monthlyVisits: MonthlyVisitBucket[];
   processes: ProcessDuration[];
+  comparison?: ComparableVisitWindow;
 }): OperationsInsightSummary {
   const current = args.monthlyVisits.at(-1);
   const previous = args.monthlyVisits.at(-2);
   const slowestProcess =
     [...args.processes]
-      .filter((process) => process.sampleCount > 0)
+      .filter((process) => process.sampleCount >= 3)
       .sort((left, right) => right.averageMinutes - left.averageMinutes)[0] ?? null;
-  const activeProcessCount = args.processes.filter((process) => process.sampleCount > 0).length;
+  const activeProcessCount = args.processes.filter((process) => process.sampleCount >= 3).length;
   const previousMonthDelta =
-    current && previous && previous.count > 0 ? current.count - previous.count : null;
+    args.comparison && args.comparison.previousCount >= 3
+      ? args.comparison.currentCount - args.comparison.previousCount
+      : current && previous && previous.count > 0
+        ? current.count - previous.count
+        : null;
 
   let nextFocus = '直近実績を増やして傾向を確認';
   if (slowestProcess) {

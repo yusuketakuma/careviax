@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   averageDurationMinutes,
+  buildComparableVisitWindows,
   buildImprovementHints,
   buildMonthlyBuckets,
   formatOperationDuration,
@@ -56,6 +57,14 @@ describe('buildImprovementHints', () => {
         { key: 'visit', label: '訪問', averageMinutes: 120, sampleCount: 6 },
         { key: 'report', label: '報告', averageMinutes: 0, sampleCount: 0 },
       ],
+      comparison: {
+        currentCount: 14,
+        previousCount: 10,
+        currentStart: new Date('2026-06-01T00:00:00Z'),
+        currentEnd: new Date('2026-06-12T00:00:00Z'),
+        previousStart: new Date('2026-05-01T00:00:00Z'),
+        previousEnd: new Date('2026-05-12T00:00:00Z'),
+      },
     });
 
     expect(hints[0]).toContain('訪問');
@@ -88,6 +97,14 @@ describe('summarizeOperationsInsights', () => {
         { key: 'visit', label: '訪問', averageMinutes: 120, sampleCount: 6 },
         { key: 'report', label: '報告', averageMinutes: 0, sampleCount: 0 },
       ],
+      comparison: {
+        currentCount: 14,
+        previousCount: 10,
+        currentStart: new Date('2026-06-01T00:00:00Z'),
+        currentEnd: new Date('2026-06-12T00:00:00Z'),
+        previousStart: new Date('2026-05-01T00:00:00Z'),
+        previousEnd: new Date('2026-05-12T00:00:00Z'),
+      },
     });
 
     expect(summary.currentMonthLabel).toBe('6月');
@@ -108,5 +125,16 @@ describe('summarizeOperationsInsights', () => {
     expect(summary.slowestProcess).toBeNull();
     expect(summary.activeProcessCount).toBe(0);
     expect(summary.nextFocus).toBe('訪問後の工程記録を確認');
+  });
+});
+
+describe('buildComparableVisitWindows', () => {
+  it('uses equal elapsed JST month windows even when the previous month is shorter', () => {
+    const windows = buildComparableVisitWindows(new Date('2026-08-01T05:00:00.000Z'));
+    expect(windows.current.gte.toISOString()).toBe('2026-07-31T15:00:00.000Z');
+    expect(windows.previous.gte.toISOString()).toBe('2026-06-30T15:00:00.000Z');
+    expect(windows.current.lt.getTime() - windows.current.gte.getTime()).toBe(
+      windows.previous.lt.getTime() - windows.previous.gte.getTime(),
+    );
   });
 });

@@ -84,7 +84,7 @@ export function OperationsInsightsContent() {
       {/* SYS-3: 自前 section ヘッダを共通 AdminPageHeader へ。関連導線は supportingContent に。 */}
       <AdminPageHeader
         title="在宅業務の動きを見る"
-        description="月ごとの訪問量と、直近30日の工程所要時間から、次に詰まりを確認する場所を絞ります。"
+        description="同じ長さの期間で訪問量を比較し、正式な開始・完了記録がある工程だけを分析します。"
         supportingContent={
           <div className="flex flex-wrap items-center gap-2">
             <Link
@@ -135,6 +135,14 @@ function OperationsInsightsLoaded({ insights }: { insights: OperationsInsights }
   const summary = summarizeOperationsInsights({
     monthlyVisits: insights.monthly_visits,
     processes: insights.processes,
+    comparison: {
+      currentCount: insights.comparison.current.count,
+      previousCount: insights.comparison.previous.count,
+      currentStart: new Date(insights.comparison.current.start),
+      currentEnd: new Date(insights.comparison.current.end),
+      previousStart: new Date(insights.comparison.previous.start),
+      previousEnd: new Date(insights.comparison.previous.end),
+    },
   });
   const deltaValue =
     summary.previousMonthDelta === null
@@ -167,14 +175,14 @@ function OperationsInsightsLoaded({ insights }: { insights: OperationsInsights }
             label="前月差"
             value={deltaValue}
             unit={deltaUnit}
-            hint="前月実績がある月だけ比較"
+            hint="前月の同じ経過時間と比較"
             className="h-full bg-background px-4 py-3 ring-0"
           />
           <StatCard
             label="最も時間がかかる工程"
             labelClassName="whitespace-normal leading-snug"
             value={<WrappedMetricValue value={slowestText} />}
-            hint="直近30日の平均所要時間"
+            hint="3件以上ある正式な完了記録の平均"
             className="h-full bg-background px-4 py-3 ring-0"
           />
           <StatCard
@@ -236,10 +244,22 @@ function OperationsInsightsLoaded({ insights }: { insights: OperationsInsights }
             />
           </div>
           <p className="mt-2 text-xs text-muted-foreground">
-            直近30日の平均所要分(作成から更新までの概算)
+            対象期間: {new Date(insights.process_window.start).toLocaleString('ja-JP')}〜
+            {new Date(insights.process_window.end).toLocaleString('ja-JP')}（Asia/Tokyo）
           </p>
+          <ul className="mt-3 space-y-1 text-xs text-muted-foreground">
+            {insights.processes.map((process) => (
+              <li key={process.key}>
+                {process.label}: {process.startedEvent} → {process.completedEvent}（
+                {process.sampleCount.toLocaleString('ja-JP')}件）
+              </li>
+            ))}
+          </ul>
         </section>
       </div>
+      <p className="text-xs text-muted-foreground">
+        集計日時: {new Date(insights.generated_at).toLocaleString('ja-JP')}（Asia/Tokyo）
+      </p>
     </>
   );
 }

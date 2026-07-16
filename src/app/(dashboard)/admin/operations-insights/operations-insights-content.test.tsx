@@ -16,8 +16,22 @@ vi.mock('@/lib/hooks/use-org-id', () => ({
 
 setupDomTestEnv();
 
+const INSIGHTS_META = {
+  generated_at: '2026-06-12T01:00:00.000Z',
+  timezone: 'Asia/Tokyo',
+  process_window: { start: '2026-05-13T01:00:00.000Z', end: '2026-06-12T01:00:00.000Z' },
+  comparison: {
+    current: { start: '2026-05-31T15:00:00.000Z', end: '2026-06-12T01:00:00.000Z', count: 14 },
+    previous: { start: '2026-04-30T15:00:00.000Z', end: '2026-05-12T01:00:00.000Z', count: 10 },
+  },
+};
+const AUDIT_EVENTS = { startedEvent: '監査記録作成', completedEvent: '監査実施' };
+const VISIT_EVENTS = { startedEvent: '訪問開始', completedEvent: '訪問終了' };
+const REPORT_EVENTS = { startedEvent: '報告作成', completedEvent: '報告確定' };
+
 const OPERATIONS_BODY = {
   data: {
+    ...INSIGHTS_META,
     monthly_visits: [
       { key: '2026-02', label: '2月', count: 0 },
       { key: '2026-03', label: '3月', count: 1 },
@@ -26,9 +40,9 @@ const OPERATIONS_BODY = {
       { key: '2026-06', label: '6月', count: 14 },
     ],
     processes: [
-      { key: 'audit', label: '監査', averageMinutes: 65, sampleCount: 4 },
-      { key: 'visit', label: '訪問', averageMinutes: 120, sampleCount: 6 },
-      { key: 'report', label: '報告', averageMinutes: 0, sampleCount: 0 },
+      { key: 'audit', label: '監査', averageMinutes: 65, sampleCount: 4, ...AUDIT_EVENTS },
+      { key: 'visit', label: '訪問', averageMinutes: 120, sampleCount: 6, ...VISIT_EVENTS },
+      { key: 'report', label: '報告', averageMinutes: 0, sampleCount: 0, ...REPORT_EVENTS },
     ],
     hints: ['「訪問」に最も時間がかかっています(平均120分)'],
   },
@@ -97,11 +111,11 @@ describe('OperationsInsightsContent', () => {
 
     expect(within(kpis).getByText('前月差')).toBeTruthy();
     expect(within(kpis).getByText('+4').className).toContain('tabular-nums');
-    expect(within(kpis).getByText('前月実績がある月だけ比較')).toBeTruthy();
+    expect(within(kpis).getByText('前月の同じ経過時間と比較')).toBeTruthy();
 
     expect(within(kpis).getByText('最も時間がかかる工程')).toBeTruthy();
     expect(within(kpis).getByText('訪問 120分')).toBeTruthy();
-    expect(within(kpis).getByText('直近30日の平均所要時間')).toBeTruthy();
+    expect(within(kpis).getByText('3件以上ある正式な完了記録の平均')).toBeTruthy();
 
     expect(within(kpis).getByText('次に見るところ')).toBeTruthy();
     expect(within(kpis).getByText('訪問の詰まりを確認')).toBeTruthy();
@@ -111,6 +125,8 @@ describe('OperationsInsightsContent', () => {
     const processChart = screen.getByRole('img', { name: '工程ごとの平均所要分' });
     expect(processChart).toBeTruthy();
     expect(within(processChart).getByText('120分')).toBeTruthy();
+    expect(screen.getByText(/訪問: 訪問開始 → 訪問終了（6件）/)).toBeTruthy();
+    expect(screen.getByText(/集計日時:/)).toBeTruthy();
     expect(screen.getByText('6月')).toBeTruthy();
     expect(screen.getByText('訪問')).toBeTruthy();
     expect(screen.getByText('「訪問」に最も時間がかかっています(平均120分)')).toBeTruthy();
@@ -119,11 +135,19 @@ describe('OperationsInsightsContent', () => {
   it('keeps negative previous-month deltas split from the unit', async () => {
     stubOperationsFetch({
       data: {
+        ...INSIGHTS_META,
+        comparison: {
+          ...INSIGHTS_META.comparison,
+          current: { ...INSIGHTS_META.comparison.current, count: 10 },
+          previous: { ...INSIGHTS_META.comparison.previous, count: 14 },
+        },
         monthly_visits: [
           { key: '2026-05', label: '5月', count: 14 },
           { key: '2026-06', label: '6月', count: 10 },
         ],
-        processes: [{ key: 'visit', label: '訪問', averageMinutes: 120, sampleCount: 6 }],
+        processes: [
+          { key: 'visit', label: '訪問', averageMinutes: 120, sampleCount: 6, ...VISIT_EVENTS },
+        ],
         hints: [],
       },
     });
@@ -139,6 +163,12 @@ describe('OperationsInsightsContent', () => {
   it('keeps empty operations data truthful without fabricating trends', async () => {
     stubOperationsFetch({
       data: {
+        ...INSIGHTS_META,
+        comparison: {
+          ...INSIGHTS_META.comparison,
+          current: { ...INSIGHTS_META.comparison.current, count: 0 },
+          previous: { ...INSIGHTS_META.comparison.previous, count: 0 },
+        },
         monthly_visits: [],
         processes: [],
         hints: [],
@@ -186,6 +216,7 @@ describe('OperationsInsightsContent', () => {
   it('rejects a successful response with duplicate or reverse-ordered month buckets', async () => {
     stubOperationsFetch({
       data: {
+        ...INSIGHTS_META,
         monthly_visits: [
           { key: '2026-06', label: '6月', count: 14 },
           { key: '2026-05', label: '5月', count: 10 },
@@ -204,8 +235,11 @@ describe('OperationsInsightsContent', () => {
   it('rejects a successful response with invalid process duration data', async () => {
     stubOperationsFetch({
       data: {
+        ...INSIGHTS_META,
         monthly_visits: [],
-        processes: [{ key: 'visit', label: '訪問', averageMinutes: -1, sampleCount: 1 }],
+        processes: [
+          { key: 'visit', label: '訪問', averageMinutes: -1, sampleCount: 1, ...VISIT_EVENTS },
+        ],
         hints: [],
       },
     });

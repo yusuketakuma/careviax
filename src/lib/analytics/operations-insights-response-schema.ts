@@ -6,6 +6,7 @@ const NON_EMPTY_TEXT = z.string().refine((value) => value.trim().length > 0, {
   message: 'Expected non-empty text',
 });
 const PROCESS_KEYS = z.enum(['intake', 'audit', 'set', 'visit', 'report']);
+const TIMESTAMP = z.string().datetime({ offset: true });
 
 const monthlyVisitBucketSchema = z
   .object({
@@ -21,6 +22,8 @@ const processDurationSchema = z
     label: NON_EMPTY_TEXT,
     averageMinutes: NON_NEGATIVE_COUNT,
     sampleCount: NON_NEGATIVE_COUNT,
+    startedEvent: NON_EMPTY_TEXT,
+    completedEvent: NON_EMPTY_TEXT,
   })
   .strict()
   .superRefine((process, context) => {
@@ -35,12 +38,41 @@ const processDurationSchema = z
 
 const operationsInsightsDataSchema = z
   .object({
+    generated_at: TIMESTAMP,
+    timezone: z.literal('Asia/Tokyo'),
+    process_window: z.object({ start: TIMESTAMP, end: TIMESTAMP }).strict(),
+    comparison: z
+      .object({
+        current: z.object({ start: TIMESTAMP, end: TIMESTAMP, count: NON_NEGATIVE_COUNT }).strict(),
+        previous: z
+          .object({ start: TIMESTAMP, end: TIMESTAMP, count: NON_NEGATIVE_COUNT })
+          .strict(),
+      })
+      .strict(),
     monthly_visits: z.array(monthlyVisitBucketSchema).max(5),
     processes: z.array(processDurationSchema).max(5),
     hints: z.array(z.string().refine((value) => value.trim().length > 0)).max(4),
   })
   .strict()
-  .superRefine(({ monthly_visits, processes }, context) => {
+  .superRefine(({ monthly_visits, processes, process_window, comparison }, context) => {
+    if (process_window.start >= process_window.end) {
+      context.addIssue({
+        code: 'custom',
+        path: ['process_window'],
+        message: 'Invalid process window',
+      });
+    }
+    const currentDuration =
+      Date.parse(comparison.current.end) - Date.parse(comparison.current.start);
+    const previousDuration =
+      Date.parse(comparison.previous.end) - Date.parse(comparison.previous.start);
+    if (currentDuration < 0 || currentDuration !== previousDuration) {
+      context.addIssue({
+        code: 'custom',
+        path: ['comparison'],
+        message: 'Comparison windows must be equal',
+      });
+    }
     const monthKeys = new Set<string>();
     let previousMonthKey: string | null = null;
     for (const [index, bucket] of monthly_visits.entries()) {
