@@ -22,6 +22,47 @@ const {
 
 vi.mock('@/lib/auth/context', () => ({
   requireAuthContext: requireAuthContextMock,
+  withAuthContext: (
+    handler: (
+      req: NextRequest,
+      ctx: { orgId: string; userId: string; role: string },
+      routeContext: { params: Promise<Record<string, string>> },
+    ) => Promise<Response>,
+    options: unknown,
+  ) => {
+    return async (req: NextRequest, routeContext: { params: Promise<Record<string, string>> }) =>
+      withRoutePerformanceMock(req, async () => {
+        let response: Response;
+        try {
+          const authResult = await requireAuthContextMock(req, options);
+          response =
+            authResult && typeof authResult === 'object' && 'response' in authResult
+              ? authResult.response
+              : await runWithRequestAuthContextMock(authResult.ctx, () =>
+                  handler(req, authResult.ctx, routeContext),
+                );
+        } catch (error) {
+          loggerErrorMock(
+            {
+              event: 'route_handler_unhandled_error',
+              route: req.nextUrl.pathname,
+              method: req.method,
+            },
+            error,
+          );
+          response = new Response(
+            JSON.stringify({
+              code: 'INTERNAL_ERROR',
+              message: 'サーバー内部でエラーが発生しました',
+            }),
+            { status: 500, headers: { 'Content-Type': 'application/json' } },
+          );
+        }
+        response.headers.set('Cache-Control', 'private, no-store, max-age=0');
+        response.headers.set('Pragma', 'no-cache');
+        return response;
+      });
+  },
 }));
 
 vi.mock('@/lib/auth/request-context', () => ({
@@ -207,10 +248,9 @@ describe('/api/dashboard/dispensing-stats', () => {
     expect(loggerErrorMock).toHaveBeenCalledTimes(1);
     expect(loggerErrorMock).toHaveBeenCalledWith(
       {
-        event: 'dashboard_dispensing_stats_unhandled_error',
+        event: 'route_handler_unhandled_error',
         route: '/api/dashboard/dispensing-stats',
         method: 'GET',
-        status: 500,
       },
       unsafeError,
     );

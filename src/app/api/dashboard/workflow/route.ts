@@ -1,10 +1,7 @@
-import { unstable_rethrow } from 'next/navigation';
 import { NextRequest } from 'next/server';
-import { requireAuthContext } from '@/lib/auth/context';
-import { runWithRequestAuthContext } from '@/lib/auth/request-context';
+import { withAuthContext, type AuthContext } from '@/lib/auth/context';
 import { RECENT_WINDOW_DAYS, UPCOMING_WINDOW_DAYS } from '@/lib/constants/workflow';
-import { internalError, successWithMeasuredJsonPayload, validationError } from '@/lib/api/response';
-import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
+import { successWithMeasuredJsonPayload, validationError } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
 import {
   fetchWorkflowCoreData,
@@ -19,11 +16,7 @@ import {
 } from '@/server/services/workflow-dashboard-cache';
 import { buildWorkflowDashboardData } from '@/server/services/workflow-dashboard-sections';
 import { resolveDashboardAssignmentScope } from '@/server/services/dashboard-assignment-scope';
-import { logger } from '@/lib/utils/logger';
 import { addUtcDays, localDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
-import { withRoutePerformance } from '@/lib/utils/performance';
-
-const ROUTE = '/api/dashboard/workflow';
 
 type WorkflowViewQuery =
   | { ok: true; view: WorkflowDashboardView }
@@ -57,33 +50,34 @@ function parseWorkflowViewQuery(req: Request): WorkflowViewQuery {
   return { ok: true, view: view as WorkflowDashboardView };
 }
 
-async function authenticatedGET(req: NextRequest) {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canViewDashboard',
-    message: 'ダッシュボードの閲覧権限がありません',
+async function dashboardWorkflowGET(req: NextRequest, ctx: AuthContext) {
+  const viewQuery = parseWorkflowViewQuery(req);
+  if (!viewQuery.ok) return viewQuery.response;
+
+  // scheduled_date / shift date(@db.Date)比較用: ローカル日付の UTC 深夜
+  const today = utcDateFromLocalKey(localDateKey());
+  const view = viewQuery.view;
+  const assignmentScope = await resolveDashboardAssignmentScope({
+    db: prisma,
+    orgId: ctx.orgId,
+    accessContext: ctx,
   });
-  if ('response' in authResult) return authResult.response;
-  const { ctx } = authResult;
+  const upcomingWindow = addUtcDays(today, UPCOMING_WINDOW_DAYS);
+  const sevenDaysFromNow = addUtcDays(today, RECENT_WINDOW_DAYS);
+  const recentOutcomeWindow = addUtcDays(today, -RECENT_WINDOW_DAYS);
 
-  return runWithRequestAuthContext(ctx, async () => {
-    const viewQuery = parseWorkflowViewQuery(req);
-    if (!viewQuery.ok) return viewQuery.response;
-
-    // scheduled_date / shift date(@db.Date)比較用: ローカル日付の UTC 深夜
-    const today = utcDateFromLocalKey(localDateKey());
-    const view = viewQuery.view;
-    const assignmentScope = await resolveDashboardAssignmentScope({
-      db: prisma,
-      orgId: ctx.orgId,
-      accessContext: ctx,
-    });
-    const upcomingWindow = addUtcDays(today, UPCOMING_WINDOW_DAYS);
-    const sevenDaysFromNow = addUtcDays(today, RECENT_WINDOW_DAYS);
-    const recentOutcomeWindow = addUtcDays(today, -RECENT_WINDOW_DAYS);
-
-    const core =
-      view === 'phase' || view === 'performance'
-        ? await fetchWorkflowPhaseCoreData(
+  const core =
+    view === 'phase' || view === 'performance'
+      ? await fetchWorkflowPhaseCoreData(
+          prisma,
+          ctx.orgId,
+          today,
+          upcomingWindow,
+          sevenDaysFromNow,
+          assignmentScope,
+        )
+      : view === 'realtime'
+        ? await fetchWorkflowRealtimeCoreData(
             prisma,
             ctx.orgId,
             today,
@@ -91,58 +85,32 @@ async function authenticatedGET(req: NextRequest) {
             sevenDaysFromNow,
             assignmentScope,
           )
-        : view === 'realtime'
-          ? await fetchWorkflowRealtimeCoreData(
-              prisma,
-              ctx.orgId,
-              today,
-              upcomingWindow,
-              sevenDaysFromNow,
-              assignmentScope,
-            )
-          : await fetchWorkflowCoreData(
-              prisma,
-              ctx.orgId,
-              today,
-              upcomingWindow,
-              sevenDaysFromNow,
-              recentOutcomeWindow,
-              assignmentScope,
-            );
-    const dependent =
-      view === 'phase' || view === 'realtime' || view === 'performance'
-        ? await fetchWorkflowPhaseDependentData(prisma, ctx.orgId, core)
-        : await fetchWorkflowDependentData(prisma, ctx.orgId, today, core, assignmentScope);
+        : await fetchWorkflowCoreData(
+            prisma,
+            ctx.orgId,
+            today,
+            upcomingWindow,
+            sevenDaysFromNow,
+            recentOutcomeWindow,
+            assignmentScope,
+          );
+  const dependent =
+    view === 'phase' || view === 'realtime' || view === 'performance'
+      ? await fetchWorkflowPhaseDependentData(prisma, ctx.orgId, core)
+      : await fetchWorkflowDependentData(prisma, ctx.orgId, today, core, assignmentScope);
 
-    const data = buildWorkflowDashboardData({
-      core,
-      dependent,
-      currentRole: ctx.role,
-      sevenDaysFromNow,
-      upcomingWindow,
-    });
-
-    return successWithMeasuredJsonPayload({ data });
+  const data = buildWorkflowDashboardData({
+    core,
+    dependent,
+    currentRole: ctx.role,
+    sevenDaysFromNow,
+    upcomingWindow,
   });
+
+  return successWithMeasuredJsonPayload({ data });
 }
 
-export async function GET(req: NextRequest, routeContext?: unknown) {
-  void routeContext;
-  return withRoutePerformance(req, async () => {
-    try {
-      return withSensitiveNoStore(await authenticatedGET(req));
-    } catch (err) {
-      unstable_rethrow(err);
-      logger.error(
-        {
-          event: 'dashboard_workflow_unhandled_error',
-          route: ROUTE,
-          method: req.method,
-          status: 500,
-        },
-        err,
-      );
-      return withSensitiveNoStore(internalError());
-    }
-  });
-}
+export const GET = withAuthContext(dashboardWorkflowGET, {
+  permission: 'canViewDashboard',
+  message: 'ダッシュボードの閲覧権限がありません',
+});
