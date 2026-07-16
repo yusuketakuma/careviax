@@ -3,6 +3,14 @@ import { Prisma } from '@prisma/client';
 import type { Prisma as PrismaTypes } from '@prisma/client';
 import { createPartnerVisitPhysicianReportDraft } from './partner-visit-report-drafts';
 
+const { acquireAdvisoryTxLockMock } = vi.hoisted(() => ({
+  acquireAdvisoryTxLockMock: vi.fn(),
+}));
+
+vi.mock('@/lib/db/advisory-lock', () => ({
+  acquireAdvisoryTxLock: acquireAdvisoryTxLockMock,
+}));
+
 const ctx = {
   orgId: 'org_1',
   userId: 'user_1',
@@ -160,6 +168,7 @@ describe('createPartnerVisitPhysicianReportDraft', () => {
     });
     pharmacyVisitRequestUpdateManyMock.mockResolvedValue({ count: 1 });
     auditLogCreateMock.mockResolvedValue({ id: 'audit_1' });
+    acquireAdvisoryTxLockMock.mockResolvedValue(undefined);
   });
 
   it('creates a physician report draft from a confirmed partner visit record without leaking content in response or audit', async () => {
@@ -206,9 +215,33 @@ describe('createPartnerVisitPhysicianReportDraft', () => {
       }),
     );
     expect(pharmacyVisitRequestUpdateManyMock).toHaveBeenCalledWith({
-      where: { id: 'visit_request_1', org_id: 'org_1', status: 'confirmed' },
+      where: {
+        id: 'visit_request_1',
+        org_id: 'org_1',
+        status: 'confirmed',
+        share_case: {
+          is: expect.objectContaining({
+            org_id: 'org_1',
+            status: 'active',
+            revoked_at: null,
+            ended_at: null,
+          }),
+        },
+      },
       data: { status: 'physician_report_created' },
     });
+    expect(partnerVisitRecordFindFirstMock).toHaveBeenCalledTimes(2);
+    expect(acquireAdvisoryTxLockMock).toHaveBeenCalledWith(
+      expect.anything(),
+      'patient_share_case_consent',
+      'org_1:share_case_1',
+    );
+    expect(partnerVisitRecordFindFirstMock.mock.invocationCallOrder[0]).toBeLessThan(
+      acquireAdvisoryTxLockMock.mock.invocationCallOrder[0],
+    );
+    expect(acquireAdvisoryTxLockMock.mock.invocationCallOrder[0]).toBeLessThan(
+      partnerVisitRecordFindFirstMock.mock.invocationCallOrder[1],
+    );
     expect(auditLogCreateMock).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
@@ -242,7 +275,7 @@ describe('createPartnerVisitPhysicianReportDraft', () => {
   it('stores partner visit report DateTime instants as Japan business date keys across runtime timezones', async () => {
     const sourceUpdatedAt = new Date('2026-06-11T15:45:00.000Z');
     vi.setSystemTime(new Date('2026-06-11T15:30:00.000Z'));
-    partnerVisitRecordFindFirstMock.mockResolvedValueOnce(
+    partnerVisitRecordFindFirstMock.mockResolvedValue(
       confirmedPartnerVisitRecord({
         visit_at: new Date('2026-06-11T15:30:00.000Z'),
         updated_at: sourceUpdatedAt,
@@ -271,7 +304,7 @@ describe('createPartnerVisitPhysicianReportDraft', () => {
   });
 
   it('copies structured latest lab excerpts into physician report functional assessment', async () => {
-    partnerVisitRecordFindFirstMock.mockResolvedValueOnce(
+    partnerVisitRecordFindFirstMock.mockResolvedValue(
       confirmedPartnerVisitRecord({
         record_content: {
           latest_labs: [
@@ -376,8 +409,7 @@ describe('createPartnerVisitPhysicianReportDraft', () => {
     expect(auditLogCreateMock).not.toHaveBeenCalled();
   });
 
-  it('reuses the existing draft when a concurrent create hits the DB unique guard', async () => {
-    careReportFindFirstMock.mockResolvedValueOnce(null).mockResolvedValueOnce(reportRow());
+  it('returns a retryable workflow conflict without querying an aborted transaction after a unique race', async () => {
     careReportCreateMock.mockRejectedValue(
       new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
         code: 'P2002',
@@ -386,15 +418,54 @@ describe('createPartnerVisitPhysicianReportDraft', () => {
       }),
     );
 
-    const result = await createPartnerVisitPhysicianReportDraft(tx(), ctx, {
-      partnerVisitRecordId: 'partner_visit_record_1',
-      expectedPatientUpdatedAt: '2026-06-18T00:00:00.000Z',
+    await expect(
+      createPartnerVisitPhysicianReportDraft(tx(), ctx, {
+        partnerVisitRecordId: 'partner_visit_record_1',
+        expectedPatientUpdatedAt: '2026-06-18T00:00:00.000Z',
+      }),
+    ).rejects.toMatchObject({
+      code: 'REPORT_DRAFT_CONFLICT',
+      details: { blocker: 'report_draft_conflict' },
     });
-
-    expect(result).toMatchObject({
-      reused: true,
-      report: { id: 'report_1', partner_visit_record_id: 'partner_visit_record_1' },
-    });
+    expect(careReportFindFirstMock).toHaveBeenCalledOnce();
     expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects consent deactivation after the canonical lock without report or request side effects', async () => {
+    partnerVisitRecordFindFirstMock
+      .mockResolvedValueOnce(confirmedPartnerVisitRecord())
+      .mockResolvedValueOnce(null);
+
+    await expect(
+      createPartnerVisitPhysicianReportDraft(tx(), ctx, {
+        partnerVisitRecordId: 'partner_visit_record_1',
+        expectedPatientUpdatedAt: '2026-06-18T00:00:00.000Z',
+      }),
+    ).rejects.toMatchObject({
+      code: 'PARTNER_VISIT_SOURCE_INACTIVE',
+      details: { blocker: 'share_consent_changed' },
+    });
+    expect(acquireAdvisoryTxLockMock).toHaveBeenCalledOnce();
+    expect(careReportFindFirstMock).not.toHaveBeenCalled();
+    expect(careReportCreateMock).not.toHaveBeenCalled();
+    expect(pharmacyVisitRequestUpdateManyMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rolls back report and audit work when the visit request transition loses the race', async () => {
+    pharmacyVisitRequestUpdateManyMock.mockResolvedValueOnce({ count: 0 });
+
+    await expect(
+      createPartnerVisitPhysicianReportDraft(tx(), ctx, {
+        partnerVisitRecordId: 'partner_visit_record_1',
+        expectedPatientUpdatedAt: '2026-06-18T00:00:00.000Z',
+      }),
+    ).rejects.toMatchObject({
+      code: 'PARTNER_VISIT_SOURCE_INACTIVE',
+      details: { blocker: 'visit_request_changed' },
+    });
+    expect(careReportCreateMock).toHaveBeenCalledOnce();
+    expect(auditLogCreateMock).toHaveBeenCalledOnce();
+    expect(pharmacyVisitRequestUpdateManyMock).toHaveBeenCalledOnce();
   });
 });

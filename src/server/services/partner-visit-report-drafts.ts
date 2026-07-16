@@ -1,6 +1,7 @@
 import { Prisma } from '@prisma/client';
 import type { AuthContext } from '@/lib/auth/context';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
+import { acquireAdvisoryTxLock } from '@/lib/db/advisory-lock';
 import { readJsonObject, toPrismaJsonInput } from '@/lib/db/json';
 import { findLatestPrescriberInstitutionSuggestion } from '@/lib/prescriptions/prescriber-institutions';
 import { getHomeVisitIntake, type HomeVisitIntake } from '@/lib/patient/home-visit-intake';
@@ -11,13 +12,19 @@ import type {
   PhysicianReportContent,
 } from '@/types/care-report-content';
 import { resolvePharmacyVisitRequestTransition } from '@/server/services/pharmacy-partnerships';
+import {
+  buildActivePatientShareCaseMutationWhere,
+  buildPatientShareCaseConsentLockKey,
+  PATIENT_SHARE_CASE_CONSENT_LOCK_NAMESPACE,
+} from '@/server/services/patient-share-access';
 import { japanDateKey } from '@/lib/utils/date-boundary';
 
 export type PartnerVisitPhysicianReportDraftErrorCode =
   | 'PARTNER_VISIT_RECORD_NOT_FOUND'
   | 'PARTNER_VISIT_RECORD_NOT_CONFIRMED'
   | 'PARTNER_VISIT_SOURCE_INACTIVE'
-  | 'PATIENT_IDENTITY_STALE';
+  | 'PATIENT_IDENTITY_STALE'
+  | 'REPORT_DRAFT_CONFLICT';
 
 export class PartnerVisitPhysicianReportDraftError extends Error {
   constructor(
@@ -488,6 +495,7 @@ async function markVisitRequestPhysicianReportCreated(
   tx: Prisma.TransactionClient,
   ctx: Pick<AuthContext, 'orgId'>,
   record: PartnerVisitRecordForDraft,
+  activeShareCaseWhere: Prisma.PatientShareCaseWhereInput,
 ) {
   const transition = resolvePharmacyVisitRequestTransition({
     currentStatus: record.visit_request.status,
@@ -495,14 +503,22 @@ async function markVisitRequestPhysicianReportCreated(
   });
   if (!transition.allowed) return;
 
-  await tx.pharmacyVisitRequest.updateMany({
+  const updated = await tx.pharmacyVisitRequest.updateMany({
     where: {
       id: record.visit_request.id,
       org_id: ctx.orgId,
       status: transition.currentStatus,
+      share_case: { is: activeShareCaseWhere },
     },
     data: { status: transition.nextStatus },
   });
+  if (updated.count !== 1) {
+    throw new PartnerVisitPhysicianReportDraftError(
+      'PARTNER_VISIT_SOURCE_INACTIVE',
+      '有効な患者共有ケースと確認済み協力訪問のみ医師向け報告書を作成できます',
+      { blocker: 'visit_request_changed' },
+    );
+  }
 }
 
 export async function createPartnerVisitPhysicianReportDraft(
@@ -510,14 +526,43 @@ export async function createPartnerVisitPhysicianReportDraft(
   ctx: Pick<AuthContext, 'orgId' | 'userId' | 'ipAddress' | 'userAgent'>,
   input: { partnerVisitRecordId: string; expectedPatientUpdatedAt: string },
 ): Promise<CreatePartnerVisitPhysicianReportDraftResult> {
-  const record = await tx.partnerVisitRecord.findFirst({
-    where: { id: input.partnerVisitRecordId, org_id: ctx.orgId },
-    select: partnerVisitRecordSelect,
+  const activeShareCaseWhere = buildActivePatientShareCaseMutationWhere({
+    orgId: ctx.orgId,
+    asOf: new Date(),
   });
-  if (!record) {
+  const findActiveRecord = () =>
+    tx.partnerVisitRecord.findFirst({
+      where: {
+        id: input.partnerVisitRecordId,
+        org_id: ctx.orgId,
+        share_case: { is: activeShareCaseWhere },
+      },
+      select: partnerVisitRecordSelect,
+    });
+
+  const initialRecord = await findActiveRecord();
+  if (!initialRecord) {
     throw new PartnerVisitPhysicianReportDraftError(
       'PARTNER_VISIT_RECORD_NOT_FOUND',
       '協力訪問記録が見つかりません',
+    );
+  }
+
+  await acquireAdvisoryTxLock(
+    tx,
+    PATIENT_SHARE_CASE_CONSENT_LOCK_NAMESPACE,
+    buildPatientShareCaseConsentLockKey({
+      orgId: ctx.orgId,
+      shareCaseId: initialRecord.share_case_id,
+    }),
+  );
+
+  const record = await findActiveRecord();
+  if (!record) {
+    throw new PartnerVisitPhysicianReportDraftError(
+      'PARTNER_VISIT_SOURCE_INACTIVE',
+      '有効な患者共有ケースと確認済み協力訪問のみ医師向け報告書を作成できます',
+      { blocker: 'share_consent_changed' },
     );
   }
   if (record.share_case.base_patient.updated_at.toISOString() !== input.expectedPatientUpdatedAt) {
@@ -531,7 +576,7 @@ export async function createPartnerVisitPhysicianReportDraft(
 
   const existing = await findExistingDraft(tx, ctx.orgId, input.partnerVisitRecordId);
   if (existing) {
-    await markVisitRequestPhysicianReportCreated(tx, ctx, record);
+    await markVisitRequestPhysicianReportCreated(tx, ctx, record, activeShareCaseWhere);
     return { reused: true, report: toSafeReport(existing) };
   }
 
@@ -590,13 +635,16 @@ export async function createPartnerVisitPhysicianReportDraft(
       },
     });
 
-    await markVisitRequestPhysicianReportCreated(tx, ctx, record);
+    await markVisitRequestPhysicianReportCreated(tx, ctx, record, activeShareCaseWhere);
 
     return { reused: false, report: toSafeReport(report) };
   } catch (error) {
     if (isCareReportPartnerVisitUniqueConflict(error)) {
-      const report = await findExistingDraft(tx, ctx.orgId, input.partnerVisitRecordId);
-      if (report) return { reused: true, report: toSafeReport(report) };
+      throw new PartnerVisitPhysicianReportDraftError(
+        'REPORT_DRAFT_CONFLICT',
+        '報告書下書きが同時に作成されました。再読み込みしてください',
+        { blocker: 'report_draft_conflict' },
+      );
     }
     throw error;
   }

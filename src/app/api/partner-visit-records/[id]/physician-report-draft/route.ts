@@ -18,6 +18,7 @@ const DRAFT_ERROR_MESSAGES = {
   PARTNER_VISIT_SOURCE_INACTIVE:
     '有効な患者共有ケースと確認済み協力訪問のみ医師向け報告書を作成できます',
   PATIENT_IDENTITY_STALE: '対象患者情報が更新されています。再読み込みしてください',
+  REPORT_DRAFT_CONFLICT: '報告書下書きが同時に作成されました。再読み込みしてください',
 } as const;
 
 const createReportDraftSchema = z.object({
@@ -57,6 +58,7 @@ function draftErrorResponse(error: PartnerVisitPhysicianReportDraftError) {
     case 'PARTNER_VISIT_RECORD_NOT_CONFIRMED':
     case 'PARTNER_VISIT_SOURCE_INACTIVE':
     case 'PATIENT_IDENTITY_STALE':
+    case 'REPORT_DRAFT_CONFLICT':
       return conflict(DRAFT_ERROR_MESSAGES[error.code], sanitizeWorkflowDetails(error.details));
   }
 }

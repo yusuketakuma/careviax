@@ -181,6 +181,26 @@ describe('/api/partner-visit-records/[id]/physician-report-draft POST', () => {
     });
   });
 
+  it('maps concurrent draft creation to a fixed retryable conflict', async () => {
+    createPartnerVisitPhysicianReportDraftMock.mockRejectedValue(
+      new MockPartnerVisitPhysicianReportDraftError(
+        'REPORT_DRAFT_CONFLICT',
+        'raw database unique error patient 山田太郎',
+        { blocker: 'report_draft_conflict', raw_message: 'secret' },
+      ),
+    );
+
+    const response = await rawPOST(createRequest(), routeContext());
+
+    expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: '報告書下書きが同時に作成されました。再読み込みしてください',
+      details: { blocker: 'report_draft_conflict' },
+    });
+  });
+
   it('does not echo raw draft error messages or unsafe details', async () => {
     createPartnerVisitPhysicianReportDraftMock.mockRejectedValue(
       new MockPartnerVisitPhysicianReportDraftError(
