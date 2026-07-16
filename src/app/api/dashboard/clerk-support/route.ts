@@ -1,14 +1,9 @@
-import { unstable_rethrow } from 'next/navigation';
 import { NextRequest } from 'next/server';
-import { requireAuthContext } from '@/lib/auth/context';
-import { runWithRequestAuthContext } from '@/lib/auth/request-context';
-import { internalError, success } from '@/lib/api/response';
-import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
+import { withAuthContext, type AuthContext } from '@/lib/auth/context';
+import { success } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
 import { formatNullableDateKey } from '@/lib/date-key';
 import { buildScheduleProposalDetailHref } from '@/lib/schedules/navigation';
-import { logger } from '@/lib/utils/logger';
-import { withRoutePerformance } from '@/lib/utils/performance';
 import type { ClerkSupportResponse, ClerkSupportTask } from '@/types/clerk-support';
 
 /**
@@ -19,7 +14,6 @@ import type { ClerkSupportResponse, ClerkSupportTask } from '@/types/clerk-suppo
  */
 
 const CLERK_TASK_LIMIT = 6;
-const ROUTE = '/api/dashboard/clerk-support';
 
 /** 文書送付の主対象(FAX・メール未登録を「送付先未設定」として数える役割) */
 const DOCUMENT_CHANNEL_ROLES = ['physician', 'nurse', 'care_manager'];
@@ -32,135 +26,110 @@ const PHARMACIST_CONSULT_ITEMS = [
   '算定できるかの判断',
 ];
 
-async function authenticatedGET(req: NextRequest) {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canViewDashboard',
-    message: 'ダッシュボードの閲覧権限がありません',
-  });
-  if ('response' in authResult) return authResult.response;
-  const { ctx } = authResult;
+async function dashboardClerkSupportGET(_req: NextRequest, ctx: AuthContext) {
+  const now = new Date();
 
-  return runWithRequestAuthContext(ctx, async () => {
-    const now = new Date();
-
-    const [
-      intakePending,
-      deliveryTargetMissing,
-      scheduleConfirmation,
-      documentDrafts,
-      replyPending,
-      pharmacistReview,
-      intakeCycles,
-      contactProposals,
-    ] = await Promise.all([
-      prisma.medicationCycle.count({
-        where: {
-          org_id: ctx.orgId,
-          overall_status: { in: ['intake_received', 'structuring'] },
-        },
-      }),
-      prisma.careTeamLink.count({
-        where: {
-          org_id: ctx.orgId,
-          role: { in: DOCUMENT_CHANNEL_ROLES },
-          AND: [{ OR: [{ fax: null }, { fax: '' }] }, { OR: [{ email: null }, { email: '' }] }],
-          case_: { status: 'active' },
-        },
-      }),
-      prisma.visitScheduleProposal.count({
-        where: { org_id: ctx.orgId, proposal_status: 'patient_contact_pending' },
-      }),
-      prisma.careReport.count({
-        where: { org_id: ctx.orgId, status: 'draft' },
-      }),
-      prisma.careReport.count({
-        where: { org_id: ctx.orgId, status: 'response_waiting' },
-      }),
-      prisma.workflowException.count({
-        where: { org_id: ctx.orgId, status: 'open' },
-      }),
-      prisma.medicationCycle.findMany({
-        where: {
-          org_id: ctx.orgId,
-          overall_status: { in: ['intake_received', 'structuring'] },
-        },
-        orderBy: { updated_at: 'asc' },
-        take: 3,
-        select: {
-          id: true,
-          case_: { select: { patient: { select: { name: true } } } },
-        },
-      }),
-      prisma.visitScheduleProposal.findMany({
-        where: { org_id: ctx.orgId, proposal_status: 'patient_contact_pending' },
-        orderBy: [{ proposed_date: 'asc' }, { time_window_start: 'asc' }],
-        take: 3,
-        select: {
-          id: true,
-          proposed_date: true,
-          case_: { select: { patient: { select: { name: true } } } },
-        },
-      }),
-    ]);
-
-    const tasks: ClerkSupportTask[] = [
-      ...intakeCycles.map(
-        (cycle): ClerkSupportTask => ({
-          id: `intake-${cycle.id}`,
-          kind_label: '処方受付',
-          patient_name: cycle.case_.patient.name,
-          next_action: '取込内容を確認して入力へ送る',
-          due_label: null,
-          href: '/prescriptions/intake',
-        }),
-      ),
-      ...contactProposals.map(
-        (proposal): ClerkSupportTask => ({
-          id: `proposal-${proposal.id}`,
-          kind_label: '日程確認',
-          patient_name: proposal.case_.patient.name,
-          next_action: '候補日時を電話で確認',
-          due_label: formatNullableDateKey(proposal.proposed_date),
-          href: buildScheduleProposalDetailHref(proposal.id),
-        }),
-      ),
-    ].slice(0, CLERK_TASK_LIMIT);
-
-    const responseData: ClerkSupportResponse = {
-      generated_at: now.toISOString(),
-      kpis: {
-        intake_pending: intakePending,
-        delivery_target_missing: deliveryTargetMissing,
-        schedule_confirmation: scheduleConfirmation,
-        document_drafts: documentDrafts,
-        reply_pending: replyPending,
-        pharmacist_review: pharmacistReview,
+  const [
+    intakePending,
+    deliveryTargetMissing,
+    scheduleConfirmation,
+    documentDrafts,
+    replyPending,
+    pharmacistReview,
+    intakeCycles,
+    contactProposals,
+  ] = await Promise.all([
+    prisma.medicationCycle.count({
+      where: {
+        org_id: ctx.orgId,
+        overall_status: { in: ['intake_received', 'structuring'] },
       },
-      tasks,
-      consult_items: PHARMACIST_CONSULT_ITEMS,
-    };
+    }),
+    prisma.careTeamLink.count({
+      where: {
+        org_id: ctx.orgId,
+        role: { in: DOCUMENT_CHANNEL_ROLES },
+        AND: [{ OR: [{ fax: null }, { fax: '' }] }, { OR: [{ email: null }, { email: '' }] }],
+        case_: { status: 'active' },
+      },
+    }),
+    prisma.visitScheduleProposal.count({
+      where: { org_id: ctx.orgId, proposal_status: 'patient_contact_pending' },
+    }),
+    prisma.careReport.count({
+      where: { org_id: ctx.orgId, status: 'draft' },
+    }),
+    prisma.careReport.count({
+      where: { org_id: ctx.orgId, status: 'response_waiting' },
+    }),
+    prisma.workflowException.count({
+      where: { org_id: ctx.orgId, status: 'open' },
+    }),
+    prisma.medicationCycle.findMany({
+      where: {
+        org_id: ctx.orgId,
+        overall_status: { in: ['intake_received', 'structuring'] },
+      },
+      orderBy: { updated_at: 'asc' },
+      take: 3,
+      select: {
+        id: true,
+        case_: { select: { patient: { select: { name: true } } } },
+      },
+    }),
+    prisma.visitScheduleProposal.findMany({
+      where: { org_id: ctx.orgId, proposal_status: 'patient_contact_pending' },
+      orderBy: [{ proposed_date: 'asc' }, { time_window_start: 'asc' }],
+      take: 3,
+      select: {
+        id: true,
+        proposed_date: true,
+        case_: { select: { patient: { select: { name: true } } } },
+      },
+    }),
+  ]);
 
-    return success({ data: responseData });
-  });
+  const tasks: ClerkSupportTask[] = [
+    ...intakeCycles.map(
+      (cycle): ClerkSupportTask => ({
+        id: `intake-${cycle.id}`,
+        kind_label: '処方受付',
+        patient_name: cycle.case_.patient.name,
+        next_action: '取込内容を確認して入力へ送る',
+        due_label: null,
+        href: '/prescriptions/intake',
+      }),
+    ),
+    ...contactProposals.map(
+      (proposal): ClerkSupportTask => ({
+        id: `proposal-${proposal.id}`,
+        kind_label: '日程確認',
+        patient_name: proposal.case_.patient.name,
+        next_action: '候補日時を電話で確認',
+        due_label: formatNullableDateKey(proposal.proposed_date),
+        href: buildScheduleProposalDetailHref(proposal.id),
+      }),
+    ),
+  ].slice(0, CLERK_TASK_LIMIT);
+
+  const responseData: ClerkSupportResponse = {
+    generated_at: now.toISOString(),
+    kpis: {
+      intake_pending: intakePending,
+      delivery_target_missing: deliveryTargetMissing,
+      schedule_confirmation: scheduleConfirmation,
+      document_drafts: documentDrafts,
+      reply_pending: replyPending,
+      pharmacist_review: pharmacistReview,
+    },
+    tasks,
+    consult_items: PHARMACIST_CONSULT_ITEMS,
+  };
+
+  return success({ data: responseData });
 }
 
-export async function GET(req: NextRequest, routeContext?: unknown) {
-  void routeContext;
-  return withRoutePerformance(req, async () => {
-    try {
-      return withSensitiveNoStore(await authenticatedGET(req));
-    } catch (err) {
-      unstable_rethrow(err);
-      logger.error(
-        {
-          event: 'dashboard_clerk_support_unhandled_error',
-          route: ROUTE,
-          method: req.method,
-          status: 500,
-        },
-        err,
-      );
-      return withSensitiveNoStore(internalError());
-    }
-  });
-}
+export const GET = withAuthContext(dashboardClerkSupportGET, {
+  permission: 'canViewDashboard',
+  message: 'ダッシュボードの閲覧権限がありません',
+});
