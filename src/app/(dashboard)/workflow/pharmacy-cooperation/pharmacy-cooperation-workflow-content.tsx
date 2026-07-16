@@ -3,7 +3,7 @@
 import type { Dispatch, ReactNode, SetStateAction } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
 import { useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm, useWatch, type UseFormReturn } from 'react-hook-form';
 import {
@@ -99,9 +99,23 @@ type PatientShareCaseStatusCounts = Record<PatientShareCaseStatus, number>;
 
 type PatientShareCasePage = CursorPaginatedPage<PatientShareCaseRow> & {
   total_count: number;
-  visible_count: number;
-  hidden_count: number;
+  returned_count: number;
+  count_basis: 'filtered_query_exact';
+  filters_applied: {
+    status: PatientShareCaseStatus | null;
+    partnership_id: string | null;
+    base_patient_id: string | null;
+  };
+  request_cursor: string | null;
   status_counts: PatientShareCaseStatusCounts;
+};
+
+type PatientShareCaseAggregate = {
+  rows: PatientShareCaseRow[];
+  totalCount: number;
+  statusCounts: PatientShareCaseStatusCounts;
+  scopeComplete: boolean;
+  contractError: string | null;
 };
 
 function createEmptyPatientShareCaseStatusCounts(): PatientShareCaseStatusCounts {
@@ -110,16 +124,116 @@ function createEmptyPatientShareCaseStatusCounts(): PatientShareCaseStatusCounts
   ) as PatientShareCaseStatusCounts;
 }
 
-function buildVisiblePatientShareCaseStatusCounts(
-  rows: PatientShareCaseRow[],
-): PatientShareCaseStatusCounts {
-  const counts = createEmptyPatientShareCaseStatusCounts();
-  for (const row of rows) {
-    if (patientShareCaseStatuses.includes(row.status as PatientShareCaseStatus)) {
-      counts[row.status as PatientShareCaseStatus] += 1;
+function aggregatePatientShareCasePages(pages: PatientShareCasePage[]): PatientShareCaseAggregate {
+  const firstPage = pages[0];
+  if (!firstPage) {
+    return {
+      rows: [],
+      totalCount: 0,
+      statusCounts: createEmptyPatientShareCaseStatusCounts(),
+      scopeComplete: false,
+      contractError: null,
+    };
+  }
+
+  const rows: PatientShareCaseRow[] = [];
+  const seenIds = new Set<string>();
+  const seenContinuationCursors = new Set<string>();
+  const expectedStatusCounts = JSON.stringify(firstPage.status_counts);
+  const expectedFilters = JSON.stringify(firstPage.filters_applied);
+
+  for (const [pageIndex, page] of pages.entries()) {
+    const previousPage = pages[pageIndex - 1];
+    if (page.total_count !== firstPage.total_count) {
+      return {
+        rows,
+        totalCount: firstPage.total_count,
+        statusCounts: firstPage.status_counts,
+        scopeComplete: false,
+        contractError: '患者共有ケースの総件数がページ間で一致しません。',
+      };
+    }
+    if (
+      JSON.stringify(page.status_counts) !== expectedStatusCounts ||
+      JSON.stringify(page.filters_applied) !== expectedFilters
+    ) {
+      return {
+        rows,
+        totalCount: firstPage.total_count,
+        statusCounts: firstPage.status_counts,
+        scopeComplete: false,
+        contractError: '患者共有ケースの検索範囲がページ間で一致しません。',
+      };
+    }
+    if (
+      pageIndex === 0
+        ? page.request_cursor !== null
+        : page.request_cursor !== previousPage?.nextCursor
+    ) {
+      return {
+        rows,
+        totalCount: firstPage.total_count,
+        statusCounts: firstPage.status_counts,
+        scopeComplete: false,
+        contractError: '患者共有ケースのカーソル連鎖が一致しません。',
+      };
+    }
+
+    for (const row of page.data) {
+      if (seenIds.has(row.id)) {
+        return {
+          rows,
+          totalCount: firstPage.total_count,
+          statusCounts: firstPage.status_counts,
+          scopeComplete: false,
+          contractError: '患者共有ケースに重複した行が含まれています。',
+        };
+      }
+      seenIds.add(row.id);
+      rows.push(row);
+    }
+
+    if (page.nextCursor) {
+      if (seenContinuationCursors.has(page.nextCursor)) {
+        return {
+          rows,
+          totalCount: firstPage.total_count,
+          statusCounts: firstPage.status_counts,
+          scopeComplete: false,
+          contractError: '患者共有ケースのカーソルが循環しています。',
+        };
+      }
+      seenContinuationCursors.add(page.nextCursor);
     }
   }
-  return counts;
+
+  const lastPage = pages[pages.length - 1];
+  if (rows.length > firstPage.total_count) {
+    return {
+      rows,
+      totalCount: firstPage.total_count,
+      statusCounts: firstPage.status_counts,
+      scopeComplete: false,
+      contractError: '患者共有ケースの読込件数が総件数を超えています。',
+    };
+  }
+  if (lastPage && !lastPage.hasMore && rows.length !== firstPage.total_count) {
+    return {
+      rows,
+      totalCount: firstPage.total_count,
+      statusCounts: firstPage.status_counts,
+      scopeComplete: false,
+      contractError: '患者共有ケースの終端件数が総件数と一致しません。',
+    };
+  }
+
+  return {
+    rows,
+    totalCount: firstPage.total_count,
+    statusCounts: firstPage.status_counts,
+    scopeComplete: Boolean(lastPage && !lastPage.hasMore && rows.length === firstPage.total_count),
+    contractError: null,
+  };
 }
 
 type LinkAcceptForm = {
@@ -492,22 +606,31 @@ const patientShareCaseStatusCountsSchema = z.object({
 const patientShareCasePageSchema: z.ZodType<PatientShareCasePage> = z
   .object({
     data: z.array(patientShareCaseRowSchema),
-    meta: z.object({
-      has_more: z.boolean(),
-      next_cursor: z.string().trim().min(1).nullable(),
-      total_count: z.number().int().nonnegative().optional(),
-      visible_count: z.number().int().nonnegative().optional(),
-      hidden_count: z.number().int().nonnegative().optional(),
-      status_counts: patientShareCaseStatusCountsSchema.optional(),
-    }),
+    meta: z
+      .object({
+        has_more: z.boolean(),
+        next_cursor: z.string().trim().min(1).nullable(),
+        returned_count: z.number().int().nonnegative(),
+        total_count: z.number().int().nonnegative(),
+        count_basis: z.literal('filtered_query_exact'),
+        filters_applied: z
+          .object({
+            status: z.enum(patientShareCaseStatuses).nullable(),
+            partnership_id: z.string().trim().min(1).nullable(),
+            base_patient_id: z.string().trim().min(1).nullable(),
+          })
+          .strict(),
+        request_cursor: z.string().trim().min(1).nullable(),
+        status_counts: patientShareCaseStatusCountsSchema,
+      })
+      .strict(),
   })
+  .strict()
   .superRefine((value, ctx) => {
-    const visibleCount = value.meta.visible_count ?? value.data.length;
-    const totalCount = value.meta.total_count ?? visibleCount;
-    const hiddenCount = value.meta.hidden_count ?? Math.max(totalCount - visibleCount, 0);
-    const statusCountTotal = value.meta.status_counts
-      ? patientShareCaseStatuses.reduce((sum, status) => sum + value.meta.status_counts![status], 0)
-      : null;
+    const statusCountTotal = patientShareCaseStatuses.reduce(
+      (sum, status) => sum + value.meta.status_counts[status],
+      0,
+    );
 
     if (value.meta.has_more && !value.meta.next_cursor) {
       ctx.addIssue({
@@ -516,35 +639,28 @@ const patientShareCasePageSchema: z.ZodType<PatientShareCasePage> = z
         message: 'next_cursor is required when has_more is true',
       });
     }
-    if (visibleCount !== value.data.length) {
+    if (value.meta.next_cursor && value.meta.next_cursor === value.meta.request_cursor) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        path: ['meta', 'visible_count'],
-        message: 'visible_count must match the returned data length',
+        path: ['meta', 'next_cursor'],
+        message: 'next_cursor must advance beyond request_cursor',
       });
     }
-    if (totalCount < visibleCount) {
+    if (value.meta.returned_count !== value.data.length) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['meta', 'returned_count'],
+        message: 'returned_count must match the returned data length',
+      });
+    }
+    if (value.meta.total_count < value.meta.returned_count) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['meta', 'total_count'],
-        message: 'total_count must be greater than or equal to visible_count',
+        message: 'total_count must be greater than or equal to returned_count',
       });
     }
-    if (hiddenCount !== totalCount - visibleCount) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['meta', 'hidden_count'],
-        message: 'hidden_count must equal total_count minus visible_count',
-      });
-    }
-    if (hiddenCount > 0 && !value.meta.status_counts) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['meta', 'status_counts'],
-        message: 'status_counts is required when hidden rows exist',
-      });
-    }
-    if (statusCountTotal !== null && statusCountTotal !== totalCount) {
+    if (statusCountTotal !== value.meta.total_count) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['meta', 'status_counts'],
@@ -556,12 +672,12 @@ const patientShareCasePageSchema: z.ZodType<PatientShareCasePage> = z
     data,
     hasMore: meta.has_more,
     ...(meta.next_cursor ? { nextCursor: meta.next_cursor } : {}),
-    total_count: meta.total_count ?? meta.visible_count ?? data.length,
-    visible_count: meta.visible_count ?? data.length,
-    hidden_count:
-      meta.hidden_count ??
-      Math.max((meta.total_count ?? meta.visible_count ?? data.length) - data.length, 0),
-    status_counts: meta.status_counts ?? buildVisiblePatientShareCaseStatusCounts(data),
+    returned_count: meta.returned_count,
+    total_count: meta.total_count,
+    count_basis: meta.count_basis,
+    filters_applied: meta.filters_applied,
+    request_cursor: meta.request_cursor,
+    status_counts: meta.status_counts,
   }));
 const pharmacyVisitRequestPageSchema = apiCursorPageSchema(pharmacyVisitRequestRowSchema);
 const pharmacyVisitRequestResponseSchema = apiDataSchema(pharmacyVisitRequestRowSchema).transform(
@@ -717,17 +833,33 @@ const EMPTY_MESSAGE_FORM: MessageForm = {
   body: '',
 };
 
-async function fetchShareCases(orgId: string) {
-  const response = await fetch(
-    '/api/patient-share-cases?limit=8&view_context=pharmacy_cooperation_workflow',
-    {
-      headers: buildOrgHeaders(orgId),
-    },
-  );
-  return readApiJson<PatientShareCasePage>(response, {
+async function fetchShareCases(
+  orgId: string,
+  cursor: string | null,
+  status: PatientShareCaseStatus | null,
+) {
+  const params = new URLSearchParams({
+    limit: '8',
+    view_context: 'pharmacy_cooperation_workflow',
+  });
+  if (status) params.set('status', status);
+  if (cursor) params.set('cursor', cursor);
+  const response = await fetch(`/api/patient-share-cases?${params.toString()}`, {
+    headers: buildOrgHeaders(orgId),
+  });
+  const page = await readApiJson<PatientShareCasePage>(response, {
     fallbackMessage: '患者共有ケースの取得に失敗しました',
     schema: patientShareCasePageSchema,
   });
+  if (
+    page.request_cursor !== cursor ||
+    page.filters_applied.status !== status ||
+    page.filters_applied.partnership_id !== null ||
+    page.filters_applied.base_patient_id !== null
+  ) {
+    throw new Error('患者共有ケースの検索条件が応答と一致しません');
+  }
+  return page;
 }
 
 async function fetchVisitRequests(orgId: string) {
@@ -3095,11 +3227,21 @@ export function PharmacyCooperationWorkflowContent() {
   const [pendingWorkflowAction, setPendingWorkflowAction] = useState<PendingWorkflowAction | null>(
     null,
   );
+  const [shareCaseStatusFilter, setShareCaseStatusFilter] = useState<
+    PatientShareCaseStatus | 'all'
+  >('all');
   const enabled = Boolean(orgId);
 
-  const shareCasesQuery = useQuery({
-    queryKey: ['pharmacy-cooperation-share-cases', orgId],
-    queryFn: () => fetchShareCases(orgId),
+  const shareCasesQuery = useInfiniteQuery({
+    queryKey: ['pharmacy-cooperation-share-cases', orgId, shareCaseStatusFilter],
+    queryFn: ({ pageParam }) =>
+      fetchShareCases(
+        orgId,
+        pageParam,
+        shareCaseStatusFilter === 'all' ? null : shareCaseStatusFilter,
+      ),
+    initialPageParam: null as string | null,
+    getNextPageParam: (lastPage) => (lastPage.hasMore ? lastPage.nextCursor : undefined),
     enabled,
     staleTime: 20_000,
   });
@@ -3118,18 +3260,20 @@ export function PharmacyCooperationWorkflowContent() {
     staleTime: 20_000,
   });
 
-  const shareCases = shareCasesQuery.data?.data ?? [];
-  const shareCaseTotalCount = shareCasesQuery.data?.total_count ?? shareCases.length;
-  const shareCaseVisibleCount = shareCasesQuery.data?.visible_count ?? shareCases.length;
-  const shareCaseHiddenCount = shareCasesQuery.data?.hidden_count ?? 0;
-  const shareCaseStatusCounts =
-    shareCasesQuery.data?.status_counts ?? buildVisiblePatientShareCaseStatusCounts(shareCases);
+  const shareCasePages = shareCasesQuery.data?.pages ?? [];
+  const shareCaseAggregate = aggregatePatientShareCasePages(shareCasePages);
+  const shareCases = shareCaseAggregate.rows;
+  const shareCaseTotalCount = shareCaseAggregate.totalCount;
+  const shareCaseStatusCounts = shareCaseAggregate.statusCounts;
   const activeShareCaseTotalCount = shareCaseStatusCounts.active;
   const inactiveShareCaseTotalCount = Math.max(shareCaseTotalCount - activeShareCaseTotalCount, 0);
-  const shareCaseCountLabel =
-    shareCaseHiddenCount > 0
-      ? `共有ケース ${shareCaseTotalCount} 件 / 表示 ${shareCaseVisibleCount} 件 / 他 ${shareCaseHiddenCount} 件`
-      : `共有ケース ${shareCaseTotalCount} 件`;
+  const shareCaseCountLabel = `共有ケース 読込済み ${shareCases.length} / 全 ${shareCaseTotalCount} 件${
+    shareCaseAggregate.scopeComplete ? '（全件読込済み）' : ''
+  }`;
+  const shareCaseContractError = shareCaseAggregate.contractError
+    ? new Error(shareCaseAggregate.contractError)
+    : null;
+  const shareCaseInitialError = shareCasesQuery.isError && shareCasePages.length === 0;
   const visitRequests = visitRequestsQuery.data?.data ?? [];
   const partnerVisitRecords = partnerVisitRecordsQuery.data?.data ?? [];
   const activeShareCases = shareCases.filter((shareCase) => shareCase.status === 'active');
@@ -3867,35 +4011,88 @@ export function PharmacyCooperationWorkflowContent() {
       <SectionShell title="患者共有ケース" description="共有状態と患者リンク承認を確認します。">
         <QueryFallback
           isLoading={shareCasesQuery.isLoading}
-          isError={shareCasesQuery.isError}
-          error={shareCasesQuery.error}
+          isError={shareCaseInitialError || Boolean(shareCaseContractError)}
+          error={shareCaseContractError ?? shareCasesQuery.error}
           onRetry={() => void shareCasesQuery.refetch()}
         >
-          <ShareCasesTable
-            rows={shareCases}
-            linkAcceptForms={linkAcceptForms}
-            setLinkAcceptForms={setLinkAcceptForms}
-            linkDeclineReasons={linkDeclineReasons}
-            setLinkDeclineReasons={setLinkDeclineReasons}
-            isBusy={isBusy}
-            onActivate={(shareCase) =>
-              setPendingWorkflowAction({ kind: 'activateShareCase', shareCase })
-            }
-            onBaseApprove={(shareCase) =>
-              setPendingWorkflowAction({ kind: 'baseApproveLink', shareCase })
-            }
-            onAcceptLink={(shareCase, acceptForm) =>
-              setPendingWorkflowAction({
-                kind: 'acceptLink',
-                shareCase,
-                acceptForm: { ...acceptForm },
-              })
-            }
-            onDeclineLink={(shareCase, declineReason) =>
-              setPendingWorkflowAction({ kind: 'declineLink', shareCase, declineReason })
-            }
-            onSelectCorrectionCase={setSelectedCorrectionShareCaseId}
-          />
+          <div className="space-y-3">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+              <label className="grid gap-1 text-sm font-medium text-foreground">
+                共有状態
+                <select
+                  className="h-11 min-h-11 rounded-md border border-input bg-background px-3 text-sm text-foreground shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                  value={shareCaseStatusFilter}
+                  onChange={(event) =>
+                    setShareCaseStatusFilter(event.target.value as PatientShareCaseStatus | 'all')
+                  }
+                >
+                  <option value="all">すべて</option>
+                  {patientShareCaseStatuses.map((status) => (
+                    <option key={status} value={status}>
+                      {statusLabel(status)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <p className="text-sm tabular-nums text-muted-foreground" role="status">
+                {shareCaseCountLabel}
+              </p>
+            </div>
+
+            <ShareCasesTable
+              rows={shareCases}
+              linkAcceptForms={linkAcceptForms}
+              setLinkAcceptForms={setLinkAcceptForms}
+              linkDeclineReasons={linkDeclineReasons}
+              setLinkDeclineReasons={setLinkDeclineReasons}
+              isBusy={isBusy}
+              onActivate={(shareCase) =>
+                setPendingWorkflowAction({ kind: 'activateShareCase', shareCase })
+              }
+              onBaseApprove={(shareCase) =>
+                setPendingWorkflowAction({ kind: 'baseApproveLink', shareCase })
+              }
+              onAcceptLink={(shareCase, acceptForm) =>
+                setPendingWorkflowAction({
+                  kind: 'acceptLink',
+                  shareCase,
+                  acceptForm: { ...acceptForm },
+                })
+              }
+              onDeclineLink={(shareCase, declineReason) =>
+                setPendingWorkflowAction({ kind: 'declineLink', shareCase, declineReason })
+              }
+              onSelectCorrectionCase={setSelectedCorrectionShareCaseId}
+            />
+
+            {shareCasesQuery.isFetchNextPageError ? (
+              <ErrorState
+                variant="server"
+                title="患者共有ケースの続きを読み込めませんでした"
+                description={`読込済み ${shareCases.length} 件は保持しています。通信状態を確認して再試行してください。`}
+                onRetry={() => void shareCasesQuery.fetchNextPage()}
+              />
+            ) : null}
+
+            {shareCasesQuery.hasNextPage ? (
+              <div className="flex justify-center">
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={shareCasesQuery.isFetchingNextPage}
+                  onClick={() => void shareCasesQuery.fetchNextPage()}
+                >
+                  <RefreshCw
+                    className={cn('size-4', shareCasesQuery.isFetchingNextPage && 'animate-spin')}
+                    aria-hidden="true"
+                  />
+                  {shareCasesQuery.isFetchingNextPage
+                    ? '続きを読込中'
+                    : '共有ケースをさらに読み込む'}
+                </Button>
+              </div>
+            ) : null}
+          </div>
         </QueryFallback>
       </SectionShell>
 

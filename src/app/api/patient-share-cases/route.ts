@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { Prisma } from '@prisma/client';
 import { withAuthContext } from '@/lib/auth/context';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { buildCursorPage, parsePaginationParams } from '@/lib/api/pagination';
@@ -257,107 +258,110 @@ export const GET = withAuthContext(
       ...(partnershipId ? { partnership_id: partnershipId } : {}),
       ...(basePatientId ? { base_patient_id: basePatientId } : {}),
     };
-    const shouldExposeExactCounts =
-      viewContext.data === 'pharmacy_cooperation_workflow' &&
-      !cursor &&
-      !status &&
-      !partnershipId &&
-      !basePatientId;
+    const shouldExposeWorkflowMeta = viewContext.data === 'pharmacy_cooperation_workflow';
 
-    const result = await withOrgContext(ctx.orgId, async (tx) => {
-      const result = await tx.patientShareCase.findMany({
-        where: shareCaseWhere,
-        take: limit + 1,
-        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-        orderBy: [{ updated_at: 'desc' }, { id: 'desc' }],
-        include: {
-          base_patient: {
-            select: {
-              display_id: true,
-              name: true,
-              name_kana: true,
-              birth_date: true,
-              updated_at: true,
+    const result = await withOrgContext(
+      ctx.orgId,
+      async (tx) => {
+        const result = await tx.patientShareCase.findMany({
+          where: shareCaseWhere,
+          take: limit + 1,
+          ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+          orderBy: [{ updated_at: 'desc' }, { id: 'desc' }],
+          include: {
+            base_patient: {
+              select: {
+                display_id: true,
+                name: true,
+                name_kana: true,
+                birth_date: true,
+                updated_at: true,
+              },
+            },
+            partnership: {
+              select: {
+                id: true,
+                status: true,
+                base_site_id: true,
+                partner_pharmacy: { select: { id: true, name: true, status: true } },
+              },
+            },
+            patient_link: {
+              select: {
+                id: true,
+                match_status: true,
+                approved_by_base: true,
+                approved_by_partner: true,
+                accepted_at: true,
+                declined_at: true,
+                partner_patient_id: true,
+              },
             },
           },
-          partnership: {
-            select: {
-              id: true,
-              status: true,
-              base_site_id: true,
-              partner_pharmacy: { select: { id: true, name: true, status: true } },
-            },
-          },
-          patient_link: {
-            select: {
-              id: true,
-              match_status: true,
-              approved_by_base: true,
-              approved_by_partner: true,
-              accepted_at: true,
-              declined_at: true,
-              partner_patient_id: true,
-            },
-          },
-        },
-      });
+        });
 
-      const page = buildCursorPage(result, limit, (row) => row.id);
-      const visibleRows = page.data;
-      const countSummary = shouldExposeExactCounts
-        ? await Promise.all([
-            tx.patientShareCase.count({ where: shareCaseWhere }),
-            tx.patientShareCase.groupBy({
-              by: ['status'],
-              where: shareCaseWhere,
-              _count: { _all: true },
-            }),
-          ]).then(([totalCount, statusRows]) => ({
+        const page = buildCursorPage(result, limit, (row) => row.id);
+        const visibleRows = page.data;
+        let countSummary: {
+          totalCount: number;
+          statusCounts: ShareCaseStatusCounts;
+        } | null = null;
+        if (shouldExposeWorkflowMeta) {
+          // Interactive transactions use one PostgreSQL client. Keep these reads
+          // sequential so pg never queues concurrent queries on that client.
+          const totalCount = await tx.patientShareCase.count({ where: shareCaseWhere });
+          const statusRows = await tx.patientShareCase.groupBy({
+            by: ['status'],
+            where: shareCaseWhere,
+            _count: { _all: true },
+          });
+          countSummary = {
             totalCount,
-            hiddenCount: Math.max(totalCount - visibleRows.length, 0),
             statusCounts: buildShareCaseStatusCounts(statusRows),
-          }))
-        : null;
-      await createAuditLogEntry(tx, ctx, {
-        action: 'patient_share_cases_viewed',
-        targetType: 'PatientShareCase',
-        targetId: 'patient_share_cases',
-        patientId: basePatientId,
-        changes: {
-          target_screen: viewContext.data,
-          viewer_role: ctx.role,
-          viewed_count: visibleRows.length,
-          share_case_count: visibleRows.length,
-          visible_share_case_count: visibleRows.length,
-          visible_base_patient_count: new Set(visibleRows.map((row) => row.base_patient_id)).size,
-          visible_base_site_count: new Set(visibleRows.map((row) => row.partnership.base_site_id))
-            .size,
-          visible_partner_pharmacy_count: new Set(
-            visibleRows.map((row) => row.partnership.partner_pharmacy.id),
-          ).size,
-          ...(countSummary
-            ? {
-                total_share_case_count: countSummary.totalCount,
-                hidden_share_case_count: countSummary.hiddenCount,
-                share_case_status_counts: countSummary.statusCounts,
-              }
-            : {}),
-          base_patient_count: new Set(visibleRows.map((row) => row.base_patient_id)).size,
-          base_site_count: new Set(visibleRows.map((row) => row.partnership.base_site_id)).size,
-          partner_pharmacy_count: new Set(
-            visibleRows.map((row) => row.partnership.partner_pharmacy.id),
-          ).size,
-          filters: {
-            status: status?.data ?? null,
-            has_partnership_id: Boolean(partnershipId),
-            has_base_patient_id: Boolean(basePatientId),
-            limit,
+          };
+        }
+        await createAuditLogEntry(tx, ctx, {
+          action: 'patient_share_cases_viewed',
+          targetType: 'PatientShareCase',
+          targetId: 'patient_share_cases',
+          patientId: basePatientId,
+          changes: {
+            target_screen: viewContext.data,
+            viewer_role: ctx.role,
+            viewed_count: visibleRows.length,
+            share_case_count: visibleRows.length,
+            visible_share_case_count: visibleRows.length,
+            visible_base_patient_count: new Set(visibleRows.map((row) => row.base_patient_id)).size,
+            visible_base_site_count: new Set(visibleRows.map((row) => row.partnership.base_site_id))
+              .size,
+            visible_partner_pharmacy_count: new Set(
+              visibleRows.map((row) => row.partnership.partner_pharmacy.id),
+            ).size,
+            ...(countSummary
+              ? {
+                  total_share_case_count: countSummary.totalCount,
+                  returned_share_case_count: visibleRows.length,
+                  share_case_status_counts: countSummary.statusCounts,
+                }
+              : {}),
+            base_patient_count: new Set(visibleRows.map((row) => row.base_patient_id)).size,
+            base_site_count: new Set(visibleRows.map((row) => row.partnership.base_site_id)).size,
+            partner_pharmacy_count: new Set(
+              visibleRows.map((row) => row.partnership.partner_pharmacy.id),
+            ).size,
+            filters: {
+              status: status?.data ?? null,
+              has_partnership_id: Boolean(partnershipId),
+              has_base_patient_id: Boolean(basePatientId),
+              limit,
+            },
           },
-        },
-      });
+        });
 
-      return { page, countSummary };
-    });
+        return { page, countSummary };
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead },
+    );
 
     return withSensitiveNoStore(
       success({
@@ -367,9 +371,15 @@ export const GET = withAuthContext(
           next_cursor: result.page.nextCursor ?? null,
           ...(result.countSummary
             ? {
+                returned_count: result.page.data.length,
                 total_count: result.countSummary.totalCount,
-                visible_count: result.page.data.length,
-                hidden_count: result.countSummary.hiddenCount,
+                count_basis: 'filtered_query_exact' as const,
+                filters_applied: {
+                  status: status?.data ?? null,
+                  partnership_id: partnershipId ?? null,
+                  base_patient_id: basePatientId ?? null,
+                },
+                request_cursor: cursor ?? null,
                 status_counts: result.countSummary.statusCounts,
               }
             : {}),

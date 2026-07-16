@@ -1129,6 +1129,13 @@ function buildPharmacyCoopShareCase(args: {
     starts_at: '2026-06-20T00:00:00.000Z',
     ends_at: '2026-12-31T00:00:00.000Z',
     updated_at: '2026-06-19T00:00:00.000Z',
+    patient_safe_display: {
+      display_id: 'RM-COOP-001',
+      name: '薬局間RouteMock 患者',
+      name_kana: 'ヤッキョクカンルートモック カンジャ',
+      birth_date: '1942-04-12',
+      updated_at: '2026-06-19T00:00:00.000Z',
+    },
     partnership: {
       id: PHARMACY_COOP_PARTNERSHIP_ID,
       status: 'active',
@@ -1515,9 +1522,39 @@ async function installPharmacyCooperationRouteMocks(page: Page) {
       baseApproved: state.baseApproved,
       partnerAccepted: state.partnerAccepted,
     });
+    const url = new URL(request.url);
+    const statusFilter = url.searchParams.get('status');
+    const rows =
+      shareCase && (!statusFilter || shareCase.status === statusFilter) ? [shareCase] : [];
+    const statusCounts = {
+      draft: 0,
+      consent_pending: 0,
+      partner_confirmation_pending: 0,
+      active: 0,
+      suspended: 0,
+      revoked: 0,
+      ended: 0,
+      declined: 0,
+    };
+    if (rows[0] && rows[0].status in statusCounts) {
+      statusCounts[rows[0].status as keyof typeof statusCounts] = 1;
+    }
     await fulfillJson(route, {
-      data: shareCase ? [shareCase] : [],
-      meta: { has_more: false, next_cursor: null },
+      data: rows,
+      meta: {
+        has_more: false,
+        next_cursor: null,
+        returned_count: rows.length,
+        total_count: rows.length,
+        count_basis: 'filtered_query_exact',
+        filters_applied: {
+          status: statusFilter,
+          partnership_id: null,
+          base_patient_id: null,
+        },
+        request_cursor: url.searchParams.get('cursor'),
+        status_counts: statusCounts,
+      },
     });
   });
 
@@ -3609,6 +3646,52 @@ test.describe('pharmacy cooperation route-mocked browser workflow smoke', () => 
     await attachLocalSession(context);
   });
 
+  test('keeps share-case exact counts and server cursor filters accessible', async ({
+    context,
+  }, testInfo) => {
+    test.skip(testInfo.project.name !== 'chromium');
+
+    const { page, errors } = await createInstrumentedPage(context);
+    const requests = await installPharmacyCooperationRouteMocks(page);
+
+    await openStableRoute(page, '/workflow/pharmacy-cooperation');
+    await expect(page.getByTestId('pharmacy-cooperation-workflow')).toBeVisible({
+      timeout: 30_000,
+    });
+    const shareCasesTable = page.getByRole('table', { name: '患者共有ケース一覧' });
+    const shareCaseRow = shareCasesTable.getByRole('row').filter({
+      hasText: PHARMACY_COOP_SHARE_CASE_ID,
+    });
+    await expect(shareCaseRow).toBeVisible();
+    await expect(
+      page.getByText('共有ケース 読込済み 1 / 全 1 件（全件読込済み）').first(),
+    ).toBeVisible();
+    await expect(page.getByText('薬局間RouteMock 患者').first()).toBeVisible();
+    await expect(page.getByText('東京都千代田区RouteMock')).toHaveCount(0);
+
+    await page.getByLabel('共有状態').selectOption('consent_pending');
+    await expect
+      .poll(
+        () =>
+          requests.patientShareCases.some((request) => {
+            if (request.method !== 'GET') return false;
+            const searchParams = new URL(request.url).searchParams;
+            return searchParams.get('status') === 'consent_pending' && !searchParams.has('cursor');
+          }),
+        { message: 'share-case status changes should start a fresh cursor chain at page one' },
+      )
+      .toBe(true);
+    await page.getByLabel('共有状態').selectOption('all');
+    await expect(shareCaseRow).toBeVisible();
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    const overflowWidth = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    );
+    expect(overflowWidth).toBeLessThanOrEqual(1);
+    expect(errors).toEqual([]);
+  });
+
   test('keeps partner billing server filters, exact counts, and loaded-scope search accessible', async ({
     context,
   }, testInfo) => {
@@ -3692,8 +3775,26 @@ test.describe('pharmacy cooperation route-mocked browser workflow smoke', () => 
       hasText: PHARMACY_COOP_SHARE_CASE_ID,
     });
     await expect(shareCaseRow).toBeVisible();
-    await expect(page.getByText('薬局間RouteMock 患者')).toHaveCount(0);
+    await expect(page.getByText('薬局間RouteMock 患者').first()).toBeVisible();
     await expect(page.getByText('東京都千代田区RouteMock')).toHaveCount(0);
+    await expect(
+      page.getByText('共有ケース 読込済み 1 / 全 1 件（全件読込済み）').first(),
+    ).toBeVisible();
+
+    await page.getByLabel('共有状態').selectOption('consent_pending');
+    await expect
+      .poll(
+        () =>
+          requests.patientShareCases.some((request) => {
+            if (request.method !== 'GET') return false;
+            const searchParams = new URL(request.url).searchParams;
+            return searchParams.get('status') === 'consent_pending' && !searchParams.has('cursor');
+          }),
+        { message: 'share-case status changes should start a fresh cursor chain at page one' },
+      )
+      .toBe(true);
+    await page.getByLabel('共有状態').selectOption('all');
+    await expect(shareCaseRow).toBeVisible();
 
     await page.getByLabel('患者共有同意日').fill('2026-06-19');
     await page.getByLabel('患者共有同意者').fill('患者家族 RouteMock');
@@ -3820,7 +3921,7 @@ test.describe('pharmacy cooperation route-mocked browser workflow smoke', () => 
       carry_items: ['分包済み一包', '残薬バッグ'],
       patient_home_notes: '家族同席予定',
     });
-    await expect(page.getByText('退院直後の服薬確認が必要です')).toHaveCount(0);
+    await expect(page.getByText('退院直後の服薬確認が必要です')).toBeVisible();
 
     const visitRequestsTable = page.getByRole('table', { name: '協力薬局訪問依頼一覧' });
     await expect(

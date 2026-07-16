@@ -273,9 +273,15 @@ describe('/api/patient-share-cases', () => {
         meta: expect.objectContaining({
           has_more: false,
           next_cursor: null,
+          returned_count: 1,
           total_count: 1,
-          visible_count: 1,
-          hidden_count: 0,
+          count_basis: 'filtered_query_exact',
+          filters_applied: {
+            status: null,
+            partnership_id: null,
+            base_patient_id: null,
+          },
+          request_cursor: null,
           status_counts: expect.objectContaining({
             consent_pending: 1,
             active: 0,
@@ -326,7 +332,7 @@ describe('/api/patient-share-cases', () => {
           share_case_count: 1,
           total_share_case_count: 1,
           visible_share_case_count: 1,
-          hidden_share_case_count: 0,
+          returned_share_case_count: 1,
           share_case_status_counts: expect.objectContaining({
             consent_pending: 1,
             active: 0,
@@ -346,7 +352,7 @@ describe('/api/patient-share-cases', () => {
     expect(JSON.stringify(createAuditLogEntryMock.mock.calls)).not.toContain('partner_pharmacy_1');
   });
 
-  it('returns workflow total, visible, hidden, and status counts without exposing hidden row details', async () => {
+  it('returns exact workflow count metadata without exposing unreturned row details', async () => {
     patientShareCaseFindManyMock.mockResolvedValue([
       {
         id: 'share_case_1',
@@ -437,9 +443,15 @@ describe('/api/patient-share-cases', () => {
         meta: expect.objectContaining({
           has_more: true,
           next_cursor: 'share_case_2',
+          returned_count: 2,
           total_count: 12,
-          visible_count: 2,
-          hidden_count: 10,
+          count_basis: 'filtered_query_exact',
+          filters_applied: {
+            status: null,
+            partnership_id: null,
+            base_patient_id: null,
+          },
+          request_cursor: null,
           status_counts: expect.objectContaining({
             active: 5,
             consent_pending: 4,
@@ -472,7 +484,7 @@ describe('/api/patient-share-cases', () => {
           share_case_count: 2,
           total_share_case_count: 12,
           visible_share_case_count: 2,
-          hidden_share_case_count: 10,
+          returned_share_case_count: 2,
           visible_base_patient_count: 2,
           visible_base_site_count: 1,
           visible_partner_pharmacy_count: 2,
@@ -607,7 +619,7 @@ describe('/api/patient-share-cases', () => {
     );
   });
 
-  it('omits exact counts on cursor pages to avoid reporting previous rows as hidden', async () => {
+  it('keeps exact counts and request cursor metadata on continuation pages', async () => {
     patientShareCaseFindManyMock.mockResolvedValue([
       {
         id: 'share_case_page_2',
@@ -648,20 +660,35 @@ describe('/api/patient-share-cases', () => {
         patient_link: null,
       },
     ]);
+    patientShareCaseCountMock.mockResolvedValue(3);
+    patientShareCaseGroupByMock.mockResolvedValue([{ status: 'active', _count: { _all: 3 } }]);
 
     const response = await GET(
       createGetRequest('?limit=1&cursor=share_case_1&view_context=pharmacy_cooperation_workflow'),
     );
 
     expect(response.status).toBe(200);
-    expect(patientShareCaseCountMock).not.toHaveBeenCalled();
-    expect(patientShareCaseGroupByMock).not.toHaveBeenCalled();
+    expect(patientShareCaseCountMock).toHaveBeenCalledWith({ where: { org_id: 'org_1' } });
+    expect(patientShareCaseGroupByMock).toHaveBeenCalledWith({
+      by: ['status'],
+      where: { org_id: 'org_1' },
+      _count: { _all: true },
+    });
     const body = await response.json();
     expect(body).toEqual(
       expect.objectContaining({
         meta: expect.objectContaining({
           has_more: true,
           next_cursor: 'share_case_page_2',
+          returned_count: 1,
+          total_count: 3,
+          count_basis: 'filtered_query_exact',
+          filters_applied: {
+            status: null,
+            partnership_id: null,
+            base_patient_id: null,
+          },
+          request_cursor: 'share_case_1',
         }),
       }),
     );
@@ -670,7 +697,6 @@ describe('/api/patient-share-cases', () => {
     expect(body).not.toHaveProperty('hidden_count');
     expect(body).not.toHaveProperty('hasMore');
     expect(body).not.toHaveProperty('nextCursor');
-    expect(body.meta).not.toHaveProperty('total_count');
     expect(body.meta).not.toHaveProperty('visible_count');
     expect(body.meta).not.toHaveProperty('hidden_count');
     const auditChanges = createAuditLogEntryMock.mock.calls[0]?.[2]?.changes;
@@ -680,9 +706,10 @@ describe('/api/patient-share-cases', () => {
         viewed_count: 1,
         share_case_count: 1,
         visible_share_case_count: 1,
+        total_share_case_count: 3,
+        returned_share_case_count: 1,
       }),
     );
-    expect(auditChanges).not.toHaveProperty('total_share_case_count');
     expect(auditChanges).not.toHaveProperty('hidden_share_case_count');
   });
 
@@ -736,6 +763,7 @@ describe('/api/patient-share-cases', () => {
   });
 
   it('trims and applies valid filters and view context', async () => {
+    patientShareCaseGroupByMock.mockResolvedValue([{ status: 'active', _count: { _all: 1 } }]);
     const response = await GET(
       createGetRequest(
         '?status=%20active%20&partnership_id=%20partnership_1%20&base_patient_id=%20patient_1%20&view_context=%20pharmacy_cooperation_workflow%20',
@@ -752,6 +780,20 @@ describe('/api/patient-share-cases', () => {
         base_patient_id: 'patient_1',
       }),
     );
+    await expect(response.json()).resolves.toMatchObject({
+      meta: {
+        returned_count: 1,
+        total_count: 1,
+        count_basis: 'filtered_query_exact',
+        filters_applied: {
+          status: 'active',
+          partnership_id: 'partnership_1',
+          base_patient_id: 'patient_1',
+        },
+        request_cursor: null,
+        status_counts: expect.objectContaining({ active: 1 }),
+      },
+    });
     expect(createAuditLogEntryMock).toHaveBeenCalledWith(
       expect.anything(),
       expect.anything(),
