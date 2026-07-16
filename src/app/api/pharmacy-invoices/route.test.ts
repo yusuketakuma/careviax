@@ -3,6 +3,7 @@ import { NextRequest } from 'next/server';
 
 const {
   withOrgContextMock,
+  pharmacyInvoiceCountMock,
   pharmacyInvoiceFindManyMock,
   createPharmacyInvoiceDraftMock,
   MockPharmacyInvoiceDraftError,
@@ -19,6 +20,7 @@ const {
   }
   return {
     withOrgContextMock: vi.fn(),
+    pharmacyInvoiceCountMock: vi.fn(),
     pharmacyInvoiceFindManyMock: vi.fn(),
     createPharmacyInvoiceDraftMock: vi.fn(),
     MockPharmacyInvoiceDraftError,
@@ -67,40 +69,44 @@ function createGetRequest(url = 'http://localhost/api/pharmacy-invoices?billing_
   return new NextRequest(url);
 }
 
+function listedInvoice(id = 'invoice_1') {
+  return {
+    id,
+    contract_id: 'contract_1',
+    document_kind: 'invoice',
+    invoice_no: id === 'invoice_1' ? 'INV-001' : `INV-${id}`,
+    billing_month: new Date('2026-06-01T00:00:00.000Z'),
+    subtotal: 5500,
+    tax_amount: 550,
+    total: 6050,
+    status: 'draft',
+    issued_at: null,
+    sent_at: null,
+    received_at: null,
+    payment_scheduled_for: null,
+    paid_at: null,
+    version: 1,
+    created_at: new Date('2026-06-20T00:00:00.000Z'),
+    updated_at: new Date('2026-06-20T00:00:00.000Z'),
+    _count: { items: 1 },
+    contract: {
+      partnership: {
+        base_site: { id: 'site_1', name: '基幹薬局' },
+        partner_pharmacy: { id: 'partner_pharmacy_1', name: '協力薬局', status: 'active' },
+      },
+    },
+  };
+}
+
 describe('/api/pharmacy-invoices GET', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    pharmacyInvoiceFindManyMock.mockResolvedValue([
-      {
-        id: 'invoice_1',
-        contract_id: 'contract_1',
-        document_kind: 'invoice',
-        invoice_no: 'INV-001',
-        billing_month: new Date('2026-06-01T00:00:00.000Z'),
-        subtotal: 5500,
-        tax_amount: 550,
-        total: 6050,
-        status: 'draft',
-        issued_at: null,
-        sent_at: null,
-        received_at: null,
-        payment_scheduled_for: null,
-        paid_at: null,
-        version: 1,
-        created_at: new Date('2026-06-20T00:00:00.000Z'),
-        updated_at: new Date('2026-06-20T00:00:00.000Z'),
-        _count: { items: 1 },
-        contract: {
-          partnership: {
-            base_site: { id: 'site_1', name: '基幹薬局' },
-            partner_pharmacy: { id: 'partner_pharmacy_1', name: '協力薬局', status: 'active' },
-          },
-        },
-      },
-    ]);
+    pharmacyInvoiceCountMock.mockResolvedValue(1);
+    pharmacyInvoiceFindManyMock.mockResolvedValue([listedInvoice()]);
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
         pharmacyInvoice: {
+          count: pharmacyInvoiceCountMock,
           findMany: pharmacyInvoiceFindManyMock,
         },
       }),
@@ -110,7 +116,7 @@ describe('/api/pharmacy-invoices GET', () => {
   it('lists pharmacy invoices with safe operational fields and no-store headers', async () => {
     const response = await GET(
       createGetRequest(
-        'http://localhost/api/pharmacy-invoices?billing_month=2026-06-01&document_kind=invoice&status=draft&contract_id=%20contract_1%20',
+        'http://localhost/api/pharmacy-invoices?billing_month=2026-06-01&document_kind=invoice&status=draft&contract_id=%20contract_1%20&partner_pharmacy_id=%20partner_pharmacy_1%20',
       ),
     );
 
@@ -124,6 +130,7 @@ describe('/api/pharmacy-invoices GET', () => {
           document_kind: 'invoice',
           status: 'draft',
           contract_id: 'contract_1',
+          contract: { partnership: { partner_pharmacy_id: 'partner_pharmacy_1' } },
         }),
         select: expect.not.objectContaining({
           snapshot: expect.anything(),
@@ -149,10 +156,67 @@ describe('/api/pharmacy-invoices GET', () => {
         },
       ],
       meta: {
+        limit: 50,
         has_more: false,
         next_cursor: null,
+        returned_count: 1,
+        total_count: 1,
+        count_basis: 'filtered_query_exact',
+        filters_applied: {
+          billing_month: '2026-06-01',
+          status: 'draft',
+          document_kind: 'invoice',
+          contract_id: 'contract_1',
+          partner_pharmacy_id: 'partner_pharmacy_1',
+        },
       },
     });
+    expect(pharmacyInvoiceCountMock).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        org_id: 'org_1',
+        contract: { partnership: { partner_pharmacy_id: 'partner_pharmacy_1' } },
+      }),
+    });
+    expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
+      requestContext: expect.objectContaining({ orgId: 'org_1', userId: 'user_1' }),
+      isolationLevel: 'RepeatableRead',
+    });
+  });
+
+  it('returns 20 of 21 filtered rows with an exact total and stable id cursor', async () => {
+    pharmacyInvoiceCountMock.mockResolvedValueOnce(21);
+    pharmacyInvoiceFindManyMock.mockResolvedValueOnce(
+      Array.from({ length: 21 }, (_, index) => listedInvoice(`invoice_${21 - index}`)),
+    );
+
+    const response = await GET(
+      createGetRequest(
+        'http://localhost/api/pharmacy-invoices?billing_month=2026-06-01&status=draft&partner_pharmacy_id=partner_pharmacy_1&limit=20',
+      ),
+    );
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.data).toHaveLength(20);
+    expect(body.meta).toMatchObject({
+      limit: 20,
+      has_more: true,
+      next_cursor: 'invoice_2',
+      returned_count: 20,
+      total_count: 21,
+      count_basis: 'filtered_query_exact',
+      filters_applied: {
+        billing_month: '2026-06-01',
+        status: 'draft',
+        partner_pharmacy_id: 'partner_pharmacy_1',
+      },
+    });
+    expect(pharmacyInvoiceFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        take: 21,
+        orderBy: [{ billing_month: 'desc' }, { created_at: 'desc' }, { id: 'desc' }],
+      }),
+    );
   });
 
   it.each([
@@ -172,6 +236,16 @@ describe('/api/pharmacy-invoices GET', () => {
     ],
     ['contract_id', 'contract_id=', { contract_id: ['契約IDを指定してください'] }],
     ['blank contract_id', 'contract_id=%20%20', { contract_id: ['契約IDを指定してください'] }],
+    [
+      'partner_pharmacy_id',
+      'partner_pharmacy_id=',
+      { partner_pharmacy_id: ['協力薬局IDを指定してください'] },
+    ],
+    [
+      'blank partner_pharmacy_id',
+      'partner_pharmacy_id=%20%20',
+      { partner_pharmacy_id: ['協力薬局IDを指定してください'] },
+    ],
   ])(
     'rejects explicitly empty %s filters before database access',
     async (_label, query, details) => {

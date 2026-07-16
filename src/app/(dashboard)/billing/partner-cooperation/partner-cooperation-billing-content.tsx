@@ -74,7 +74,7 @@ type VisitBillingCandidateRow = {
     visit_at: string;
     status: string;
     confirmed_at: string | null;
-    owner_partner_pharmacy: { name: string; status: string };
+    owner_partner_pharmacy: { id: string; name: string; status: string };
   };
   contract_version: { id: string; version_no: number; effective_from: string } | null;
 };
@@ -144,6 +144,24 @@ type PendingInvoiceTransition = {
   idempotencyKey: string;
 };
 
+const VISIT_BILLING_STATUS_OPTIONS = [
+  'candidate',
+  'confirmed',
+  'excluded',
+  'invoiced',
+  'voided',
+] as const;
+const PHARMACY_INVOICE_STATUS_OPTIONS = [
+  'draft',
+  'issued',
+  'sent',
+  'received',
+  'payment_scheduled',
+  'paid',
+  'voided',
+  'cancelled',
+] as const;
+
 const partnerCooperationSummarySchema = z.object({
   billing_month: z.string(),
   visit_record_count: z.number(),
@@ -177,7 +195,7 @@ const visitBillingCandidateRowSchema = z.object({
     visit_at: z.string(),
     status: z.string(),
     confirmed_at: z.string().nullable(),
-    owner_partner_pharmacy: z.object({ name: z.string(), status: z.string() }),
+    owner_partner_pharmacy: z.object({ id: z.string(), name: z.string(), status: z.string() }),
   }),
   contract_version: z
     .object({
@@ -252,37 +270,24 @@ const activeContractsResponseSchema = apiDataSchema(z.array(pharmacyCooperationC
 const billingCandidatesResponseSchema = z
   .object({
     data: z.array(visitBillingCandidateRowSchema),
-    meta: z.object({
-      limit: z.number().int().min(1).max(100),
-      has_more: z.boolean(),
-      next_cursor: z.string().trim().min(1).nullable(),
-    }),
-  })
-  .superRefine((value, ctx) => {
-    if (value.meta.has_more && !value.meta.next_cursor) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['meta', 'next_cursor'],
-        message: 'next_cursor is required when has_more is true',
-      });
-    }
-    if (!value.meta.has_more && value.meta.next_cursor) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['meta', 'next_cursor'],
-        message: 'next_cursor must be null when has_more is false',
-      });
-    }
-  });
-const pharmacyInvoicesResponseSchema = z
-  .object({
-    data: z.array(pharmacyInvoiceRowSchema),
     meta: z
       .object({
+        limit: z.number().int().min(1).max(100),
         has_more: z.boolean(),
         next_cursor: z.string().trim().min(1).nullable(),
+        returned_count: z.number().int().nonnegative(),
+        total_count: z.number().int().nonnegative(),
+        count_basis: z.literal('filtered_query_exact'),
+        filters_applied: z
+          .object({
+            billing_month: z.string().nullable(),
+            status: z.string().nullable(),
+            share_case_id: z.string().nullable(),
+            partner_pharmacy_id: z.string().nullable(),
+          })
+          .strict(),
       })
-      .passthrough(),
+      .strict(),
   })
   .strict()
   .superRefine((value, ctx) => {
@@ -300,6 +305,74 @@ const pharmacyInvoicesResponseSchema = z
         message: 'next_cursor must be null when has_more is false',
       });
     }
+    if (value.meta.returned_count !== value.data.length) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['meta', 'returned_count'],
+        message: 'returned_count must match data length',
+      });
+    }
+    if (value.meta.total_count < value.meta.returned_count) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['meta', 'total_count'],
+        message: 'total_count must include returned rows',
+      });
+    }
+  });
+const pharmacyInvoicesResponseSchema = z
+  .object({
+    data: z.array(pharmacyInvoiceRowSchema),
+    meta: z
+      .object({
+        limit: z.number().int().min(1).max(100),
+        has_more: z.boolean(),
+        next_cursor: z.string().trim().min(1).nullable(),
+        returned_count: z.number().int().nonnegative(),
+        total_count: z.number().int().nonnegative(),
+        count_basis: z.literal('filtered_query_exact'),
+        filters_applied: z
+          .object({
+            billing_month: z.string().nullable(),
+            status: z.string().nullable(),
+            document_kind: z.string().nullable(),
+            contract_id: z.string().nullable(),
+            partner_pharmacy_id: z.string().nullable(),
+          })
+          .strict(),
+      })
+      .strict(),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    if (value.meta.has_more && !value.meta.next_cursor) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['meta', 'next_cursor'],
+        message: 'next_cursor is required when has_more is true',
+      });
+    }
+    if (!value.meta.has_more && value.meta.next_cursor) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['meta', 'next_cursor'],
+        message: 'next_cursor must be null when has_more is false',
+      });
+    }
+    if (value.meta.returned_count !== value.data.length) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['meta', 'returned_count'],
+        message: 'returned_count must match data length',
+      });
+    }
+    if (value.meta.total_count < value.meta.returned_count) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['meta', 'total_count'],
+        message: 'total_count must include returned rows',
+      });
+    }
   });
 const pharmacyInvoiceTransitionResponseSchema = apiDataSchema(
   pharmacyInvoiceTransitionResultSchema,
@@ -307,7 +380,14 @@ const pharmacyInvoiceTransitionResponseSchema = apiDataSchema(
 
 type CursorPage<T> = {
   data: T[];
-  meta: { has_more: boolean; next_cursor: string | null };
+  meta: {
+    limit: number;
+    has_more: boolean;
+    next_cursor: string | null;
+    returned_count: number;
+    total_count: number;
+    count_basis: 'filtered_query_exact';
+  };
 };
 
 function hasRepeatedCursor(pages: readonly CursorPage<unknown>[], pageParams: readonly unknown[]) {
@@ -348,6 +428,11 @@ function collectUniqueRows<T extends { id: string }>(pages: readonly CursorPage<
     rows.push(row);
   }
   return { rows, hasDuplicateId };
+}
+
+function hasCountDrift(pages: readonly CursorPage<unknown>[]) {
+  const firstCount = pages[0]?.meta.total_count;
+  return firstCount !== undefined && pages.some((page) => page.meta.total_count !== firstCount);
 }
 
 const EMPTY_CONTRACTS: PharmacyContractRow[] = [];
@@ -427,34 +512,65 @@ async function fetchActiveContracts(orgId: string) {
   return json.data;
 }
 
-async function fetchCandidates(orgId: string, billingMonth: string, cursor?: string) {
+async function fetchCandidates(
+  orgId: string,
+  billingMonth: string,
+  filters: { status: string; partnerPharmacyId: string },
+  cursor?: string,
+) {
   const params = new URLSearchParams({ billing_month: billingMonth, limit: '20' });
+  if (filters.status) params.set('status', filters.status);
+  if (filters.partnerPharmacyId) {
+    params.set('partner_pharmacy_id', filters.partnerPharmacyId);
+  }
   if (cursor) params.set('cursor', cursor);
   const response = await fetch(`/api/visit-billing-candidates?${params.toString()}`, {
     headers: buildOrgHeaders(orgId),
   });
-  return readApiJson<{
-    data: VisitBillingCandidateRow[];
-    meta: { limit: number; has_more: boolean; next_cursor: string | null };
-  }>(response, {
+  const json = await readApiJson<z.infer<typeof billingCandidatesResponseSchema>>(response, {
     fallbackMessage: '請求候補の取得に失敗しました',
     schema: billingCandidatesResponseSchema,
   });
+  if (
+    json.meta.filters_applied.billing_month !== billingMonth ||
+    json.meta.filters_applied.status !== (filters.status || null) ||
+    json.meta.filters_applied.partner_pharmacy_id !== (filters.partnerPharmacyId || null) ||
+    json.meta.filters_applied.share_case_id !== null
+  ) {
+    throw new Error('請求候補の検索条件が応答と一致しません');
+  }
+  return json;
 }
 
-async function fetchInvoices(orgId: string, billingMonth: string, cursor?: string) {
+async function fetchInvoices(
+  orgId: string,
+  billingMonth: string,
+  filters: { status: string; partnerPharmacyId: string },
+  cursor?: string,
+) {
   const params = new URLSearchParams({ billing_month: billingMonth, limit: '20' });
+  if (filters.status) params.set('status', filters.status);
+  if (filters.partnerPharmacyId) {
+    params.set('partner_pharmacy_id', filters.partnerPharmacyId);
+  }
   if (cursor) params.set('cursor', cursor);
   const response = await fetch(`/api/pharmacy-invoices?${params.toString()}`, {
     headers: buildOrgHeaders(orgId),
   });
-  return readApiJson<{
-    data: PharmacyInvoiceRow[];
-    meta: { has_more: boolean; next_cursor: string | null };
-  }>(response, {
+  const json = await readApiJson<z.infer<typeof pharmacyInvoicesResponseSchema>>(response, {
     fallbackMessage: '月次ドキュメントの取得に失敗しました',
     schema: pharmacyInvoicesResponseSchema,
   });
+  if (
+    json.meta.filters_applied.billing_month !== billingMonth ||
+    json.meta.filters_applied.status !== (filters.status || null) ||
+    json.meta.filters_applied.partner_pharmacy_id !== (filters.partnerPharmacyId || null) ||
+    json.meta.filters_applied.document_kind !== null ||
+    json.meta.filters_applied.contract_id !== null
+  ) {
+    throw new Error('月次ドキュメントの検索条件が応答と一致しません');
+  }
+  return json;
 }
 
 async function patchInvoiceStatus(
@@ -564,6 +680,60 @@ function ContractSelector({
       </select>
     </label>
   );
+}
+
+function ListFilterSelect({
+  label,
+  value,
+  allLabel,
+  options,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  allLabel: string;
+  options: ReadonlyArray<{ value: string; label: string }>;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label className="grid gap-1.5 text-sm font-medium text-foreground">
+      {label}
+      <select
+        className="min-h-[44px] rounded-lg border border-input bg-background px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 sm:h-8 sm:min-h-0"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        aria-label={label}
+      >
+        <option value="">{allLabel}</option>
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+function collectPartnerPharmacyOptions(
+  contracts: readonly PharmacyContractRow[],
+  candidates: readonly VisitBillingCandidateRow[],
+  invoices: readonly PharmacyInvoiceRow[],
+) {
+  const byId = new Map<string, string>();
+  for (const contract of contracts) {
+    const pharmacy = contract.partnership.partner_pharmacy;
+    if (!byId.has(pharmacy.id)) byId.set(pharmacy.id, pharmacy.name);
+  }
+  for (const candidate of candidates) {
+    const pharmacy = candidate.partner_visit_record.owner_partner_pharmacy;
+    if (!byId.has(pharmacy.id)) byId.set(pharmacy.id, pharmacy.name);
+  }
+  for (const invoice of invoices) {
+    const pharmacy = invoice.partnership.partner_pharmacy;
+    if (!byId.has(pharmacy.id)) byId.set(pharmacy.id, pharmacy.name);
+  }
+  return [...byId].map(([value, label]) => ({ value, label }));
 }
 
 function CandidateTable({
@@ -699,18 +869,18 @@ function CandidateTable({
       }
       toolbar={{
         enableGlobalFilter: true,
-        globalFilterPlaceholder: '請求候補内検索',
+        globalFilterPlaceholder: '読込済み請求候補内検索',
         enableColumnVisibility: true,
         filterFields: [
           {
             columnId: 'partner_pharmacy',
             label: '協力薬局',
-            placeholder: '協力薬局で絞り込み',
+            placeholder: '読込済み範囲を協力薬局で絞り込み',
           },
           {
             columnId: 'status',
             label: '状態',
-            placeholder: '状態で絞り込み',
+            placeholder: '読込済み範囲を状態で絞り込み',
           },
         ],
       }}
@@ -1053,18 +1223,18 @@ function InvoiceHistoryTable({
       }
       toolbar={{
         enableGlobalFilter: true,
-        globalFilterPlaceholder: '月次ドキュメント内検索',
+        globalFilterPlaceholder: '読込済み月次ドキュメント内検索',
         enableColumnVisibility: true,
         filterFields: [
           {
             columnId: 'partner_pharmacy',
             label: '協力薬局',
-            placeholder: '協力薬局で絞り込み',
+            placeholder: '読込済み範囲を協力薬局で絞り込み',
           },
           {
             columnId: 'status',
             label: '状態',
-            placeholder: '状態で絞り込み',
+            placeholder: '読込済み範囲を状態で絞り込み',
           },
         ],
       }}
@@ -1077,6 +1247,9 @@ export function PartnerCooperationBillingContent() {
   const queryClient = useQueryClient();
   const [monthInput, setMonthInput] = useState(currentMonthInputValue);
   const [selectedContractId, setSelectedContractId] = useState('');
+  const [partnerPharmacyFilter, setPartnerPharmacyFilter] = useState('');
+  const [candidateStatusFilter, setCandidateStatusFilter] = useState('');
+  const [invoiceStatusFilter, setInvoiceStatusFilter] = useState('');
   const [lastDraft, setLastDraft] = useState<InvoiceDraftResult | null>(null);
   const [scheduledDates, setScheduledDates] = useState<Record<string, string>>({});
   const [pendingInvoiceTransition, setPendingInvoiceTransition] =
@@ -1103,9 +1276,30 @@ export function PartnerCooperationBillingContent() {
     staleTime: 60_000,
   });
 
+  const candidateQueryKey = [
+    'partner-cooperation-candidates',
+    orgId,
+    billingMonth,
+    candidateStatusFilter,
+    partnerPharmacyFilter,
+  ] as const;
+  const invoiceQueryKey = [
+    'partner-cooperation-invoices',
+    orgId,
+    billingMonth,
+    invoiceStatusFilter,
+    partnerPharmacyFilter,
+  ] as const;
+
   const candidatesQuery = useInfiniteQuery({
-    queryKey: ['partner-cooperation-candidates', orgId, billingMonth],
-    queryFn: ({ pageParam }) => fetchCandidates(orgId, billingMonth, pageParam),
+    queryKey: candidateQueryKey,
+    queryFn: ({ pageParam }) =>
+      fetchCandidates(
+        orgId,
+        billingMonth,
+        { status: candidateStatusFilter, partnerPharmacyId: partnerPharmacyFilter },
+        pageParam,
+      ),
     getNextPageParam: (lastPage, allPages, lastPageParam, allPageParams) =>
       getNextCursor(
         lastPage,
@@ -1120,8 +1314,14 @@ export function PartnerCooperationBillingContent() {
   });
 
   const invoicesQuery = useInfiniteQuery({
-    queryKey: ['partner-cooperation-invoices', orgId, billingMonth],
-    queryFn: ({ pageParam }) => fetchInvoices(orgId, billingMonth, pageParam),
+    queryKey: invoiceQueryKey,
+    queryFn: ({ pageParam }) =>
+      fetchInvoices(
+        orgId,
+        billingMonth,
+        { status: invoiceStatusFilter, partnerPharmacyId: partnerPharmacyFilter },
+        pageParam,
+      ),
     getNextPageParam: (lastPage, allPages, lastPageParam, allPageParams) =>
       getNextCursor(
         lastPage,
@@ -1149,11 +1349,26 @@ export function PartnerCooperationBillingContent() {
   );
   const candidateInitialError = candidatesQuery.isError && candidates.length === 0;
   const invoiceInitialError = invoicesQuery.isError && invoices.length === 0;
+  const candidateCountDrift = hasCountDrift(candidatesQuery.data?.pages ?? []);
+  const invoiceCountDrift = hasCountDrift(invoicesQuery.data?.pages ?? []);
+  const candidateTotalCount = candidatesQuery.data?.pages[0]?.meta.total_count ?? 0;
+  const invoiceTotalCount = invoicesQuery.data?.pages[0]?.meta.total_count ?? 0;
+  const candidateCountMismatch =
+    !candidatesQuery.hasNextPage && candidates.length !== candidateTotalCount;
+  const invoiceCountMismatch = !invoicesQuery.hasNextPage && invoices.length !== invoiceTotalCount;
 
   const contracts = contractsQuery.data ?? EMPTY_CONTRACTS;
   const selectedContract =
     contracts.find((contract) => contract.id === selectedContractId) ?? contracts[0] ?? null;
   const effectiveContractId = selectedContract?.id ?? '';
+  const partnerPharmacyOptions = collectPartnerPharmacyOptions(contracts, candidates, invoices);
+
+  const restartCandidates = async () => {
+    await queryClient.resetQueries({ queryKey: candidateQueryKey, exact: true });
+  };
+  const restartInvoices = async () => {
+    await queryClient.resetQueries({ queryKey: invoiceQueryKey, exact: true });
+  };
 
   const invalidateMonth = async () => {
     await Promise.all([
@@ -1280,6 +1495,9 @@ export function PartnerCooperationBillingContent() {
         className="rounded-lg border border-border/70 bg-card p-4"
         aria-labelledby="partner-cooperation-controls-heading"
       >
+        <h2 id="partner-cooperation-controls-heading" className="sr-only">
+          月次請求操作と一覧フィルター
+        </h2>
         <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
           <div className="grid gap-3 sm:grid-cols-2 xl:min-w-[36rem]">
             <label className="grid gap-1.5 text-sm font-medium text-foreground">
@@ -1370,6 +1588,41 @@ export function PartnerCooperationBillingContent() {
             <span>有効な薬局間契約を作成すると、請求書と無償実績報告書を生成できます。</span>
           )}
         </div>
+        <div className="mt-4 border-t border-border/70 pt-4">
+          <p className="mb-3 text-sm font-semibold text-foreground">一覧のサーバー検索条件</p>
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            <ListFilterSelect
+              label="一覧の協力薬局"
+              value={partnerPharmacyFilter}
+              allLabel="すべての協力薬局"
+              options={partnerPharmacyOptions}
+              onChange={setPartnerPharmacyFilter}
+            />
+            <ListFilterSelect
+              label="請求候補の状態"
+              value={candidateStatusFilter}
+              allLabel="すべての候補状態"
+              options={VISIT_BILLING_STATUS_OPTIONS.map((status) => ({
+                value: status,
+                label: statusLabel(status),
+              }))}
+              onChange={setCandidateStatusFilter}
+            />
+            <ListFilterSelect
+              label="月次出力の状態"
+              value={invoiceStatusFilter}
+              allLabel="すべての出力状態"
+              options={PHARMACY_INVOICE_STATUS_OPTIONS.map((status) => ({
+                value: status,
+                label: statusLabel(status),
+              }))}
+              onChange={setInvoiceStatusFilter}
+            />
+          </div>
+          <p className="mt-2 text-xs text-muted-foreground">
+            ここで指定した条件は全件数と追加読込へ適用されます。表内検索は読込済み範囲だけが対象です。
+          </p>
+        </div>
       </section>
 
       <DraftResultPanel draft={lastDraft} />
@@ -1427,7 +1680,7 @@ export function PartnerCooperationBillingContent() {
             type="button"
             variant="outline"
             size="sm"
-            onClick={() => void candidatesQuery.refetch()}
+            onClick={() => void restartCandidates()}
           >
             <RefreshCw className="size-4" aria-hidden="true" />
             更新
@@ -1441,15 +1694,17 @@ export function PartnerCooperationBillingContent() {
             title="薬局間協力の請求候補を表示できません"
             description="候補一覧の取得に失敗しました。再試行してください。"
             detail={safeErrorDetail()}
-            onRetry={() => void candidatesQuery.refetch()}
+            onRetry={() => void restartCandidates()}
           />
         ) : (
           <div className="space-y-4">
             <p role="status" aria-live="polite" className="text-sm text-muted-foreground">
-              {candidates.length}件の請求候補を読み込み済みです。
+              請求候補を {candidates.length} / 全 {candidateTotalCount} 件読み込み済みです。
               {candidatesQuery.hasNextPage ||
               candidateCursorCycle ||
               candidateCollection.hasDuplicateId ||
+              candidateCountDrift ||
+              candidateCountMismatch ||
               candidatesQuery.isError
                 ? '未読込または要確認の候補があります。'
                 : '対象月の候補一覧は確認済みです。'}
@@ -1460,7 +1715,9 @@ export function PartnerCooperationBillingContent() {
                 !candidatesQuery.hasNextPage &&
                 !candidateCursorCycle &&
                 !candidatesQuery.isError &&
-                !candidateCollection.hasDuplicateId
+                !candidateCollection.hasDuplicateId &&
+                !candidateCountDrift &&
+                !candidateCountMismatch
               }
             />
             {candidatesQuery.isFetchNextPageError ? (
@@ -1478,7 +1735,7 @@ export function PartnerCooperationBillingContent() {
                 size="inline"
                 title="続きの読み込み位置が重複しました"
                 description="読み込み済みの候補は保持しています。候補一覧を再読み込みしてください。"
-                onRetry={() => void candidatesQuery.refetch()}
+                onRetry={() => void restartCandidates()}
                 retryLabel="再読み込み"
               />
             ) : candidateCollection.hasDuplicateId ? (
@@ -1487,13 +1744,24 @@ export function PartnerCooperationBillingContent() {
                 size="inline"
                 title="請求候補の重複を検出しました"
                 description="重複行は表示していません。候補一覧を再読み込みしてください。"
-                onRetry={() => void candidatesQuery.refetch()}
+                onRetry={() => void restartCandidates()}
+                retryLabel="再読み込み"
+              />
+            ) : candidateCountDrift || candidateCountMismatch ? (
+              <ErrorState
+                variant="server"
+                size="inline"
+                title="請求候補の全件数と読込結果が一致しません"
+                description="一覧が更新された可能性があります。先頭から再読み込みしてください。"
+                onRetry={() => void restartCandidates()}
                 retryLabel="再読み込み"
               />
             ) : null}
             {candidatesQuery.hasNextPage &&
             !candidateCursorCycle &&
             !candidateCollection.hasDuplicateId &&
+            !candidateCountDrift &&
+            !candidateCountMismatch &&
             !candidatesQuery.isFetchNextPageError ? (
               <div className="flex justify-center">
                 <Button
@@ -1525,12 +1793,7 @@ export function PartnerCooperationBillingContent() {
               対象月の請求書と無償実績報告書を確認します。
             </p>
           </div>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => void invoicesQuery.refetch()}
-          >
+          <Button type="button" variant="outline" size="sm" onClick={() => void restartInvoices()}>
             <RefreshCw className="size-4" aria-hidden="true" />
             更新
           </Button>
@@ -1543,15 +1806,17 @@ export function PartnerCooperationBillingContent() {
             title="薬局間月次ドキュメントを表示できません"
             description="出力履歴の取得に失敗しました。再試行してください。"
             detail={safeErrorDetail()}
-            onRetry={() => void invoicesQuery.refetch()}
+            onRetry={() => void restartInvoices()}
           />
         ) : (
           <div className="space-y-4">
             <p role="status" aria-live="polite" className="text-sm text-muted-foreground">
-              {invoices.length}件の月次ドキュメントを読み込み済みです。
+              月次ドキュメントを {invoices.length} / 全 {invoiceTotalCount} 件読み込み済みです。
               {invoicesQuery.hasNextPage ||
               invoiceCursorCycle ||
               invoiceCollection.hasDuplicateId ||
+              invoiceCountDrift ||
+              invoiceCountMismatch ||
               invoicesQuery.isError
                 ? '未読込または要確認のドキュメントがあります。'
                 : '対象月の出力履歴は確認済みです。'}
@@ -1562,7 +1827,9 @@ export function PartnerCooperationBillingContent() {
                 !invoicesQuery.hasNextPage &&
                 !invoiceCursorCycle &&
                 !invoicesQuery.isError &&
-                !invoiceCollection.hasDuplicateId
+                !invoiceCollection.hasDuplicateId &&
+                !invoiceCountDrift &&
+                !invoiceCountMismatch
               }
               scheduledDates={scheduledDates}
               onScheduledDateChange={(invoiceId, value) =>
@@ -1600,7 +1867,7 @@ export function PartnerCooperationBillingContent() {
                 size="inline"
                 title="続きの読み込み位置が重複しました"
                 description="読み込み済みのドキュメントは保持しています。出力履歴を再読み込みしてください。"
-                onRetry={() => void invoicesQuery.refetch()}
+                onRetry={() => void restartInvoices()}
                 retryLabel="再読み込み"
               />
             ) : invoiceCollection.hasDuplicateId ? (
@@ -1609,13 +1876,24 @@ export function PartnerCooperationBillingContent() {
                 size="inline"
                 title="月次ドキュメントの重複を検出しました"
                 description="重複行は表示していません。出力履歴を再読み込みしてください。"
-                onRetry={() => void invoicesQuery.refetch()}
+                onRetry={() => void restartInvoices()}
+                retryLabel="再読み込み"
+              />
+            ) : invoiceCountDrift || invoiceCountMismatch ? (
+              <ErrorState
+                variant="server"
+                size="inline"
+                title="月次ドキュメントの全件数と読込結果が一致しません"
+                description="一覧が更新された可能性があります。先頭から再読み込みしてください。"
+                onRetry={() => void restartInvoices()}
                 retryLabel="再読み込み"
               />
             ) : null}
             {invoicesQuery.hasNextPage &&
             !invoiceCursorCycle &&
             !invoiceCollection.hasDuplicateId &&
+            !invoiceCountDrift &&
+            !invoiceCountMismatch &&
             !invoicesQuery.isFetchNextPageError ? (
               <div className="flex justify-center">
                 <Button

@@ -1,4 +1,4 @@
-import type { VisitBillingStatus } from '@prisma/client';
+import { Prisma, type VisitBillingStatus } from '@prisma/client';
 import { unstable_rethrow } from 'next/navigation';
 import { withAuthContext } from '@/lib/auth/context';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
@@ -184,23 +184,26 @@ const authenticatedGET = withAuthContext(
     const shareCaseId = shareCaseIdResult.value;
     const partnerPharmacyId = partnerPharmacyIdResult.value;
 
-    const rows = await withOrgContext(
+    const where = {
+      org_id: ctx.orgId,
+      ...(billingMonth ? { billing_month: billingMonth.start } : {}),
+      ...(statusResult.status ? { billing_status: statusResult.status } : {}),
+      ...(shareCaseId || partnerPharmacyId
+        ? {
+            partner_visit_record: {
+              ...(shareCaseId ? { share_case_id: shareCaseId } : {}),
+              ...(partnerPharmacyId ? { owner_partner_pharmacy_id: partnerPharmacyId } : {}),
+            },
+          }
+        : {}),
+    } satisfies Prisma.VisitBillingCandidateWhereInput;
+
+    const { rows, totalCount } = await withOrgContext(
       ctx.orgId,
-      (tx) =>
-        tx.visitBillingCandidate.findMany({
-          where: {
-            org_id: ctx.orgId,
-            ...(billingMonth ? { billing_month: billingMonth.start } : {}),
-            ...(statusResult.status ? { billing_status: statusResult.status } : {}),
-            ...(shareCaseId || partnerPharmacyId
-              ? {
-                  partner_visit_record: {
-                    ...(shareCaseId ? { share_case_id: shareCaseId } : {}),
-                    ...(partnerPharmacyId ? { owner_partner_pharmacy_id: partnerPharmacyId } : {}),
-                  },
-                }
-              : {}),
-          },
+      async (tx) => {
+        const totalCount = await tx.visitBillingCandidate.count({ where });
+        const rows = await tx.visitBillingCandidate.findMany({
+          where,
           take: limit + 1,
           ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
           orderBy: [{ billing_month: 'desc' }, { created_at: 'desc' }, { id: 'desc' }],
@@ -218,8 +221,13 @@ const authenticatedGET = withAuthContext(
             },
             contract_version: { select: { id: true, version_no: true, effective_from: true } },
           },
-        }),
-      { requestContext: ctx },
+        });
+        return { rows, totalCount };
+      },
+      {
+        requestContext: ctx,
+        isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead,
+      },
     );
 
     const page = buildCursorPage(rows, limit, (row) => row.id);
@@ -230,6 +238,15 @@ const authenticatedGET = withAuthContext(
           limit,
           has_more: page.hasMore,
           next_cursor: page.nextCursor ?? null,
+          returned_count: page.data.length,
+          total_count: totalCount,
+          count_basis: 'filtered_query_exact',
+          filters_applied: {
+            billing_month: billingMonth?.canonical ?? null,
+            status: statusResult.status ?? null,
+            share_case_id: shareCaseId ?? null,
+            partner_pharmacy_id: partnerPharmacyId ?? null,
+          },
         },
       }),
     );

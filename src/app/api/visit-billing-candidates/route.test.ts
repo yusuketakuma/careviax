@@ -5,6 +5,7 @@ const {
   withOrgContextMock,
   partnerVisitRecordFindManyMock,
   pharmacyContractVersionFindFirstMock,
+  visitBillingCandidateCountMock,
   visitBillingCandidateFindManyMock,
   visitBillingCandidateFindUniqueMock,
   visitBillingCandidateCreateMock,
@@ -15,6 +16,7 @@ const {
   withOrgContextMock: vi.fn(),
   partnerVisitRecordFindManyMock: vi.fn(),
   pharmacyContractVersionFindFirstMock: vi.fn(),
+  visitBillingCandidateCountMock: vi.fn(),
   visitBillingCandidateFindManyMock: vi.fn(),
   visitBillingCandidateFindUniqueMock: vi.fn(),
   visitBillingCandidateCreateMock: vi.fn(),
@@ -90,13 +92,48 @@ function confirmedPartnerRecord(overrides: Partial<Record<string, unknown>> = {}
   };
 }
 
+function listedCandidate(id: string) {
+  return {
+    id,
+    billing_month: new Date('2026-06-01T00:00:00.000Z'),
+    billing_status: 'candidate',
+    is_billable: true,
+    exclusion_reason: null,
+    amount_snapshot: {
+      billing_model: 'fixed_per_visit',
+      amount: 5500,
+      tax_category: 'taxable',
+      tax_rate_bp: 1000,
+      blockers: [],
+    },
+    created_at: new Date('2026-06-20T00:00:00.000Z'),
+    updated_at: new Date('2026-06-20T00:00:00.000Z'),
+    partner_visit_record: {
+      id: `visit_${id}`,
+      share_case_id: 'share_case_1',
+      owner_partner_pharmacy_id: 'partner_pharmacy_1',
+      visit_at: new Date('2026-06-18T00:00:00.000Z'),
+      status: 'confirmed',
+      confirmed_at: new Date('2026-06-18T01:00:00.000Z'),
+      owner_partner_pharmacy: {
+        id: 'partner_pharmacy_1',
+        name: '協力薬局',
+        status: 'active',
+      },
+    },
+    contract_version: null,
+  };
+}
+
 describe('/api/visit-billing-candidates GET', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    visitBillingCandidateCountMock.mockResolvedValue(0);
     visitBillingCandidateFindManyMock.mockResolvedValue([]);
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
         visitBillingCandidate: {
+          count: visitBillingCandidateCountMock,
           findMany: visitBillingCandidateFindManyMock,
         },
       }),
@@ -114,8 +151,53 @@ describe('/api/visit-billing-candidates GET', () => {
         limit: 20,
         has_more: false,
         next_cursor: null,
+        returned_count: 0,
+        total_count: 0,
+        count_basis: 'filtered_query_exact',
+        filters_applied: {
+          billing_month: null,
+          status: null,
+          share_case_id: null,
+          partner_pharmacy_id: null,
+        },
       },
     });
+  });
+
+  it('returns 20 of 21 filtered rows with an exact total and stable id cursor', async () => {
+    visitBillingCandidateCountMock.mockResolvedValueOnce(21);
+    visitBillingCandidateFindManyMock.mockResolvedValueOnce(
+      Array.from({ length: 21 }, (_, index) => listedCandidate(`candidate_${21 - index}`)),
+    );
+
+    const response = await GET(
+      createGetRequest(
+        '?billing_month=2026-06-01&status=candidate&partner_pharmacy_id=partner_pharmacy_1&limit=20',
+      ),
+    );
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.data).toHaveLength(20);
+    expect(body.meta).toMatchObject({
+      limit: 20,
+      has_more: true,
+      next_cursor: 'candidate_2',
+      returned_count: 20,
+      total_count: 21,
+      count_basis: 'filtered_query_exact',
+      filters_applied: {
+        billing_month: '2026-06-01',
+        status: 'candidate',
+        partner_pharmacy_id: 'partner_pharmacy_1',
+      },
+    });
+    expect(visitBillingCandidateFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        take: 21,
+        orderBy: [{ billing_month: 'desc' }, { created_at: 'desc' }, { id: 'desc' }],
+      }),
+    );
   });
 
   it.each([
@@ -176,9 +258,13 @@ describe('/api/visit-billing-candidates GET', () => {
 
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
-    expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
-      requestContext: expect.objectContaining({ orgId: 'org_1', userId: 'user_1' }),
-    });
+    expect(withOrgContextMock).toHaveBeenCalledWith(
+      'org_1',
+      expect.any(Function),
+      expect.objectContaining({
+        requestContext: expect.objectContaining({ orgId: 'org_1', userId: 'user_1' }),
+      }),
+    );
     expect(visitBillingCandidateFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
@@ -189,6 +275,20 @@ describe('/api/visit-billing-candidates GET', () => {
         }),
       }),
     );
+    expect(visitBillingCandidateCountMock).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        org_id: 'org_1',
+        billing_month: new Date('2026-06-01T00:00:00.000Z'),
+        partner_visit_record: {
+          share_case_id: 'share_case_1',
+          owner_partner_pharmacy_id: 'partner_pharmacy_1',
+        },
+      }),
+    });
+    expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
+      requestContext: expect.objectContaining({ orgId: 'org_1', userId: 'user_1' }),
+      isolationLevel: 'RepeatableRead',
+    });
   });
 
   it('returns a sanitized no-store 500 when listing fails unexpectedly', async () => {

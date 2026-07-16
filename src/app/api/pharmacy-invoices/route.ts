@@ -127,49 +127,70 @@ export const GET = withAuthContext(
     );
     if (!contractIdResult.ok) return contractIdResult.response;
     const contractId = contractIdResult.value;
-    const rows = await withOrgContext(ctx.orgId, (tx) =>
-      tx.pharmacyInvoice.findMany({
-        where: {
-          org_id: ctx.orgId,
-          ...(status ? { status: status.data } : {}),
-          ...(documentKind ? { document_kind: documentKind.data } : {}),
-          ...(billingMonth ? { billing_month: billingMonth.start } : {}),
-          ...(contractId ? { contract_id: contractId } : {}),
-        },
-        take: limit + 1,
-        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-        orderBy: [{ billing_month: 'desc' }, { created_at: 'desc' }, { id: 'desc' }],
-        select: {
-          id: true,
-          contract_id: true,
-          document_kind: true,
-          invoice_no: true,
-          billing_month: true,
-          subtotal: true,
-          tax_amount: true,
-          total: true,
-          status: true,
-          issued_at: true,
-          sent_at: true,
-          received_at: true,
-          payment_scheduled_for: true,
-          paid_at: true,
-          version: true,
-          created_at: true,
-          updated_at: true,
-          _count: { select: { items: true } },
-          contract: {
-            select: {
-              partnership: {
-                select: {
-                  base_site: { select: { id: true, name: true } },
-                  partner_pharmacy: { select: { id: true, name: true, status: true } },
+    const partnerPharmacyIdResult = readPresentOptionalSearchParam(
+      searchParams,
+      'partner_pharmacy_id',
+      '協力薬局IDを指定してください',
+    );
+    if (!partnerPharmacyIdResult.ok) return partnerPharmacyIdResult.response;
+    const partnerPharmacyId = partnerPharmacyIdResult.value;
+    const where = {
+      org_id: ctx.orgId,
+      ...(status ? { status: status.data } : {}),
+      ...(documentKind ? { document_kind: documentKind.data } : {}),
+      ...(billingMonth ? { billing_month: billingMonth.start } : {}),
+      ...(contractId ? { contract_id: contractId } : {}),
+      ...(partnerPharmacyId
+        ? { contract: { partnership: { partner_pharmacy_id: partnerPharmacyId } } }
+        : {}),
+    } satisfies Prisma.PharmacyInvoiceWhereInput;
+
+    const { rows, totalCount } = await withOrgContext(
+      ctx.orgId,
+      async (tx) => {
+        const totalCount = await tx.pharmacyInvoice.count({ where });
+        const rows = await tx.pharmacyInvoice.findMany({
+          where,
+          take: limit + 1,
+          ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+          orderBy: [{ billing_month: 'desc' }, { created_at: 'desc' }, { id: 'desc' }],
+          select: {
+            id: true,
+            contract_id: true,
+            document_kind: true,
+            invoice_no: true,
+            billing_month: true,
+            subtotal: true,
+            tax_amount: true,
+            total: true,
+            status: true,
+            issued_at: true,
+            sent_at: true,
+            received_at: true,
+            payment_scheduled_for: true,
+            paid_at: true,
+            version: true,
+            created_at: true,
+            updated_at: true,
+            _count: { select: { items: true } },
+            contract: {
+              select: {
+                partnership: {
+                  select: {
+                    base_site: { select: { id: true, name: true } },
+                    partner_pharmacy: { select: { id: true, name: true, status: true } },
+                  },
                 },
               },
             },
           },
-        },
-      }),
+        });
+        return { rows, totalCount };
+      },
+      {
+        requestContext: ctx,
+        isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead,
+      },
     );
 
     const page = buildCursorPage(rows, limit, (row) => row.id);
@@ -197,8 +218,19 @@ export const GET = withAuthContext(
           partnership: row.contract.partnership,
         })),
         meta: {
+          limit,
           has_more: page.hasMore,
           next_cursor: page.nextCursor ?? null,
+          returned_count: page.data.length,
+          total_count: totalCount,
+          count_basis: 'filtered_query_exact',
+          filters_applied: {
+            billing_month: billingMonth?.canonical ?? null,
+            status: status?.data ?? null,
+            document_kind: documentKind?.data ?? null,
+            contract_id: contractId ?? null,
+            partner_pharmacy_id: partnerPharmacyId ?? null,
+          },
         },
       }),
     );

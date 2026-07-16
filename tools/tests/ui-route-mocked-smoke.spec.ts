@@ -1320,7 +1320,11 @@ function buildPharmacyCoopBillingCandidate(created: boolean) {
       visit_at: '2026-06-20T01:45:00.000Z',
       status: 'confirmed',
       confirmed_at: '2026-06-20T03:00:00.000Z',
-      owner_partner_pharmacy: { name: 'RouteMock協力薬局', status: 'active' },
+      owner_partner_pharmacy: {
+        id: PHARMACY_COOP_PARTNER_PHARMACY_ID,
+        name: 'RouteMock協力薬局',
+        status: 'active',
+      },
     },
     contract_version: {
       id: PHARMACY_COOP_CONTRACT_VERSION_ID,
@@ -1348,6 +1352,7 @@ function buildPharmacyCoopInvoice(created: boolean) {
     received_at: null,
     payment_scheduled_for: null,
     paid_at: null,
+    version: 1,
     item_count: 1,
     partnership: {
       base_site: { id: 'pharmacy_coop_route_site', name: 'RouteMock基幹薬局' },
@@ -1793,9 +1798,24 @@ async function installPharmacyCooperationRouteMocks(page: Page) {
     }
 
     const candidate = buildPharmacyCoopBillingCandidate(state.billingCandidateGenerated);
+    const searchParams = new URL(request.url).searchParams;
+    const data = candidate ? [candidate] : [];
     await fulfillJson(route, {
-      data: candidate ? [candidate] : [],
-      meta: { limit: 20, has_more: false, next_cursor: null },
+      data,
+      meta: {
+        limit: 20,
+        has_more: false,
+        next_cursor: null,
+        returned_count: data.length,
+        total_count: data.length,
+        count_basis: 'filtered_query_exact',
+        filters_applied: {
+          billing_month: searchParams.get('billing_month'),
+          status: searchParams.get('status'),
+          share_case_id: searchParams.get('share_case_id'),
+          partner_pharmacy_id: searchParams.get('partner_pharmacy_id'),
+        },
+      },
     });
   });
 
@@ -1828,9 +1848,25 @@ async function installPharmacyCooperationRouteMocks(page: Page) {
     }
 
     const invoice = buildPharmacyCoopInvoice(state.invoiceCreated);
+    const searchParams = new URL(request.url).searchParams;
+    const data = invoice ? [invoice] : [];
     await fulfillJson(route, {
-      data: invoice ? [invoice] : [],
-      meta: { has_more: false, next_cursor: null },
+      data,
+      meta: {
+        limit: 20,
+        has_more: false,
+        next_cursor: null,
+        returned_count: data.length,
+        total_count: data.length,
+        count_basis: 'filtered_query_exact',
+        filters_applied: {
+          billing_month: searchParams.get('billing_month'),
+          status: searchParams.get('status'),
+          document_kind: searchParams.get('document_kind'),
+          contract_id: searchParams.get('contract_id'),
+          partner_pharmacy_id: searchParams.get('partner_pharmacy_id'),
+        },
+      },
     });
   });
 
@@ -3573,6 +3609,72 @@ test.describe('pharmacy cooperation route-mocked browser workflow smoke', () => 
     await attachLocalSession(context);
   });
 
+  test('keeps partner billing server filters, exact counts, and loaded-scope search accessible', async ({
+    context,
+  }, testInfo) => {
+    test.skip(testInfo.project.name !== 'chromium');
+
+    const { page, errors } = await createInstrumentedPage(context);
+    const requests = await installPharmacyCooperationRouteMocks(page);
+
+    await openStableRoute(page, '/billing/partner-cooperation');
+    await page.getByLabel('対象月').fill('2026-06');
+    await expect(page.getByTestId('partner-cooperation-billing')).toBeVisible({
+      timeout: 30_000,
+    });
+
+    await page.getByRole('button', { name: /候補を生成/ }).click();
+    await expect
+      .poll(
+        () => requests.billingCandidates.filter((request) => request.method === 'POST').length,
+        { message: 'billing page should generate one candidate batch' },
+      )
+      .toBe(1);
+    await expect(page.getByText('請求候補を 1 / 全 1 件読み込み済みです。')).toBeVisible();
+    await expect(page.getByLabel('読込済み請求候補内検索')).toBeVisible();
+
+    await page.getByRole('button', { name: /請求書ドラフト/ }).click();
+    await expect
+      .poll(() => requests.pharmacyInvoices.filter((request) => request.method === 'POST').length, {
+        message: 'billing page should create one invoice draft',
+      })
+      .toBe(1);
+    await expect(page.getByLabel('読込済み月次ドキュメント内検索')).toBeVisible();
+
+    await page.getByLabel('一覧の協力薬局').selectOption(PHARMACY_COOP_PARTNER_PHARMACY_ID);
+    await page.getByLabel('請求候補の状態').selectOption('candidate');
+    await expect
+      .poll(
+        () =>
+          requests.billingCandidates.some((request) => {
+            if (request.method !== 'GET') return false;
+            const searchParams = new URL(request.url).searchParams;
+            return (
+              searchParams.get('billing_month') === PHARMACY_COOP_BILLING_MONTH &&
+              searchParams.get('partner_pharmacy_id') === PHARMACY_COOP_PARTNER_PHARMACY_ID &&
+              searchParams.get('status') === 'candidate' &&
+              !searchParams.has('cursor')
+            );
+          }),
+        { message: 'provider/status changes should start a filtered cursor chain at page one' },
+      )
+      .toBe(true);
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    const overflowWidth = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    );
+    expect(overflowWidth).toBeLessThanOrEqual(1);
+    const axeResults = await new AxeBuilder({ page })
+      .include('[data-testid="partner-cooperation-billing"]')
+      .analyze();
+    const severeViolations = axeResults.violations.filter((violation) =>
+      ['critical', 'serious'].includes(violation.impact ?? ''),
+    );
+    expect(summarizeAxeViolations(severeViolations)).toEqual([]);
+    expect(errors).toEqual([]);
+  });
+
   test('proves share consent, link activation, visit, billing, and report draft flow', async ({
     context,
   }, testInfo) => {
@@ -3892,8 +3994,8 @@ test.describe('pharmacy cooperation route-mocked browser workflow smoke', () => 
     const billingCandidatesTable = page.getByRole('table', {
       name: '薬局間協力請求候補一覧',
     });
-    await expect(page.getByLabel('請求候補内検索')).toBeVisible();
-    await page.getByLabel('請求候補内検索').fill('RouteMock協力薬局');
+    await expect(page.getByLabel('読込済み請求候補内検索')).toBeVisible();
+    await page.getByLabel('読込済み請求候補内検索').fill('RouteMock協力薬局');
     const billingCandidateRow = billingCandidatesTable
       .getByRole('row')
       .filter({ hasText: 'RouteMock協力薬局' })
@@ -3902,7 +4004,7 @@ test.describe('pharmacy cooperation route-mocked browser workflow smoke', () => 
       timeout: 10_000,
     });
     await expect(billingCandidateRow.getByText('有償/加算')).toBeVisible();
-    await page.getByLabel('請求候補内検索').clear();
+    await page.getByLabel('読込済み請求候補内検索').clear();
     await page.getByRole('button', { name: /請求書ドラフト/ }).click();
     await expect
       .poll(
@@ -3926,8 +4028,8 @@ test.describe('pharmacy cooperation route-mocked browser workflow smoke', () => 
       'href',
       `/api/pharmacy-invoices/${PHARMACY_COOP_INVOICE_ID}/pdf?purpose=partner_cooperation_monthly_pdf`,
     );
-    await expect(page.getByLabel('月次ドキュメント内検索')).toBeVisible();
-    await page.getByLabel('月次ドキュメント内検索').fill('RM-COOP-001');
+    await expect(page.getByLabel('読込済み月次ドキュメント内検索')).toBeVisible();
+    await page.getByLabel('読込済み月次ドキュメント内検索').fill('RM-COOP-001');
     await expect(
       page
         .getByRole('table', { name: '薬局間月次ドキュメント一覧' })
