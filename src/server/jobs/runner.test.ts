@@ -274,7 +274,20 @@ describe('runJob', () => {
 
     expect(fn).not.toHaveBeenCalled();
     expect(result).toEqual({ processedCount: 0, skipped: true });
-    expect(integrationJobCreateMock).not.toHaveBeenCalled();
+    expect(systemIntegrationJobCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        job_type: 'test_job',
+        dedupe_key: null,
+        status: 'skipped',
+        output: {
+          processedCount: 0,
+          skipped: true,
+          reasonCode: 'job_duplicate_running',
+        },
+        max_retries: 0,
+        locked_at: null,
+      }),
+    });
     expect(loggerWarnMock).toHaveBeenCalledWith(
       expect.objectContaining({
         event: 'job.duplicate_running_skipped',
@@ -303,7 +316,14 @@ describe('runJob', () => {
     await Promise.resolve();
     expect(firstFn).toHaveBeenCalledTimes(1);
     expect(secondFn).not.toHaveBeenCalled();
-    expect(integrationJobCreateMock).toHaveBeenCalledTimes(1);
+    expect(integrationJobCreateMock).toHaveBeenCalledTimes(2);
+    expect(integrationJobCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        org_id: 'org_1',
+        status: 'skipped',
+        output: expect.objectContaining({ reasonCode: 'job_duplicate_in_process' }),
+      }),
+    });
     expect(loggerWarnMock).toHaveBeenCalledWith(
       expect.objectContaining({
         event: 'job.duplicate_in_process_skipped',

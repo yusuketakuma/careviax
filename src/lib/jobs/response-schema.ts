@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 const JOB_TYPES = z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/u);
-const JOB_STATUS = z.enum(['pending', 'running', 'completed', 'partial', 'failed']);
+const JOB_STATUS = z.enum(['pending', 'running', 'completed', 'partial', 'failed', 'skipped']);
 const JOB_COUNT = z.number().int().nonnegative();
 const JOB_TIMESTAMP = z.string().datetime({ offset: true });
 

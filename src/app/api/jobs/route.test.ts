@@ -282,6 +282,40 @@ describe('/api/jobs GET', () => {
     expect(daily.latest_run).not.toHaveProperty('error_log');
   });
 
+  it('projects a skipped duplicate as a terminal safe outcome', async () => {
+    systemIntegrationJobFindManyMock.mockResolvedValueOnce([
+      {
+        id: 'system_skipped_1',
+        job_type: 'daily',
+        status: 'skipped',
+        output: {
+          processedCount: 0,
+          skipped: true,
+          reasonCode: 'job_duplicate_running',
+        },
+        error_log: null,
+        retry_count: 0,
+        max_retries: 0,
+        started_at: new Date('2026-03-28T04:00:00.000Z'),
+        completed_at: new Date('2026-03-28T04:00:00.000Z'),
+        created_at: new Date('2026-03-28T04:00:00.000Z'),
+      },
+    ]);
+
+    const response = await GET(createRequest());
+    const payload = await response.json();
+    const daily = payload.data.find((entry: { job_type: string }) => entry.job_type === 'daily');
+
+    expect(daily.latest_run).toMatchObject({
+      id: 'system_skipped_1',
+      status: 'skipped',
+      output: null,
+      error_summary: null,
+      retry_count: 0,
+      max_retries: 0,
+    });
+  });
+
   it('keeps drain run state separate from latest export partial-success output', async () => {
     integrationJobFindManyMock.mockResolvedValue([
       {

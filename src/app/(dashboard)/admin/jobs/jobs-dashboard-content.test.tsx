@@ -387,6 +387,43 @@ describe('JobsDashboardContent', () => {
     expect(screen.queryByText('完了')).toBeNull();
   });
 
+  it('surfaces a duplicate skipped start with a fixed operational explanation', () => {
+    useQueryMock.mockReturnValue({
+      isLoading: false,
+      data: {
+        data: [
+          {
+            job_type: 'daily',
+            schedule_hint: '毎朝',
+            endpoint: '/api/jobs/daily',
+            latest_run: {
+              id: 'run_skipped',
+              job_type: 'daily',
+              status: 'skipped',
+              output: null,
+              error_summary: null,
+              retry_count: 0,
+              max_retries: 0,
+              started_at: '2026-05-21T00:59:00.000Z',
+              completed_at: '2026-05-21T00:59:00.000Z',
+              created_at: '2026-05-21T00:59:00.000Z',
+            },
+          },
+        ],
+      },
+    });
+
+    render(<JobsDashboardContent />);
+
+    expect(screen.getAllByText('重複スキップ').length).toBeGreaterThanOrEqual(1);
+    expect(
+      screen.getByText('同一ジョブが実行中のため、この開始要求は処理されませんでした。'),
+    ).toBeTruthy();
+    expect(screen.getAllByRole('button', { name: 'daily を再実行' }).length).toBeGreaterThanOrEqual(
+      1,
+    );
+  });
+
   it('names rerun actions by job type and sends the row endpoint', () => {
     useQueryMock.mockReturnValue({
       isLoading: false,

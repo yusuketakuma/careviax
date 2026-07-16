@@ -42,6 +42,7 @@ const STATUS_FILTER_OPTIONS = [
   { value: 'completed', label: '完了' },
   { value: 'partial', label: '一部失敗' },
   { value: 'failed', label: '失敗' },
+  { value: 'skipped', label: '重複スキップ' },
 ];
 
 const SOURCE_FILTER_OPTIONS = [
@@ -57,13 +58,14 @@ const SOURCE_FILTER_OPTIONS = [
 
 const JOBS_REFETCH_INTERVAL_MS = 60_000;
 
-// ジョブ実行状態: 待機中=neutral / 実行中=info / 完了=done / 一部失敗=confirm / 失敗=blocked
+// ジョブ実行状態: 待機中=neutral / 実行中=info / 完了=done / 一部失敗=confirm / 失敗=blocked / 重複スキップ=waiting
 const STATUS_CONFIG: Record<string, { label: string; role: StatusRole | 'neutral' }> = {
   pending: { label: '待機中', role: 'neutral' },
   running: { label: '実行中', role: 'info' },
   completed: { label: '完了', role: 'done' },
   partial: { label: '一部失敗', role: 'confirm' },
   failed: { label: '失敗', role: 'blocked' },
+  skipped: { label: '重複スキップ', role: 'waiting' },
 };
 
 type BulkExportRunSummary = {
@@ -125,6 +127,7 @@ function getAttentionReason(entry: JobDefinitionEntry) {
   if (entry.latest_run?.status === 'failed') return 'failed';
   if (entry.latest_run?.status === 'partial' || summary) return 'partial';
   if (entry.latest_run?.status === 'running') return 'running';
+  if (entry.latest_run?.status === 'skipped') return 'skipped';
   return null;
 }
 
@@ -379,7 +382,7 @@ export function JobsDashboardContent() {
               対応が必要なジョブ
             </h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              失敗・一部失敗・実行中を先に確認し、対象ジョブの近くで再実行します。
+              失敗・一部失敗・実行中・重複スキップを先に確認し、対象ジョブの近くで再実行します。
             </p>
           </div>
           <Badge variant={attentionJobs.length > 0 ? 'destructive' : 'outline'}>
@@ -416,7 +419,9 @@ export function JobsDashboardContent() {
                   ? formatBulkExportSummary(summary)
                   : errorSummary
                     ? `${errorSummary.error_name} / ${errorSummary.message}`
-                    : entry.schedule_hint;
+                    : reason === 'skipped'
+                      ? '同一ジョブが実行中のため、この開始要求は処理されませんでした。'
+                      : entry.schedule_hint;
 
               return (
                 <article

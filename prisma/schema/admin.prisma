@@ -241,7 +241,7 @@ model IntegrationJob {
   org_id       String
   job_type     String
   dedupe_key   String?
-  status       String    @default("pending") // pending/running/completed/failed
+  status       String    @default("pending") // pending/running/completed/partial/failed/skipped
   input        Json?
   output       Json?
   error_log    String?

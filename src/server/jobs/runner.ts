@@ -14,6 +14,8 @@ const MAX_RETRIES = 3;
 const JOB_EXECUTION_FAILED_MESSAGE = 'Job execution failed';
 const JOB_PARTIAL_FAILURE_CODE = 'job_partial_failure';
 const JOB_PARTIAL_ERROR_LOG = 'Job completed with partial errors';
+const JOB_DUPLICATE_RUNNING_CODE = 'job_duplicate_running';
+const JOB_DUPLICATE_IN_PROCESS_CODE = 'job_duplicate_in_process';
 const JOB_EXECUTION_FAILED_NOTIFICATION_MESSAGE = 'ジョブの実行に失敗しました';
 // Structured-log event name for permanent job failures. Kept stable because the
 // CloudWatch Logs metric filter in tools/infra/cloudwatch-alarms.json keys off it.
@@ -37,6 +39,16 @@ function updateJobLedger(
   return orgId
     ? withOrgContext(orgId, (tx) => tx.integrationJob.update({ where: { id: jobId }, data }))
     : prisma.systemIntegrationJob.update({ where: { id: jobId }, data });
+}
+
+function createJobLedger(data: Prisma.SystemIntegrationJobUncheckedCreateInput, orgId?: string) {
+  return orgId
+    ? withOrgContext(orgId, (tx) =>
+        tx.integrationJob.create({
+          data: { ...data, org_id: orgId },
+        }),
+      )
+    : prisma.systemIntegrationJob.create({ data });
 }
 
 function getValidatedJobRequestTrace(): RequestTraceContext | undefined {
@@ -117,6 +129,28 @@ function toJobLedgerOutcome(result: { processedCount: number; errors?: string[] 
   } as const;
 }
 
+function recordSkippedJob(
+  jobType: string,
+  reasonCode: typeof JOB_DUPLICATE_RUNNING_CODE | typeof JOB_DUPLICATE_IN_PROCESS_CODE,
+  orgId?: string,
+) {
+  const occurredAt = new Date();
+  return createJobLedger(
+    {
+      job_type: jobType,
+      dedupe_key: null,
+      status: 'skipped',
+      output: { processedCount: 0, skipped: true, reasonCode },
+      max_retries: 0,
+      run_at: occurredAt,
+      started_at: occurredAt,
+      completed_at: occurredAt,
+      locked_at: null,
+    },
+    orgId,
+  );
+}
+
 async function runJobOnce(
   jobType: string,
   fn: () => Promise<{ processedCount: number; errors?: string[] }>,
@@ -134,6 +168,7 @@ async function runJobOnce(
       ...(orgId ? { orgId } : {}),
       ...jobTraceLogContext(requestTrace),
     });
+    await recordSkippedJob(jobType, JOB_DUPLICATE_RUNNING_CODE, orgId);
     return { processedCount: 0, skipped: true };
   }
 
@@ -156,16 +191,7 @@ async function runJobOnce(
         }
       : {}),
   } satisfies Prisma.SystemIntegrationJobUncheckedCreateInput;
-  const job = orgId
-    ? await withOrgContext(orgId, (tx) =>
-        tx.integrationJob.create({
-          data: {
-            ...createData,
-            org_id: orgId,
-          },
-        }),
-      )
-    : await prisma.systemIntegrationJob.create({ data: createData });
+  const job = await createJobLedger(createData, orgId);
 
   let lastError: unknown;
 
@@ -277,6 +303,7 @@ export async function runJob(
       ...(orgId ? { orgId } : {}),
       ...jobTraceLogContext(requestTrace),
     });
+    await recordSkippedJob(jobType, JOB_DUPLICATE_IN_PROCESS_CODE, orgId);
     return { processedCount: 0, skipped: true };
   }
 
