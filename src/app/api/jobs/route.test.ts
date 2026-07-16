@@ -242,6 +242,46 @@ describe('/api/jobs GET', () => {
     );
   });
 
+  it('projects a partial run without exposing persisted diagnostic text', async () => {
+    systemIntegrationJobFindManyMock.mockResolvedValueOnce([
+      {
+        id: 'system_partial_1',
+        job_type: 'daily',
+        status: 'partial',
+        output: {
+          processedCount: 12,
+          errorCount: 2,
+          errors: ['job_partial_failure'],
+        },
+        error_log: 'raw token=secret patient=山田太郎',
+        retry_count: 0,
+        max_retries: 3,
+        started_at: new Date('2026-03-28T04:00:00.000Z'),
+        completed_at: new Date('2026-03-28T04:01:00.000Z'),
+        created_at: new Date('2026-03-28T04:00:00.000Z'),
+      },
+    ]);
+
+    const response = await GET(createRequest());
+    const bodyText = await response.text();
+
+    expect(bodyText).not.toContain('token=secret');
+    expect(bodyText).not.toContain('山田太郎');
+    const payload = JSON.parse(bodyText);
+    const daily = payload.data.find((entry: { job_type: string }) => entry.job_type === 'daily');
+    expect(daily.latest_run).toMatchObject({
+      id: 'system_partial_1',
+      status: 'partial',
+      output: null,
+      error_summary: {
+        error_name: '一部処理失敗',
+        occurred_at: '2026-03-28T04:01:00.000Z',
+        message: 'エラーが記録されています',
+      },
+    });
+    expect(daily.latest_run).not.toHaveProperty('error_log');
+  });
+
   it('keeps drain run state separate from latest export partial-success output', async () => {
     integrationJobFindManyMock.mockResolvedValue([
       {

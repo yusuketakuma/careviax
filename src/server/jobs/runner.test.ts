@@ -117,6 +117,7 @@ describe('runJob', () => {
       data: expect.objectContaining({
         status: 'completed',
         output: { processedCount: 3 },
+        error_log: null,
         retry_count: 0,
       }),
     });
@@ -124,6 +125,78 @@ describe('runJob', () => {
     expect(systemIntegrationJobFindFirstMock).toHaveBeenCalledOnce();
     expect(systemIntegrationJobCreateMock).toHaveBeenCalledOnce();
     expect(systemIntegrationJobUpdateMock).toHaveBeenCalledOnce();
+  });
+
+  it('marks non-empty errors partial and persists only a bounded safe reason code', async () => {
+    const rawError = 'patient=山田太郎 token=secret provider stack';
+
+    const result = await runJob('test_job', async () => ({
+      processedCount: 2,
+      errors: [rawError, 'password=hunter2'],
+    }));
+
+    expect(result).toEqual({ processedCount: 2, errors: [rawError, 'password=hunter2'] });
+    expect(integrationJobUpdateMock).toHaveBeenCalledWith({
+      where: { id: 'job_1' },
+      data: expect.objectContaining({
+        status: 'partial',
+        output: {
+          processedCount: 2,
+          errorCount: 2,
+          errors: ['job_partial_failure'],
+        },
+        error_log: 'Job completed with partial errors',
+        retry_count: 0,
+      }),
+    });
+    expect(JSON.stringify(integrationJobUpdateMock.mock.calls)).not.toContain(rawError);
+    expect(JSON.stringify(integrationJobUpdateMock.mock.calls)).not.toContain('hunter2');
+  });
+
+  it('keeps an empty errors array completed', async () => {
+    await runJob('test_job', async () => ({ processedCount: 2, errors: [] }));
+
+    expect(integrationJobUpdateMock).toHaveBeenCalledWith({
+      where: { id: 'job_1' },
+      data: expect.objectContaining({
+        status: 'completed',
+        output: { processedCount: 2, errors: [] },
+        error_log: null,
+      }),
+    });
+  });
+
+  it('clears transient retry diagnostics after a later attempt succeeds', async () => {
+    const fn = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('transient token=secret'))
+      .mockResolvedValueOnce({ processedCount: 1 });
+
+    await expect(runJob('test_job', fn)).resolves.toEqual({ processedCount: 1 });
+
+    expect(integrationJobUpdateMock).toHaveBeenLastCalledWith({
+      where: { id: 'job_1' },
+      data: expect.objectContaining({
+        status: 'completed',
+        error_log: null,
+        retry_count: 1,
+      }),
+    });
+  });
+
+  it('persists a tenant partial outcome through the tenant ledger only', async () => {
+    await runJob(
+      'tenant_job',
+      async () => ({ processedCount: 1, errors: ['safe_partial_failure'] }),
+      'org_1',
+    );
+
+    expect(withOrgContextMock).toHaveBeenCalledTimes(3);
+    expect(integrationJobUpdateMock).toHaveBeenCalledWith({
+      where: { id: 'job_1' },
+      data: expect.objectContaining({ status: 'partial' }),
+    });
+    expect(systemIntegrationJobUpdateMock).not.toHaveBeenCalled();
   });
 
   it('runs every tenant ledger operation inside the explicit organization context', async () => {

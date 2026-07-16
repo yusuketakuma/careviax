@@ -186,6 +186,7 @@ type LatestRun = {
 const JOB_ERROR_REDACTED_MESSAGE = 'エラーが記録されています';
 const JOB_ERROR_NAME_RETRIES_EXHAUSTED = 'リトライ上限到達';
 const JOB_ERROR_NAME_EXECUTION_FAILED = '実行エラー';
+const JOB_ERROR_NAME_PARTIAL = '一部処理失敗';
 
 type JobErrorSummaryDto = {
   error_name: string;
@@ -245,9 +246,11 @@ function toJobErrorSummary(job: LatestRun): JobErrorSummaryDto | null {
   // Classified purely from safe, already-selected fields (status/retry counts) —
   // never from the error_log text itself.
   const errorName =
-    job.status === 'failed' && job.retry_count >= job.max_retries
-      ? JOB_ERROR_NAME_RETRIES_EXHAUSTED
-      : JOB_ERROR_NAME_EXECUTION_FAILED;
+    job.status === 'partial'
+      ? JOB_ERROR_NAME_PARTIAL
+      : job.status === 'failed' && job.retry_count >= job.max_retries
+        ? JOB_ERROR_NAME_RETRIES_EXHAUSTED
+        : JOB_ERROR_NAME_EXECUTION_FAILED;
 
   const occurredAt = job.completed_at ?? job.started_at ?? job.created_at;
 

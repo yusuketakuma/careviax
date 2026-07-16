@@ -348,6 +348,45 @@ describe('JobsDashboardContent', () => {
     expect(bodyText).not.toContain('token=');
   });
 
+  it('treats a partial ledger status as an actionable warning instead of success', () => {
+    useQueryMock.mockReturnValue({
+      isLoading: false,
+      data: {
+        data: [
+          {
+            job_type: 'daily',
+            schedule_hint: '毎朝',
+            endpoint: '/api/jobs/daily',
+            latest_run: {
+              id: 'run_partial',
+              job_type: 'daily',
+              status: 'partial',
+              output: null,
+              error_summary: {
+                error_name: '一部処理失敗',
+                occurred_at: '2026-05-21T00:59:30.000Z',
+                message: 'エラーが記録されています',
+              },
+              retry_count: 0,
+              max_retries: 3,
+              started_at: '2026-05-21T00:59:00.000Z',
+              completed_at: '2026-05-21T00:59:30.000Z',
+              created_at: '2026-05-21T00:59:00.000Z',
+            },
+          },
+        ],
+      },
+    });
+
+    render(<JobsDashboardContent />);
+
+    expect(screen.getAllByText('一部失敗').length).toBeGreaterThanOrEqual(2);
+    expect(screen.getAllByText('一部処理失敗').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText('一部失敗の概要')).toBeTruthy();
+    expect(screen.getAllByText('1件').length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByText('完了')).toBeNull();
+  });
+
   it('names rerun actions by job type and sends the row endpoint', () => {
     useQueryMock.mockReturnValue({
       isLoading: false,

@@ -12,6 +12,8 @@ import { dispatchNotificationEvent } from '@/server/services/notifications';
 
 const MAX_RETRIES = 3;
 const JOB_EXECUTION_FAILED_MESSAGE = 'Job execution failed';
+const JOB_PARTIAL_FAILURE_CODE = 'job_partial_failure';
+const JOB_PARTIAL_ERROR_LOG = 'Job completed with partial errors';
 const JOB_EXECUTION_FAILED_NOTIFICATION_MESSAGE = 'ジョブの実行に失敗しました';
 // Structured-log event name for permanent job failures. Kept stable because the
 // CloudWatch Logs metric filter in tools/infra/cloudwatch-alarms.json keys off it.
@@ -92,6 +94,29 @@ function jobRunKey(jobType: string, orgId?: string, dedupeKey?: string) {
   return `${orgId ?? 'global'}:${jobType}:${dedupeKey ?? 'singleton'}`;
 }
 
+function toJobLedgerOutcome(result: { processedCount: number; errors?: string[] }) {
+  const errorCount = result.errors?.length ?? 0;
+  if (errorCount === 0) {
+    return {
+      status: 'completed',
+      output: toPrismaJsonInput(result),
+      errorLog: null,
+    } as const;
+  }
+
+  const safeResult = { ...result };
+  delete safeResult.errors;
+  return {
+    status: 'partial',
+    output: toPrismaJsonInput({
+      ...safeResult,
+      errorCount,
+      errors: [JOB_PARTIAL_FAILURE_CODE],
+    }),
+    errorLog: JOB_PARTIAL_ERROR_LOG,
+  } as const;
+}
+
 async function runJobOnce(
   jobType: string,
   fn: () => Promise<{ processedCount: number; errors?: string[] }>,
@@ -147,11 +172,13 @@ async function runJobOnce(
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     try {
       const result = await fn();
+      const outcome = toJobLedgerOutcome(result);
       await updateJobLedger(
         job.id,
         {
-          status: 'completed',
-          output: toPrismaJsonInput(result),
+          status: outcome.status,
+          output: outcome.output,
+          error_log: outcome.errorLog,
           completed_at: new Date(),
           locked_at: null,
           retry_count: attempt,

@@ -1,13 +1,13 @@
 import { z } from 'zod';
 
 const JOB_TYPES = z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/u);
-const JOB_STATUS = z.enum(['pending', 'running', 'completed', 'failed']);
+const JOB_STATUS = z.enum(['pending', 'running', 'completed', 'partial', 'failed']);
 const JOB_COUNT = z.number().int().nonnegative();
 const JOB_TIMESTAMP = z.string().datetime({ offset: true });
 
 const jobErrorSummarySchema = z
   .object({
-    error_name: z.enum(['リトライ上限到達', '実行エラー']),
+    error_name: z.enum(['リトライ上限到達', '実行エラー', '一部処理失敗']),
     occurred_at: JOB_TIMESTAMP.nullable(),
     message: z.literal('エラーが記録されています'),
   })

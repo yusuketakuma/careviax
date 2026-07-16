@@ -40,6 +40,7 @@ const STATUS_FILTER_OPTIONS = [
   { value: 'pending', label: '待機中' },
   { value: 'running', label: '実行中' },
   { value: 'completed', label: '完了' },
+  { value: 'partial', label: '一部失敗' },
   { value: 'failed', label: '失敗' },
 ];
 
@@ -56,11 +57,12 @@ const SOURCE_FILTER_OPTIONS = [
 
 const JOBS_REFETCH_INTERVAL_MS = 60_000;
 
-// ジョブ実行状態: 待機中=neutral(キュー待ち) / 実行中=info(現在進行) / 完了=done / 失敗=blocked
+// ジョブ実行状態: 待機中=neutral / 実行中=info / 完了=done / 一部失敗=confirm / 失敗=blocked
 const STATUS_CONFIG: Record<string, { label: string; role: StatusRole | 'neutral' }> = {
   pending: { label: '待機中', role: 'neutral' },
   running: { label: '実行中', role: 'info' },
   completed: { label: '完了', role: 'done' },
+  partial: { label: '一部失敗', role: 'confirm' },
   failed: { label: '失敗', role: 'blocked' },
 };
 
@@ -121,7 +123,7 @@ function matchesSourceFilter(jobType: string, source: string): boolean {
 function getAttentionReason(entry: JobDefinitionEntry) {
   const summary = getJobBulkExportRunSummary(entry);
   if (entry.latest_run?.status === 'failed') return 'failed';
-  if (summary) return 'partial';
+  if (entry.latest_run?.status === 'partial' || summary) return 'partial';
   if (entry.latest_run?.status === 'running') return 'running';
   return null;
 }
@@ -272,8 +274,9 @@ export function JobsDashboardContent() {
           }
           if (!errorSummary) return <span className="text-xs text-muted-foreground">—</span>;
           const tooltip = `${errorSummary.error_name} / リトライ ${run?.retry_count}/${run?.max_retries}回`;
+          const errorTone = run?.status === 'partial' ? 'text-state-confirm' : 'text-destructive';
           return (
-            <span className="max-w-[200px] truncate text-xs text-destructive" title={tooltip}>
+            <span className={`max-w-[200px] truncate text-xs ${errorTone}`} title={tooltip}>
               {errorSummary.error_name}
             </span>
           );
@@ -311,8 +314,11 @@ export function JobsDashboardContent() {
     const errorSummary = run?.error_summary;
     const bulkExportSummary = getJobBulkExportRunSummary(row.original);
     if (!errorSummary && !bulkExportSummary) return null;
+    const isPartial = run?.status === 'partial';
+    const errorTone = isPartial ? 'text-state-confirm' : 'text-destructive';
+    const panelTone = isPartial ? 'bg-state-confirm/10' : 'bg-destructive/10';
     return (
-      <div className="space-y-3 bg-destructive/10 px-4 py-3">
+      <div className={`space-y-3 px-4 py-3 ${panelTone}`}>
         {bulkExportSummary && (
           <div className="space-y-1">
             <p className="text-xs font-semibold text-state-confirm">一括出力の部分失敗</p>
@@ -326,8 +332,10 @@ export function JobsDashboardContent() {
         )}
         {errorSummary && run && (
           <div className="space-y-1">
-            <p className="text-xs font-semibold text-destructive">エラー概要</p>
-            <dl className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5 text-xs text-destructive">
+            <p className={`text-xs font-semibold ${errorTone}`}>
+              {isPartial ? '一部失敗の概要' : 'エラー概要'}
+            </p>
+            <dl className={`grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5 text-xs ${errorTone}`}>
               <dt className="text-muted-foreground">種別</dt>
               <dd>{errorSummary.error_name}</dd>
               <dt className="text-muted-foreground">ジョブ</dt>
@@ -341,7 +349,7 @@ export function JobsDashboardContent() {
                 {run.retry_count}/{run.max_retries}
               </dd>
             </dl>
-            <p className="text-xs text-destructive">{errorSummary.message}</p>
+            <p className={`text-xs ${errorTone}`}>{errorSummary.message}</p>
             <p className="text-xs text-muted-foreground">
               詳細な生ログが必要な場合は CloudWatch を参照してください（本画面には表示されません）。
             </p>
@@ -353,7 +361,9 @@ export function JobsDashboardContent() {
 
   const failedCount = jobs.filter((e) => e.latest_run?.status === 'failed').length;
   const runningCount = jobs.filter((e) => e.latest_run?.status === 'running').length;
-  const partialWarningCount = jobs.filter((e) => Boolean(getJobBulkExportRunSummary(e))).length;
+  const partialWarningCount = jobs.filter(
+    (e) => e.latest_run?.status === 'partial' || Boolean(getJobBulkExportRunSummary(e)),
+  ).length;
   const attentionJobs = jobs.filter((entry) => getAttentionReason(entry));
   const jobCountsUnavailable = (isLoading || isError) && !data;
   const jobCountsLoadingUnavailable = isLoading && !data;
@@ -421,7 +431,7 @@ export function JobsDashboardContent() {
                         ) : (
                           <Badge variant="outline">{cfg?.label ?? status}</Badge>
                         )}
-                        {reason === 'partial' ? (
+                        {reason === 'partial' && status !== 'partial' ? (
                           <Badge variant="outline" className="text-state-confirm">
                             一部失敗
                           </Badge>
