@@ -50,7 +50,7 @@ const authenticatedGET = withAuthContext(
     return success({ data: [...uniqueMembersByUserId.values()] });
   },
   {
-    permission: 'canVisit',
+    permission: 'canViewDashboard',
     message: '組織メンバーの閲覧権限がありません',
   },
 );

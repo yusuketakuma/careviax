@@ -588,7 +588,7 @@ describe('/api/meta/route-catalog GET', () => {
         expect.objectContaining({
           path: '/api/partner-pharmacies',
           methods: ['GET'],
-          permission: 'canVisit',
+          permission: 'canViewDashboard',
           area: 'masters',
         }),
         expect.objectContaining({
@@ -600,7 +600,7 @@ describe('/api/meta/route-catalog GET', () => {
         expect.objectContaining({
           path: '/api/pharmacy-partnerships',
           methods: ['GET'],
-          permission: 'canVisit',
+          permission: 'canViewDashboard',
           area: 'masters',
         }),
         expect.objectContaining({

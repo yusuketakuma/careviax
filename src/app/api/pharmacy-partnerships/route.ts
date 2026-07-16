@@ -120,7 +120,7 @@ const authenticatedGET = withAuthContext(
     });
   },
   {
-    permission: 'canVisit',
+    permission: 'canViewDashboard',
     message: '薬局間連携の閲覧権限がありません',
   },
 );

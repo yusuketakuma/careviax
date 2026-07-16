@@ -90,7 +90,7 @@ export const GET = withAuthContext(
     });
   },
   {
-    permission: 'canVisit',
+    permission: 'canViewDashboard',
     message: '協力薬局マスタの閲覧権限がありません',
   },
 );

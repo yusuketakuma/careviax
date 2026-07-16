@@ -969,7 +969,7 @@ export const routeCatalog: RouteCatalogEntry[] = [
   {
     path: '/api/partner-pharmacies',
     methods: ['GET'],
-    permission: 'canVisit',
+    permission: 'canViewDashboard',
     description: '協力薬局マスタ一覧取得',
     area: 'masters',
   },
@@ -983,7 +983,7 @@ export const routeCatalog: RouteCatalogEntry[] = [
   {
     path: '/api/pharmacy-partnerships',
     methods: ['GET'],
-    permission: 'canVisit',
+    permission: 'canViewDashboard',
     description: '基準薬局と協力薬局の連携一覧取得',
     area: 'masters',
   },

@@ -60,7 +60,7 @@ export const GET = withAuthContext(
     });
   },
   {
-    permission: 'canVisit',
+    permission: 'canViewDashboard',
     message: '配薬方法マスタの閲覧権限がありません',
   },
 );
