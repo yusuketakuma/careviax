@@ -11,17 +11,33 @@ export type JahisExportFieldContract = {
 };
 
 export type JahisExportRecordContract = {
-  recordType: '1' | '5' | '11' | '51' | '55' | '201' | '301' | '911';
+  recordType:
+    | '1'
+    | '2'
+    | '3'
+    | '31'
+    | '4'
+    | '5'
+    | '11'
+    | '15'
+    | '51'
+    | '55'
+    | '201'
+    | '301'
+    | '911';
   fields: readonly JahisExportFieldContract[];
+  validateValues?: (values: readonly string[]) => void;
 };
 
 const DIGITS = /^\d+$/u;
 const ASCII_X = /^[A-Za-z0-9.-]+$/u;
-const DATE = /^\d{8}$/u;
+const JAHIS_DATE = /^(?:\d{8}|[MTSHR]\d{6})$/u;
+const CREATOR = /^[1289]$/u;
 const PREFECTURE = /^\d{2}$/u;
 const INSTITUTION_CODE = /^\d{7}$/u;
 const DECIMAL = /^(?:0|[1-9]\d{0,5})(?:\.\d{1,5})?$/u;
 const POSITIVE_THREE_DIGITS = /^(?:[1-9]|[1-9]\d|[1-9]\d{2})$/u;
+const JAN_CODE = /^\d{13}$/u;
 
 export const JAHIS_EXPORT_CONTRACT_V2_6 = {
   documentId: 'JAHIS-24-104',
@@ -35,7 +51,13 @@ export const JAHIS_EXPORT_CONTRACT_V2_6 = {
       fields: [
         { key: 'patient_name', type: 'N', maxBytes: 40, required: true },
         { key: 'patient_gender', type: '9', maxBytes: 1, required: true, pattern: /^[12]$/u },
-        { key: 'patient_birth_date', type: 'X', maxBytes: 8, required: true, pattern: DATE },
+        {
+          key: 'patient_birth_date',
+          type: 'X',
+          maxBytes: 8,
+          required: true,
+          pattern: JAHIS_DATE,
+        },
         { key: 'patient_postal_code', type: 'X', maxBytes: 8, required: false },
         { key: 'patient_address', type: 'N', maxBytes: 800, required: false },
         { key: 'patient_phone', type: 'X', maxBytes: 13, required: false },
@@ -45,11 +67,71 @@ export const JAHIS_EXPORT_CONTRACT_V2_6 = {
         { key: 'patient_name_kana', type: 'N', maxBytes: 40, required: false },
       ],
     },
+    '2': {
+      recordType: '2',
+      fields: [
+        { key: 'patient_note_type', type: '9', maxBytes: 1, required: true, pattern: /^[1239]$/u },
+        { key: 'patient_note', type: 'N', maxBytes: 120, required: true },
+        { key: 'creator', type: '9', maxBytes: 1, required: true, pattern: CREATOR },
+      ],
+    },
+    '3': {
+      recordType: '3',
+      fields: [
+        { key: 'drug_name', type: 'N', maxBytes: 120, required: true },
+        { key: 'start_date', type: 'X', maxBytes: 8, required: false, pattern: JAHIS_DATE },
+        { key: 'end_date', type: 'X', maxBytes: 8, required: false, pattern: JAHIS_DATE },
+        { key: 'creator', type: '9', maxBytes: 1, required: true, pattern: CREATOR },
+        {
+          key: 'otc_sequence',
+          type: '9',
+          maxBytes: 3,
+          required: false,
+          pattern: POSITIVE_THREE_DIGITS,
+        },
+        { key: 'jan_code', type: '9', maxBytes: 13, required: false, pattern: JAN_CODE },
+      ],
+    },
+    '31': {
+      recordType: '31',
+      fields: [
+        {
+          key: 'otc_sequence',
+          type: '9',
+          maxBytes: 3,
+          required: true,
+          pattern: POSITIVE_THREE_DIGITS,
+        },
+        { key: 'ingredient_name', type: 'N', maxBytes: 256, required: true },
+        { key: 'code_type', type: '9', maxBytes: 1, required: true, pattern: /^[12]$/u },
+        { key: 'ingredient_code', type: 'X', maxBytes: 20, required: false },
+        { key: 'creator', type: '9', maxBytes: 1, required: true, pattern: CREATOR },
+      ],
+      validateValues: (values) => {
+        if (values[2] === '1' && values[3]) {
+          throw new RangeError('JAHIS_FIELD_VALUE_INVALID:31:ingredient_code');
+        }
+      },
+    },
+    '4': {
+      recordType: '4',
+      fields: [
+        { key: 'memo', type: 'N', maxBytes: 400, required: true },
+        { key: 'memo_date', type: 'X', maxBytes: 8, required: false, pattern: JAHIS_DATE },
+        { key: 'creator', type: '9', maxBytes: 1, required: true, pattern: CREATOR },
+      ],
+    },
     '5': {
       recordType: '5',
       fields: [
-        { key: 'dispensing_date', type: 'X', maxBytes: 8, required: true, pattern: DATE },
-        { key: 'creator', type: '9', maxBytes: 1, required: true, pattern: /^[1289]$/u },
+        {
+          key: 'dispensing_date',
+          type: 'X',
+          maxBytes: 8,
+          required: true,
+          pattern: JAHIS_DATE,
+        },
+        { key: 'creator', type: '9', maxBytes: 1, required: true, pattern: CREATOR },
       ],
     },
     '11': {
@@ -68,7 +150,15 @@ export const JAHIS_EXPORT_CONTRACT_V2_6 = {
         { key: 'postal_code', type: 'X', maxBytes: 8, required: false },
         { key: 'address', type: 'N', maxBytes: 800, required: false },
         { key: 'phone', type: 'X', maxBytes: 13, required: false },
-        { key: 'creator', type: '9', maxBytes: 1, required: true, pattern: /^[1289]$/u },
+        { key: 'creator', type: '9', maxBytes: 1, required: true, pattern: CREATOR },
+      ],
+    },
+    '15': {
+      recordType: '15',
+      fields: [
+        { key: 'clinician_name', type: 'N', maxBytes: 40, required: true },
+        { key: 'clinician_contact', type: 'N', maxBytes: 800, required: false },
+        { key: 'creator', type: '9', maxBytes: 1, required: true, pattern: CREATOR },
       ],
     },
     '51': {
@@ -84,7 +174,7 @@ export const JAHIS_EXPORT_CONTRACT_V2_6 = {
           required: true,
           pattern: INSTITUTION_CODE,
         },
-        { key: 'creator', type: '9', maxBytes: 1, required: true, pattern: /^[1289]$/u },
+        { key: 'creator', type: '9', maxBytes: 1, required: true, pattern: CREATOR },
       ],
     },
     '55': {
@@ -92,7 +182,7 @@ export const JAHIS_EXPORT_CONTRACT_V2_6 = {
       fields: [
         { key: 'doctor_name', type: 'N', maxBytes: 40, required: true },
         { key: 'department_name', type: 'N', maxBytes: 80, required: false },
-        { key: 'creator', type: '9', maxBytes: 1, required: true, pattern: /^[1289]$/u },
+        { key: 'creator', type: '9', maxBytes: 1, required: true, pattern: CREATOR },
       ],
     },
     '201': {
@@ -110,7 +200,7 @@ export const JAHIS_EXPORT_CONTRACT_V2_6 = {
         { key: 'unit', type: 'N', maxBytes: 12, required: true },
         { key: 'drug_code_type', type: '9', maxBytes: 1, required: true, pattern: /^[12346]$/u },
         { key: 'drug_code', type: 'X', maxBytes: 13, required: false },
-        { key: 'creator', type: '9', maxBytes: 1, required: true, pattern: /^[1289]$/u },
+        { key: 'creator', type: '9', maxBytes: 1, required: true, pattern: CREATOR },
         { key: 'generic_name', type: 'N', maxBytes: 120, required: false },
         { key: 'generic_code_type', type: '9', maxBytes: 1, required: false, pattern: /^[12]$/u },
         { key: 'generic_code', type: 'X', maxBytes: 12, required: false },
@@ -138,7 +228,7 @@ export const JAHIS_EXPORT_CONTRACT_V2_6 = {
         { key: 'form_code', type: 'X', maxBytes: 2, required: true, pattern: /^(?:[1-9]|10)$/u },
         { key: 'usage_code_type', type: '9', maxBytes: 1, required: true, pattern: /^[12]$/u },
         { key: 'usage_code', type: 'X', maxBytes: 16, required: false },
-        { key: 'creator', type: '9', maxBytes: 1, required: true, pattern: /^[1289]$/u },
+        { key: 'creator', type: '9', maxBytes: 1, required: true, pattern: CREATOR },
       ],
     },
     '911': {
@@ -207,6 +297,7 @@ export function serializeJahisExportRecord(
     if (!field) throw new RangeError(`JAHIS_RECORD_FIELD_COUNT_INVALID:${contract.recordType}`);
     validateField(contract.recordType, field, value);
   });
+  contract.validateValues?.(values);
   return [contract.recordType, ...values].join(',');
 }
 
