@@ -11,6 +11,7 @@ const {
   withOrgContextMock,
   withRoutePerformanceMock,
   loggerErrorMock,
+  recordPhiReadAuditForRequestMock,
 } = vi.hoisted(() => ({
   patientFindFirstMock: vi.fn(),
   careCaseFindManyMock: vi.fn(),
@@ -20,6 +21,7 @@ const {
   withOrgContextMock: vi.fn(),
   withRoutePerformanceMock: vi.fn(),
   loggerErrorMock: vi.fn(),
+  recordPhiReadAuditForRequestMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
@@ -42,6 +44,10 @@ vi.mock('@/lib/utils/logger', () => ({
   logger: {
     error: loggerErrorMock,
   },
+}));
+
+vi.mock('@/lib/audit/phi-read-audit', () => ({
+  recordPhiReadAuditForRequest: recordPhiReadAuditForRequestMock,
 }));
 
 vi.mock('@/lib/db/client', () => ({
@@ -160,9 +166,19 @@ describe('/api/patients/[id]/prescriptions', () => {
       expect.any(Function),
     );
     expect(requireAuthContextMock).toHaveBeenCalledWith(expect.any(NextRequest), {
-      permission: 'canVisit',
+      permission: 'canViewDashboard',
       message: '患者処方履歴の閲覧権限がありません',
     });
+    expect(recordPhiReadAuditForRequestMock).toHaveBeenCalledWith(
+      expect.objectContaining({ orgId: 'org_1', userId: 'user_1' }),
+      {
+        patientId: 'patient_1',
+        targetType: 'patient',
+        targetId: 'patient_1',
+        view: 'patient_prescriptions',
+        purpose: 'care',
+      },
+    );
     expect(runWithRequestAuthContextMock).toHaveBeenCalledWith(
       expect.objectContaining({
         orgId: 'org_1',
@@ -196,6 +212,7 @@ describe('/api/patients/[id]/prescriptions', () => {
     expect(patientFindFirstMock).not.toHaveBeenCalled();
     expect(careCaseFindManyMock).not.toHaveBeenCalled();
     expect(prescriptionIntakeFindManyMock).not.toHaveBeenCalled();
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
   });
 
   it('filters previous prescriptions to the requested accessible case', async () => {

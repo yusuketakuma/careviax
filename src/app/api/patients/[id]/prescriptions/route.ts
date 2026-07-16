@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { unstable_rethrow } from 'next/navigation';
 import { requireAuthContext } from '@/lib/auth/context';
+import { recordPhiReadAuditForRequest } from '@/lib/audit/phi-read-audit';
 import { runWithRequestAuthContext } from '@/lib/auth/request-context';
 import { internalError, success, notFound, validationError } from '@/lib/api/response';
 import { buildCursorPage, parsePaginationParams } from '@/lib/api/pagination';
@@ -241,7 +242,7 @@ function buildKeysetWhere(
 
 async function authenticatedGET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, {
-    permission: 'canVisit',
+    permission: 'canViewDashboard',
     message: '患者処方履歴の閲覧権限がありません',
   });
   if ('response' in authResult) return authResult.response;
@@ -393,6 +394,13 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
     );
 
     if (result.type === 'not_found') return notFound('患者が見つかりません');
+    recordPhiReadAuditForRequest(ctx, {
+      patientId: result.body.patient.id,
+      targetType: 'patient',
+      targetId: result.body.patient.id,
+      view: 'patient_prescriptions',
+      purpose: 'care',
+    });
     return success({ data: result.body });
   });
 }

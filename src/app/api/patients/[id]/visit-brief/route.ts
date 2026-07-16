@@ -1,6 +1,7 @@
 import { unstable_rethrow } from 'next/navigation';
 import { NextRequest } from 'next/server';
 import { requireAuthContext } from '@/lib/auth/context';
+import { recordPhiReadAuditForRequest } from '@/lib/audit/phi-read-audit';
 import { internalError, notFound, success, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { prisma } from '@/lib/db/client';
@@ -11,7 +12,7 @@ import { listAccessiblePatientCaseIds } from '@/server/services/patient-access';
 
 async function authenticatedGET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, {
-    permission: 'canVisit',
+    permission: 'canViewDashboard',
     message: '患者要約の閲覧権限がありません',
   });
   if ('response' in authResult) return authResult.response;
@@ -45,6 +46,14 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
     caseIds,
     role: ctx.role,
     userId: ctx.userId,
+  });
+
+  recordPhiReadAuditForRequest(ctx, {
+    patientId: patient.id,
+    targetType: 'patient',
+    targetId: patient.id,
+    view: 'patient_visit_brief',
+    purpose: 'care',
   });
 
   return success({ data: brief });

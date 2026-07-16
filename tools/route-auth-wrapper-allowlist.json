@@ -961,7 +961,7 @@
     {
       "path": "src/app/api/patients/[id]/prescriptions/route.ts",
       "expectedCount": 1,
-      "permissions": ["canVisit"],
+      "permissions": ["canViewDashboard"],
       "sensitiveNoStore": true,
       "routePerformance": true,
       "owner": "platform-routing",
@@ -1005,7 +1005,7 @@
     {
       "path": "src/app/api/patients/[id]/visit-brief/route.ts",
       "expectedCount": 1,
-      "permissions": ["canVisit"],
+      "permissions": ["canViewDashboard"],
       "sensitiveNoStore": true,
       "routePerformance": false,
       "owner": "platform-routing",
@@ -1016,7 +1016,7 @@
     {
       "path": "src/app/api/patients/[id]/visit-constraints/route.ts",
       "expectedCount": 2,
-      "permissions": ["canVisit"],
+      "permissions": ["canViewDashboard", "canVisit"],
       "sensitiveNoStore": true,
       "routePerformance": false,
       "owner": "platform-routing",

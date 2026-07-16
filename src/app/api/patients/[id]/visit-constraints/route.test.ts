@@ -8,12 +8,14 @@ const {
   patientSchedulePreferenceUpsertMock,
   residenceUpdateMock,
   withOrgContextMock,
+  recordPhiReadAuditForRequestMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
   patientFindFirstMock: vi.fn(),
   patientSchedulePreferenceUpsertMock: vi.fn(),
   residenceUpdateMock: vi.fn(),
   withOrgContextMock: vi.fn(),
+  recordPhiReadAuditForRequestMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
@@ -30,6 +32,10 @@ vi.mock('@/lib/db/client', () => ({
 
 vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
+}));
+
+vi.mock('@/lib/audit/phi-read-audit', () => ({
+  recordPhiReadAuditForRequest: recordPhiReadAuditForRequestMock,
 }));
 
 import { GET, PUT } from './route';
@@ -97,6 +103,20 @@ describe('/api/patients/[id]/visit-constraints', () => {
 
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
+    expect(requireAuthContextMock).toHaveBeenCalledWith(expect.any(NextRequest), {
+      permission: 'canViewDashboard',
+      message: '訪問条件の閲覧権限がありません',
+    });
+    expect(recordPhiReadAuditForRequestMock).toHaveBeenCalledWith(
+      expect.objectContaining({ orgId: 'org_1', userId: 'user_1' }),
+      {
+        patientId: 'patient_1',
+        targetType: 'patient',
+        targetId: 'patient_1',
+        view: 'patient_visit_constraints',
+        purpose: 'care',
+      },
+    );
     await expect(response.json()).resolves.toMatchObject({
       data: {
         residence: { id: 'res_1' },
@@ -115,6 +135,7 @@ describe('/api/patients/[id]/visit-constraints', () => {
       message: '患者IDが不正です',
     });
     expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
   });
 
   it('returns a sanitized no-store 500 when visit constraint reads fail', async () => {
@@ -133,6 +154,7 @@ describe('/api/patients/[id]/visit-constraints', () => {
     expect(JSON.stringify(body)).not.toContain(rawError);
     expect(JSON.stringify(body)).not.toContain('患者A');
     expect(JSON.stringify(body)).not.toContain('090-1111-2222');
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
   });
 
   it('rejects blank patient ids before parsing visit constraint payloads or upserting', async () => {

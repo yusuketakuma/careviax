@@ -1,6 +1,7 @@
 import { unstable_rethrow } from 'next/navigation';
 import { NextRequest } from 'next/server';
 import { requireAuthContext } from '@/lib/auth/context';
+import { recordPhiReadAuditForRequest } from '@/lib/audit/phi-read-audit';
 import { prisma } from '@/lib/db/client';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
@@ -18,7 +19,7 @@ function toTimeValue(value?: string) {
 
 async function authenticatedGET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, {
-    permission: 'canVisit',
+    permission: 'canViewDashboard',
     message: '訪問条件の閲覧権限がありません',
   });
   if ('response' in authResult) return authResult.response;
@@ -43,6 +44,14 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
     },
   });
   if (!patient) return notFound('患者が見つかりません');
+
+  recordPhiReadAuditForRequest(ctx, {
+    patientId: patient.id,
+    targetType: 'patient',
+    targetId: patient.id,
+    view: 'patient_visit_constraints',
+    purpose: 'care',
+  });
 
   return success({
     data: {

@@ -7,11 +7,13 @@ const {
   patientFindFirstMock,
   careCaseFindManyMock,
   patientVisitBriefMock,
+  recordPhiReadAuditForRequestMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
   patientFindFirstMock: vi.fn(),
   careCaseFindManyMock: vi.fn(),
   patientVisitBriefMock: vi.fn(),
+  recordPhiReadAuditForRequestMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
@@ -31,6 +33,10 @@ vi.mock('@/lib/db/client', () => ({
 
 vi.mock('@/server/services/visit-brief', () => ({
   getPatientVisitBrief: patientVisitBriefMock,
+}));
+
+vi.mock('@/lib/audit/phi-read-audit', () => ({
+  recordPhiReadAuditForRequest: recordPhiReadAuditForRequestMock,
 }));
 
 import { GET } from './route';
@@ -96,6 +102,20 @@ describe('/api/patients/[id]/visit-brief', () => {
       role: 'pharmacist',
       userId: 'user_1',
     });
+    expect(requireAuthContextMock).toHaveBeenCalledWith(expect.any(NextRequest), {
+      permission: 'canViewDashboard',
+      message: '患者要約の閲覧権限がありません',
+    });
+    expect(recordPhiReadAuditForRequestMock).toHaveBeenCalledWith(
+      expect.objectContaining({ orgId: 'org_1', userId: 'user_1' }),
+      {
+        patientId: 'patient_1',
+        targetType: 'patient',
+        targetId: 'patient_1',
+        view: 'patient_visit_brief',
+        purpose: 'care',
+      },
+    );
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
@@ -120,6 +140,7 @@ describe('/api/patients/[id]/visit-brief', () => {
     expect(patientFindFirstMock).not.toHaveBeenCalled();
     expect(careCaseFindManyMock).not.toHaveBeenCalled();
     expect(patientVisitBriefMock).not.toHaveBeenCalled();
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
   });
 
   it('returns a sanitized no-store 500 when patient visit brief reads fail', async () => {
@@ -137,5 +158,6 @@ describe('/api/patients/[id]/visit-brief', () => {
     expect(JSON.stringify(body)).not.toContain(rawError);
     expect(JSON.stringify(body)).not.toContain('患者A');
     expect(JSON.stringify(body)).not.toContain('ワルファリン');
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
   });
 });
