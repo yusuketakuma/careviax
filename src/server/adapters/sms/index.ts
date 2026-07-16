@@ -39,6 +39,7 @@ const TWILIO_FAILED_STATUSES = new Set(['canceled', 'failed', 'undelivered']);
 
 export type SmsProviderReadiness = {
   status: 'ready' | 'not_configured' | 'misconfigured';
+  deliveryTracking: 'ready' | 'not_configured' | 'misconfigured';
 };
 
 export class SmsNotificationAdapterError extends Error {
@@ -78,8 +79,24 @@ function resolveSmsConfig(): SmsAdapterConfig {
 
 export function getSmsProviderReadiness(): SmsProviderReadiness {
   const config = resolveSmsConfig();
-  if (config.provider === 'twilio') return { status: 'ready' };
-  return { status: config.provider };
+  const accountSid = process.env.TWILIO_ACCOUNT_SID?.trim();
+  const authToken = process.env.TWILIO_AUTH_TOKEN?.trim();
+  const fromNumber = process.env.TWILIO_FROM_NUMBER?.trim();
+  const callbackUrl = process.env.TWILIO_STATUS_CALLBACK_URL?.trim();
+  const hasCompleteProvider = Boolean(accountSid && authToken && fromNumber);
+  const hasAnyProviderSetting = Boolean(accountSid || authToken || fromNumber);
+  let deliveryTracking: SmsProviderReadiness['deliveryTracking'];
+  if (hasCompleteProvider) {
+    deliveryTracking = !callbackUrl
+      ? 'not_configured'
+      : isValidTwilioStatusCallbackUrl(callbackUrl)
+        ? 'ready'
+        : 'misconfigured';
+  } else {
+    deliveryTracking = hasAnyProviderSetting || callbackUrl ? 'misconfigured' : 'not_configured';
+  }
+  if (config.provider === 'twilio') return { status: 'ready', deliveryTracking };
+  return { status: config.provider, deliveryTracking };
 }
 
 async function readTwilioAcceptance(response: Response) {

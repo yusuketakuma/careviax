@@ -54,7 +54,7 @@ describe('/api/health GET', () => {
     vi.clearAllMocks();
     getAuthContextMock.mockResolvedValue(null);
     getSecretsBootstrapStatusMock.mockReturnValue({ state: 'ready', source: 'environment' });
-    getSmsProviderReadinessMock.mockReturnValue({ status: 'ready' });
+    getSmsProviderReadinessMock.mockReturnValue({ status: 'ready', deliveryTracking: 'ready' });
     getLineProviderReadinessMock.mockReturnValue({ status: 'ready' });
   });
 
@@ -117,7 +117,10 @@ describe('/api/health GET', () => {
       orgId: 'org_1',
       role: 'admin',
     });
-    getSmsProviderReadinessMock.mockReturnValue({ status: 'misconfigured' });
+    getSmsProviderReadinessMock.mockReturnValue({
+      status: 'misconfigured',
+      deliveryTracking: 'misconfigured',
+    });
     getLineProviderReadinessMock.mockReturnValue({ status: 'not_configured' });
     queryRawMock.mockResolvedValue([{ '?column?': 1 }]);
     runBackupMonitorChecksMock.mockResolvedValue({ overall: 'ok', checks: {} });
@@ -129,6 +132,33 @@ describe('/api/health GET', () => {
       checks: {
         smsProvider: { status: 'misconfigured' },
         lineProvider: { status: 'not_configured' },
+      },
+    });
+  });
+
+  it('degrades admin readiness when SMS can send but delivery tracking is not configured', async () => {
+    getAuthContextMock.mockResolvedValue({
+      userId: 'user_1',
+      orgId: 'org_1',
+      role: 'admin',
+    });
+    getSmsProviderReadinessMock.mockReturnValue({
+      status: 'ready',
+      deliveryTracking: 'not_configured',
+    });
+    queryRawMock.mockResolvedValue([{ '?column?': 1 }]);
+    runBackupMonitorChecksMock.mockResolvedValue({ overall: 'ok', checks: {} });
+
+    const response = await GET(healthRequest());
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      status: 'degraded',
+      checks: {
+        smsProvider: {
+          status: 'ok',
+          details: { deliveryTracking: 'not_configured' },
+        },
       },
     });
   });

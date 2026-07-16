@@ -71,9 +71,17 @@ export async function GET(req: NextRequest) {
 
     const smsStatus = getSmsProviderReadiness();
     const lineStatus = getLineProviderReadiness();
-    checks.smsProvider = { status: smsStatus.status === 'ready' ? 'ok' : smsStatus.status };
+    checks.smsProvider = {
+      status: smsStatus.status === 'ready' ? 'ok' : smsStatus.status,
+      details: { deliveryTracking: smsStatus.deliveryTracking },
+    };
     checks.lineProvider = { status: lineStatus.status === 'ready' ? 'ok' : lineStatus.status };
-    if (overall === 'ok' && (smsStatus.status !== 'ready' || lineStatus.status !== 'ready')) {
+    if (
+      overall === 'ok' &&
+      (smsStatus.status !== 'ready' ||
+        smsStatus.deliveryTracking !== 'ready' ||
+        lineStatus.status !== 'ready')
+    ) {
       overall = 'degraded';
     }
 

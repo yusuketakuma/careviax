@@ -111,7 +111,10 @@ describe('SmsNotificationAdapter', () => {
   it('returns not_configured instead of reporting stub delivery success', async () => {
     const adapter = new SmsNotificationAdapter({ provider: 'not_configured' });
 
-    expect(getSmsProviderReadiness()).toEqual({ status: 'not_configured' });
+    expect(getSmsProviderReadiness()).toEqual({
+      status: 'not_configured',
+      deliveryTracking: 'not_configured',
+    });
     await expect(adapter.sendSms('+819011111111', '通知本文')).resolves.toEqual({
       status: 'not_configured',
       provider: null,
@@ -122,7 +125,10 @@ describe('SmsNotificationAdapter', () => {
   it('reports partial Twilio configuration as misconfigured readiness and failed delivery', async () => {
     vi.stubEnv('TWILIO_ACCOUNT_SID', 'AC123');
 
-    expect(getSmsProviderReadiness()).toEqual({ status: 'misconfigured' });
+    expect(getSmsProviderReadiness()).toEqual({
+      status: 'misconfigured',
+      deliveryTracking: 'misconfigured',
+    });
     await expect(
       new SmsNotificationAdapter().sendSms('+819011111111', '通知本文'),
     ).resolves.toEqual({
@@ -138,10 +144,33 @@ describe('SmsNotificationAdapter', () => {
     vi.stubEnv('TWILIO_FROM_NUMBER', '+819012345678');
     vi.stubEnv('TWILIO_STATUS_CALLBACK_URL', 'http://attacker.test/callback');
 
-    expect(getSmsProviderReadiness()).toEqual({ status: 'misconfigured' });
+    expect(getSmsProviderReadiness()).toEqual({
+      status: 'misconfigured',
+      deliveryTracking: 'misconfigured',
+    });
     await expect(
       new SmsNotificationAdapter().sendSms('+819011111111', '通知本文'),
     ).resolves.toMatchObject({ status: 'failed', provider: 'twilio' });
+  });
+
+  it('reports sending and delivery-tracking readiness independently', () => {
+    vi.stubEnv('TWILIO_ACCOUNT_SID', 'AC123');
+    vi.stubEnv('TWILIO_AUTH_TOKEN', 'auth-token');
+    vi.stubEnv('TWILIO_FROM_NUMBER', '+819012345678');
+
+    expect(getSmsProviderReadiness()).toEqual({
+      status: 'ready',
+      deliveryTracking: 'not_configured',
+    });
+
+    vi.stubEnv(
+      'TWILIO_STATUS_CALLBACK_URL',
+      'https://app.example.test/api/webhooks/twilio/message-status',
+    );
+    expect(getSmsProviderReadiness()).toEqual({
+      status: 'ready',
+      deliveryTracking: 'ready',
+    });
   });
 
   it.each([
