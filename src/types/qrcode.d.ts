@@ -12,6 +12,18 @@ declare module 'qrcode' {
     mode: 'byte';
   };
 
+  export type QRCodeCreateResult = {
+    modules: {
+      size: number;
+      get(row: number, column: number): number;
+    };
+  };
+
+  export function create(
+    text: string | QRCodeByteSegment[],
+    options?: Pick<QRCodeToDataURLOptions, 'errorCorrectionLevel'>,
+  ): QRCodeCreateResult;
+
   export function toDataURL(
     text: string | QRCodeByteSegment[],
     options?: QRCodeToDataURLOptions,
