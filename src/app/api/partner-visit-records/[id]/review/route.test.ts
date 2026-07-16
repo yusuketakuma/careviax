@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
+import { Prisma } from '@prisma/client';
 import { expectSensitiveNoStore } from '@/test/api-response-assertions';
 
 const {
@@ -12,6 +13,7 @@ const {
   membershipFindFirstMock,
   dispatchNotificationEventMock,
   createAuditLogEntryMock,
+  acquireAdvisoryTxLockMock,
 } = vi.hoisted(() => ({
   withOrgContextMock: vi.fn(),
   partnerVisitRecordFindFirstMock: vi.fn(),
@@ -22,6 +24,7 @@ const {
   membershipFindFirstMock: vi.fn(),
   dispatchNotificationEventMock: vi.fn(),
   createAuditLogEntryMock: vi.fn(),
+  acquireAdvisoryTxLockMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
@@ -41,6 +44,10 @@ vi.mock('@/lib/auth/context', () => ({
 
 vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
+}));
+
+vi.mock('@/lib/db/advisory-lock', () => ({
+  acquireAdvisoryTxLock: acquireAdvisoryTxLockMock,
 }));
 
 vi.mock('@/lib/audit/audit-entry', () => ({
@@ -125,6 +132,7 @@ describe('/api/partner-visit-records/[id]/review POST', () => {
       claim_note: { id: 'claim_note_1', claim_status: 'pending' },
     });
     createAuditLogEntryMock.mockResolvedValue({ id: 'audit_1' });
+    acquireAdvisoryTxLockMock.mockResolvedValue(undefined);
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
         partnerVisitRecord: {
@@ -148,7 +156,7 @@ describe('/api/partner-visit-records/[id]/review POST', () => {
   it('confirms a submitted partner visit record, marks the request confirmed, and creates claim support', async () => {
     const rawRecordId = 'partner_visit_record/1?tab=x#frag';
     const encodedRecordHref = `/partner-visit-records/${encodeURIComponent(rawRecordId)}`;
-    partnerVisitRecordFindFirstMock.mockResolvedValueOnce({
+    partnerVisitRecordFindFirstMock.mockResolvedValue({
       id: rawRecordId,
       status: 'submitted',
       updated_at: new Date(CURRENT_UPDATED_AT),
@@ -187,6 +195,21 @@ describe('/api/partner-visit-records/[id]/review POST', () => {
 
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
+    expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
+      isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+    });
+    expect(partnerVisitRecordFindFirstMock).toHaveBeenCalledTimes(2);
+    expect(acquireAdvisoryTxLockMock).toHaveBeenCalledWith(
+      expect.anything(),
+      'patient_share_case_consent',
+      'org_1:share_case_1',
+    );
+    expect(partnerVisitRecordFindFirstMock.mock.invocationCallOrder[0]).toBeLessThan(
+      acquireAdvisoryTxLockMock.mock.invocationCallOrder[0],
+    );
+    expect(acquireAdvisoryTxLockMock.mock.invocationCallOrder[0]).toBeLessThan(
+      partnerVisitRecordFindFirstMock.mock.invocationCallOrder[1],
+    );
     await expect(response.json()).resolves.toMatchObject({
       data: {
         id: rawRecordId,
@@ -202,6 +225,14 @@ describe('/api/partner-visit-records/[id]/review POST', () => {
         id: 'visit_request_1',
         org_id: 'org_1',
         status: 'submitted',
+        share_case: {
+          is: expect.objectContaining({
+            org_id: 'org_1',
+            status: 'active',
+            revoked_at: null,
+            ended_at: null,
+          }),
+        },
         partnership: {
           status: 'active',
           partner_pharmacy: { status: 'active' },
@@ -218,10 +249,13 @@ describe('/api/partner-visit-records/[id]/review POST', () => {
         org_id: 'org_1',
         status: 'submitted',
         updated_at: new Date(CURRENT_UPDATED_AT),
-        share_case: {
+        share_case: expect.objectContaining({
+          org_id: 'org_1',
           status: 'active',
+          revoked_at: null,
+          ended_at: null,
           base_patient: { updated_at: new Date(PATIENT_UPDATED_AT) },
-        },
+        }),
         owner_partner_pharmacy: { status: 'active' },
         visit_request: {
           status: 'submitted',
@@ -346,7 +380,7 @@ describe('/api/partner-visit-records/[id]/review POST', () => {
   });
 
   it('skips membership lookup when the legacy visit request has no accepted actor', async () => {
-    partnerVisitRecordFindFirstMock.mockResolvedValueOnce({
+    partnerVisitRecordFindFirstMock.mockResolvedValue({
       id: 'partner_visit_record_1',
       status: 'submitted',
       updated_at: new Date(CURRENT_UPDATED_AT),
@@ -404,7 +438,7 @@ describe('/api/partner-visit-records/[id]/review POST', () => {
   });
 
   it('stores partner visit claim support dates as Japan business date sentinels', async () => {
-    partnerVisitRecordFindFirstMock.mockResolvedValueOnce({
+    partnerVisitRecordFindFirstMock.mockResolvedValue({
       id: 'partner_visit_record_1',
       status: 'submitted',
       updated_at: new Date(CURRENT_UPDATED_AT),
@@ -489,6 +523,14 @@ describe('/api/partner-visit-records/[id]/review POST', () => {
         id: 'visit_request_1',
         org_id: 'org_1',
         status: 'submitted',
+        share_case: {
+          is: expect.objectContaining({
+            org_id: 'org_1',
+            status: 'active',
+            revoked_at: null,
+            ended_at: null,
+          }),
+        },
         partnership: {
           status: 'active',
           partner_pharmacy: { status: 'active' },
@@ -611,7 +653,7 @@ describe('/api/partner-visit-records/[id]/review POST', () => {
 
   it('rejects a stale patient identity before reviewing the visit record', async () => {
     const current = await partnerVisitRecordFindFirstMock();
-    partnerVisitRecordFindFirstMock.mockResolvedValueOnce({
+    partnerVisitRecordFindFirstMock.mockResolvedValue({
       ...current,
       share_case: {
         ...current.share_case,
@@ -626,6 +668,28 @@ describe('/api/partner-visit-records/[id]/review POST', () => {
       details: { blocker: 'patient_identity_stale' },
     });
     expect(partnerVisitRecordUpdateManyMock).not.toHaveBeenCalled();
+  });
+
+  it('rolls back before workflow side effects when consent becomes inactive after locking', async () => {
+    const current = await partnerVisitRecordFindFirstMock();
+    partnerVisitRecordFindFirstMock.mockClear();
+    partnerVisitRecordFindFirstMock.mockResolvedValueOnce(current).mockResolvedValueOnce(null);
+
+    const response = await rawPOST(createRequest({ decision: 'confirm' }), routeContext);
+
+    expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: '患者共有の同意状態が更新されています',
+    });
+    expect(acquireAdvisoryTxLockMock).toHaveBeenCalledOnce();
+    expect(partnerVisitRecordUpdateManyMock).not.toHaveBeenCalled();
+    expect(pharmacyVisitRequestUpdateManyMock).not.toHaveBeenCalled();
+    expect(claimCooperationNoteUpsertMock).not.toHaveBeenCalled();
+    expect(dispatchNotificationEventMock).not.toHaveBeenCalled();
+    expect(partnerVisitRecordFindUniqueOrThrowMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
   });
 
   it('returns a sanitized no-store 500 when review reads fail unexpectedly', async () => {

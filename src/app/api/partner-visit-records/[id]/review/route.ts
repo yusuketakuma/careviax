@@ -1,4 +1,5 @@
 import { unstable_rethrow } from 'next/navigation';
+import { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { withAuthContext } from '@/lib/auth/context';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
@@ -7,11 +8,17 @@ import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { conflict, internalError, notFound, success, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { toPrismaJsonInput } from '@/lib/db/json';
+import { acquireAdvisoryTxLock } from '@/lib/db/advisory-lock';
 import { withOrgContext } from '@/lib/db/rls';
 import { formatUtcDateKey } from '@/lib/date-key';
 import { buildPartnerVisitRecordHref } from '@/lib/pharmacy-cooperation/navigation';
 import { japanDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 import { dispatchNotificationEvent } from '@/server/services/notifications';
+import {
+  buildActivePatientShareCaseMutationWhere,
+  buildPatientShareCaseConsentLockKey,
+  PATIENT_SHARE_CASE_CONSENT_LOCK_NAMESPACE,
+} from '@/server/services/patient-share-access';
 import {
   resolvePartnerVisitRecordTransition,
   resolvePharmacyVisitRequestTransition,
@@ -121,254 +128,276 @@ const authenticatedPOST = withAuthContext<{ id: string }>(
       | { response: ReturnType<typeof conflict> | ReturnType<typeof notFound> }
       | { partnerVisitRecord: ReturnType<typeof toSafePartnerVisitRecord> };
     try {
-      result = await withOrgContext(ctx.orgId, async (tx) => {
-        const record = await tx.partnerVisitRecord.findFirst({
-          where: { id, org_id: ctx.orgId },
-          select: {
-            id: true,
-            status: true,
-            updated_at: true,
-            visit_request_id: true,
-            share_case_id: true,
-            owner_partner_pharmacy_id: true,
-            visit_at: true,
-            revision_no: true,
-            share_case: {
-              select: { status: true, base_patient: { select: { updated_at: true } } },
-            },
-            owner_partner_pharmacy: { select: { name: true, status: true } },
-            visit_request: {
+      result = await withOrgContext(
+        ctx.orgId,
+        async (tx) => {
+          const activeShareCaseWhere = buildActivePatientShareCaseMutationWhere({
+            orgId: ctx.orgId,
+            asOf: now,
+          });
+          const findActiveRecord = () =>
+            tx.partnerVisitRecord.findFirst({
+              where: { id, org_id: ctx.orgId, share_case: { is: activeShareCaseWhere } },
               select: {
+                id: true,
                 status: true,
-                accepted_by: true,
-                partnership_id: true,
-                partnership: {
+                updated_at: true,
+                visit_request_id: true,
+                share_case_id: true,
+                owner_partner_pharmacy_id: true,
+                visit_at: true,
+                revision_no: true,
+                share_case: {
+                  select: { status: true, base_patient: { select: { updated_at: true } } },
+                },
+                owner_partner_pharmacy: { select: { name: true, status: true } },
+                visit_request: {
                   select: {
                     status: true,
-                    partner_pharmacy: { select: { status: true } },
-                    base_site: { select: { id: true, name: true } },
+                    accepted_by: true,
+                    partnership_id: true,
+                    partnership: {
+                      select: {
+                        status: true,
+                        partner_pharmacy: { select: { status: true } },
+                        base_site: { select: { id: true, name: true } },
+                      },
+                    },
                   },
                 },
               },
-            },
-          },
-        });
+            });
 
-        if (!record) return { response: notFound('協力訪問記録が見つかりません') };
-        if (
-          record.share_case.base_patient.updated_at.toISOString() !==
-          parsed.data.expected_patient_updated_at
-        ) {
-          return {
-            response: conflict('対象患者情報が更新されています。再読み込みしてください', {
-              blocker: 'patient_identity_stale',
+          const initialRecord = await findActiveRecord();
+          if (!initialRecord) return { response: notFound('協力訪問記録が見つかりません') };
+
+          await acquireAdvisoryTxLock(
+            tx,
+            PATIENT_SHARE_CASE_CONSENT_LOCK_NAMESPACE,
+            buildPatientShareCaseConsentLockKey({
+              orgId: ctx.orgId,
+              shareCaseId: initialRecord.share_case_id,
             }),
-          };
-        }
-        const expectedUpdatedAt = new Date(parsed.data.expected_updated_at);
-        if (record.updated_at.toISOString() !== expectedUpdatedAt.toISOString()) {
-          return { response: conflict('協力訪問記録が更新されています。再読み込みしてください') };
-        }
+          );
 
-        const recordTransition = resolvePartnerVisitRecordTransition({
-          currentStatus: record.status,
-          action: parsed.data.decision === 'confirm' ? 'confirm' : 'return',
-        });
-        if (!recordTransition.allowed) {
-          return { response: conflict('提出済みの訪問記録のみ確認または差戻しできます') };
-        }
-        if (record.share_case.status !== 'active') {
-          return { response: conflict('共有中の患者共有ケースに紐づく訪問記録のみ確認できます') };
-        }
-        const requestTransition = resolvePharmacyVisitRequestTransition({
-          currentStatus: record.visit_request.status,
-          action:
-            parsed.data.decision === 'confirm' ? 'confirm_partner_record' : 'return_partner_record',
-        });
-        if (
-          !requestTransition.allowed ||
-          record.visit_request.partnership.status !== 'active' ||
-          record.visit_request.partnership.partner_pharmacy.status !== 'active' ||
-          record.owner_partner_pharmacy.status !== 'active'
-        ) {
-          return { response: conflict('提出済みの有効な協力訪問のみ確認できます') };
-        }
+          const record = await findActiveRecord();
+          if (!record) return { response: conflict('患者共有の同意状態が更新されています') };
+          if (
+            record.share_case.base_patient.updated_at.toISOString() !==
+            parsed.data.expected_patient_updated_at
+          ) {
+            return {
+              response: conflict('対象患者情報が更新されています。再読み込みしてください', {
+                blocker: 'patient_identity_stale',
+              }),
+            };
+          }
+          const expectedUpdatedAt = new Date(parsed.data.expected_updated_at);
+          if (record.updated_at.toISOString() !== expectedUpdatedAt.toISOString()) {
+            return { response: conflict('協力訪問記録が更新されています。再読み込みしてください') };
+          }
 
-        const explicitRecipientMembership = record.visit_request.accepted_by
-          ? await tx.membership.findFirst({
-              where: {
-                org_id: ctx.orgId,
-                user_id: record.visit_request.accepted_by,
-                is_active: true,
-                user: { is_active: true },
+          const recordTransition = resolvePartnerVisitRecordTransition({
+            currentStatus: record.status,
+            action: parsed.data.decision === 'confirm' ? 'confirm' : 'return',
+          });
+          if (!recordTransition.allowed) {
+            return { response: conflict('提出済みの訪問記録のみ確認または差戻しできます') };
+          }
+          const requestTransition = resolvePharmacyVisitRequestTransition({
+            currentStatus: record.visit_request.status,
+            action:
+              parsed.data.decision === 'confirm'
+                ? 'confirm_partner_record'
+                : 'return_partner_record',
+          });
+          if (
+            !requestTransition.allowed ||
+            record.visit_request.partnership.status !== 'active' ||
+            record.visit_request.partnership.partner_pharmacy.status !== 'active' ||
+            record.owner_partner_pharmacy.status !== 'active'
+          ) {
+            return { response: conflict('提出済みの有効な協力訪問のみ確認できます') };
+          }
+
+          const explicitRecipientMembership = record.visit_request.accepted_by
+            ? await tx.membership.findFirst({
+                where: {
+                  org_id: ctx.orgId,
+                  user_id: record.visit_request.accepted_by,
+                  is_active: true,
+                  user: { is_active: true },
+                },
+                select: { user_id: true },
+              })
+            : null;
+          const explicitNotificationUserIds = explicitRecipientMembership
+            ? [explicitRecipientMembership.user_id]
+            : [];
+
+          const updatedCount = await tx.partnerVisitRecord.updateMany({
+            where: {
+              id,
+              org_id: ctx.orgId,
+              status: recordTransition.currentStatus,
+              updated_at: expectedUpdatedAt,
+              share_case: {
+                ...activeShareCaseWhere,
+                base_patient: { updated_at: record.share_case.base_patient.updated_at },
               },
-              select: { user_id: true },
-            })
-          : null;
-        const explicitNotificationUserIds = explicitRecipientMembership
-          ? [explicitRecipientMembership.user_id]
-          : [];
-
-        const updatedCount = await tx.partnerVisitRecord.updateMany({
-          where: {
-            id,
-            org_id: ctx.orgId,
-            status: recordTransition.currentStatus,
-            updated_at: expectedUpdatedAt,
-            share_case: {
-              status: 'active',
-              base_patient: { updated_at: record.share_case.base_patient.updated_at },
+              owner_partner_pharmacy: { status: 'active' },
+              visit_request: {
+                status: requestTransition.currentStatus,
+                partnership: {
+                  status: 'active',
+                  partner_pharmacy: { status: 'active' },
+                },
+              },
             },
-            owner_partner_pharmacy: { status: 'active' },
-            visit_request: {
+            data:
+              parsed.data.decision === 'confirm'
+                ? {
+                    status: recordTransition.nextStatus,
+                    confirmed_at: now,
+                    confirmed_by: ctx.userId,
+                    base_confirmation_snapshot: toPrismaJsonInput({
+                      doctor_report_required: parsed.data.doctor_report_required,
+                      next_action: parsed.data.doctor_report_required
+                        ? 'doctor_report_draft'
+                        : 'claim_review',
+                      confirmed_at: now.toISOString(),
+                    }),
+                  }
+                : {
+                    status: recordTransition.nextStatus,
+                    returned_at: now,
+                    returned_by: ctx.userId,
+                    returned_reason: parsed.data.return_reason,
+                  },
+          });
+          if (updatedCount.count !== 1) {
+            throw new TransactionResponse(conflict('訪問記録はすでに更新されています'));
+          }
+
+          const requestUpdateCount = await tx.pharmacyVisitRequest.updateMany({
+            where: {
+              id: record.visit_request_id,
+              org_id: ctx.orgId,
               status: requestTransition.currentStatus,
+              share_case: { is: activeShareCaseWhere },
               partnership: {
                 status: 'active',
                 partner_pharmacy: { status: 'active' },
               },
             },
-          },
-          data:
-            parsed.data.decision === 'confirm'
-              ? {
-                  status: recordTransition.nextStatus,
-                  confirmed_at: now,
-                  confirmed_by: ctx.userId,
-                  base_confirmation_snapshot: toPrismaJsonInput({
-                    doctor_report_required: parsed.data.doctor_report_required,
-                    next_action: parsed.data.doctor_report_required
-                      ? 'doctor_report_draft'
-                      : 'claim_review',
-                    confirmed_at: now.toISOString(),
-                  }),
-                }
-              : {
-                  status: recordTransition.nextStatus,
-                  returned_at: now,
-                  returned_by: ctx.userId,
-                  returned_reason: parsed.data.return_reason,
+            data:
+              parsed.data.decision === 'confirm'
+                ? { status: requestTransition.nextStatus, completed_at: now }
+                : { status: requestTransition.nextStatus, completed_at: null },
+          });
+          if (requestUpdateCount.count !== 1) {
+            throw new TransactionResponse(conflict('訪問依頼はすでに更新されています'));
+          }
+
+          if (parsed.data.decision === 'confirm') {
+            const visitDate = visitDateOnly(record.visit_at);
+            const baseSite = record.visit_request.partnership.base_site;
+            await tx.claimCooperationNote.upsert({
+              where: {
+                partner_visit_record_id_org_id: {
+                  partner_visit_record_id: record.id,
+                  org_id: ctx.orgId,
                 },
-        });
-        if (updatedCount.count !== 1) {
-          throw new TransactionResponse(conflict('訪問記録はすでに更新されています'));
-        }
-
-        const requestUpdateCount = await tx.pharmacyVisitRequest.updateMany({
-          where: {
-            id: record.visit_request_id,
-            org_id: ctx.orgId,
-            status: requestTransition.currentStatus,
-            partnership: {
-              status: 'active',
-              partner_pharmacy: { status: 'active' },
-            },
-          },
-          data:
-            parsed.data.decision === 'confirm'
-              ? { status: requestTransition.nextStatus, completed_at: now }
-              : { status: requestTransition.nextStatus, completed_at: null },
-        });
-        if (requestUpdateCount.count !== 1) {
-          throw new TransactionResponse(conflict('訪問依頼はすでに更新されています'));
-        }
-
-        if (parsed.data.decision === 'confirm') {
-          const visitDate = visitDateOnly(record.visit_at);
-          const baseSite = record.visit_request.partnership.base_site;
-          await tx.claimCooperationNote.upsert({
-            where: {
-              partner_visit_record_id_org_id: {
-                partner_visit_record_id: record.id,
-                org_id: ctx.orgId,
               },
-            },
-            create: {
-              org_id: ctx.orgId,
+              create: {
+                org_id: ctx.orgId,
+                partner_visit_record_id: record.id,
+                partner_pharmacy_name: record.owner_partner_pharmacy.name,
+                visit_date: visitDate,
+                prescription_received_by: baseSite.name,
+                dispensing_pharmacy_id: baseSite.id,
+                dispensing_pharmacy_name: baseSite.name,
+                claim_status: 'pending',
+                claim_note_text: `協力薬局:${record.owner_partner_pharmacy.name} / 訪問日:${formatUtcDateKey(
+                  visitDate,
+                )} / 処方箋受付薬局:${baseSite.name}`,
+              },
+              update: {
+                partner_pharmacy_name: record.owner_partner_pharmacy.name,
+                visit_date: visitDate,
+                prescription_received_by: baseSite.name,
+                dispensing_pharmacy_id: baseSite.id,
+                dispensing_pharmacy_name: baseSite.name,
+                claim_status: 'pending',
+                claim_note_text: `協力薬局:${record.owner_partner_pharmacy.name} / 訪問日:${formatUtcDateKey(
+                  visitDate,
+                )} / 処方箋受付薬局:${baseSite.name}`,
+              },
+            });
+          }
+
+          const notification = notificationForDecision(parsed.data.decision);
+          const notifications = await dispatchNotificationEvent(tx, {
+            orgId: ctx.orgId,
+            eventType: notification.eventType,
+            type: 'business',
+            title: notification.title,
+            message: notification.message,
+            link: buildPartnerVisitRecordHref(record.id),
+            explicitUserIds: explicitNotificationUserIds,
+            metadata: {
               partner_visit_record_id: record.id,
-              partner_pharmacy_name: record.owner_partner_pharmacy.name,
-              visit_date: visitDate,
-              prescription_received_by: baseSite.name,
-              dispensing_pharmacy_id: baseSite.id,
-              dispensing_pharmacy_name: baseSite.name,
-              claim_status: 'pending',
-              claim_note_text: `協力薬局:${record.owner_partner_pharmacy.name} / 訪問日:${formatUtcDateKey(
-                visitDate,
-              )} / 処方箋受付薬局:${baseSite.name}`,
+              visit_request_id: record.visit_request_id,
+              share_case_id: record.share_case_id,
+              decision: parsed.data.decision,
+              status: recordTransition.nextStatus,
             },
-            update: {
-              partner_pharmacy_name: record.owner_partner_pharmacy.name,
-              visit_date: visitDate,
-              prescription_received_by: baseSite.name,
-              dispensing_pharmacy_id: baseSite.id,
-              dispensing_pharmacy_name: baseSite.name,
-              claim_status: 'pending',
-              claim_note_text: `協力薬局:${record.owner_partner_pharmacy.name} / 訪問日:${formatUtcDateKey(
-                visitDate,
-              )} / 処方箋受付薬局:${baseSite.name}`,
+            dedupeKey: `${notification.eventType}:${record.id}:${now.toISOString()}`,
+          });
+
+          const updated = await tx.partnerVisitRecord.findUniqueOrThrow({
+            where: { id_org_id: { id, org_id: ctx.orgId } },
+            include: {
+              owner_partner_pharmacy: { select: { id: true, name: true, status: true } },
+              visit_request: { select: { id: true, status: true, urgency: true } },
+              claim_note: {
+                select: {
+                  id: true,
+                  claim_status: true,
+                  visit_date: true,
+                  partner_pharmacy_name: true,
+                  prescription_received_by: true,
+                  dispensing_pharmacy_name: true,
+                },
+              },
             },
           });
-        }
 
-        const notification = notificationForDecision(parsed.data.decision);
-        const notifications = await dispatchNotificationEvent(tx, {
-          orgId: ctx.orgId,
-          eventType: notification.eventType,
-          type: 'business',
-          title: notification.title,
-          message: notification.message,
-          link: buildPartnerVisitRecordHref(record.id),
-          explicitUserIds: explicitNotificationUserIds,
-          metadata: {
-            partner_visit_record_id: record.id,
-            visit_request_id: record.visit_request_id,
-            share_case_id: record.share_case_id,
-            decision: parsed.data.decision,
-            status: recordTransition.nextStatus,
-          },
-          dedupeKey: `${notification.eventType}:${record.id}:${now.toISOString()}`,
-        });
-
-        const updated = await tx.partnerVisitRecord.findUniqueOrThrow({
-          where: { id_org_id: { id, org_id: ctx.orgId } },
-          include: {
-            owner_partner_pharmacy: { select: { id: true, name: true, status: true } },
-            visit_request: { select: { id: true, status: true, urgency: true } },
-            claim_note: {
-              select: {
-                id: true,
-                claim_status: true,
-                visit_date: true,
-                partner_pharmacy_name: true,
-                prescription_received_by: true,
-                dispensing_pharmacy_name: true,
-              },
+          await createAuditLogEntry(tx, ctx, {
+            action: auditActionForDecision(parsed.data.decision),
+            targetType: 'PartnerVisitRecord',
+            targetId: updated.id,
+            changes: {
+              visit_request_id: record.visit_request_id,
+              share_case_id: record.share_case_id,
+              partner_pharmacy_id: record.owner_partner_pharmacy_id,
+              revision_no: record.revision_no,
+              decision: parsed.data.decision,
+              previous_status: record.status,
+              status: updated.status,
+              visit_request_status: requestTransition.nextStatus,
+              doctor_report_required: parsed.data.doctor_report_required,
+              return_reason_length: parsed.data.return_reason?.length ?? 0,
+              notify_partner_pharmacy: true,
+              notification_count: notifications.length,
+              notification_event_type: notification.eventType,
             },
-          },
-        });
+          });
 
-        await createAuditLogEntry(tx, ctx, {
-          action: auditActionForDecision(parsed.data.decision),
-          targetType: 'PartnerVisitRecord',
-          targetId: updated.id,
-          changes: {
-            visit_request_id: record.visit_request_id,
-            share_case_id: record.share_case_id,
-            partner_pharmacy_id: record.owner_partner_pharmacy_id,
-            revision_no: record.revision_no,
-            decision: parsed.data.decision,
-            previous_status: record.status,
-            status: updated.status,
-            visit_request_status: requestTransition.nextStatus,
-            doctor_report_required: parsed.data.doctor_report_required,
-            return_reason_length: parsed.data.return_reason?.length ?? 0,
-            notify_partner_pharmacy: true,
-            notification_count: notifications.length,
-            notification_event_type: notification.eventType,
-          },
-        });
-
-        return { partnerVisitRecord: toSafePartnerVisitRecord(updated) };
-      });
+          return { partnerVisitRecord: toSafePartnerVisitRecord(updated) };
+        },
+        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+      );
     } catch (error) {
       if (error instanceof TransactionResponse) return error.response;
       throw error;
