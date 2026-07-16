@@ -107,9 +107,9 @@ describe('GET /api/patients/[id]/home-operations', () => {
     getPatientHomeOperationsDataMock.mockResolvedValue(operationsData);
   });
 
-  it('keeps the patient home operations read behind canVisit', () => {
+  it('keeps the patient home operations read behind canViewDashboard', () => {
     expect(withAuthContextOptions).toContainEqual({
-      permission: 'canVisit',
+      permission: 'canViewDashboard',
       message: '患者情報の閲覧権限がありません',
     });
   });

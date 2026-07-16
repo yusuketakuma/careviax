@@ -127,9 +127,9 @@ describe('GET /api/patients/[id]/workflow-preview', () => {
     getPatientWorkflowPreviewDataMock.mockResolvedValue(previewData);
   });
 
-  it('keeps the patient workflow preview read behind canVisit', () => {
+  it('keeps the patient workflow preview read behind canViewDashboard', () => {
     expect(withAuthContextOptions).toContainEqual({
-      permission: 'canVisit',
+      permission: 'canViewDashboard',
       message: '患者情報の閲覧権限がありません',
     });
   });
