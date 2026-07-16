@@ -1,24 +1,15 @@
 import { NextRequest } from 'next/server';
-import { unstable_rethrow } from 'next/navigation';
-import { requireAuthContext } from '@/lib/auth/context';
+import { withAuthContext, type AuthContext, type AuthRouteContext } from '@/lib/auth/context';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
-import { internalError, notFound, success, validationError } from '@/lib/api/response';
-import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
+import { notFound, success, validationError } from '@/lib/api/response';
 import { withOrgContext } from '@/lib/db/rls';
-import { logger } from '@/lib/utils/logger';
 import { syncCaseRiskCockpitOperationalTasks } from '@/server/services/case-risk-task-sync';
 
-async function authenticatedPOST(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
+async function caseRiskCockpitTasksPOST(
+  _req: NextRequest,
+  ctx: AuthContext,
+  { params }: AuthRouteContext<{ id: string }>,
 ) {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canVisit',
-    message: 'ケースリスクタスク同期の権限がありません',
-  });
-  if ('response' in authResult) return authResult.response;
-  const ctx = authResult.ctx;
-
   const { id: rawId } = await params;
   const id = normalizeRequiredRouteParam(rawId);
   if (!id) return validationError('ケースIDが不正です');
@@ -39,17 +30,7 @@ async function authenticatedPOST(
   return success({ data: result });
 }
 
-export async function POST(req: NextRequest, routeContext: { params: Promise<{ id: string }> }) {
-  try {
-    return withSensitiveNoStore(await authenticatedPOST(req, routeContext));
-  } catch (err) {
-    unstable_rethrow(err);
-    logger.error({
-      event: 'route_handler_unhandled_error',
-      route: req.nextUrl?.pathname,
-      method: req.method,
-      code: err instanceof Error ? err.name : typeof err,
-    });
-    return withSensitiveNoStore(internalError());
-  }
-}
+export const POST = withAuthContext(caseRiskCockpitTasksPOST, {
+  permission: 'canVisit',
+  message: 'ケースリスクタスク同期の権限がありません',
+});

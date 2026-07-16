@@ -4,28 +4,61 @@ import { expectSensitiveNoStore } from '@/test/api-response-assertions';
 
 const {
   requireAuthContextMock,
+  withAuthContextMock,
   syncCaseRiskCockpitOperationalTasksMock,
   withOrgContextMock,
-  loggerErrorMock,
-} = vi.hoisted(() => ({
-  requireAuthContextMock: vi.fn(),
-  syncCaseRiskCockpitOperationalTasksMock: vi.fn(),
-  withOrgContextMock: vi.fn(),
-  loggerErrorMock: vi.fn(),
-}));
+} = vi.hoisted(() => {
+  const requireAuthContextMock = vi.fn();
+  const withAuthContextMock = vi.fn(
+    (
+      handler: (
+        req: NextRequest,
+        ctx: { orgId: string; userId: string; role: string },
+        routeContext: { params: Promise<{ id: string }> },
+      ) => Promise<Response>,
+      options: unknown,
+    ) => {
+      return async (req: NextRequest, routeContext: { params: Promise<{ id: string }> }) => {
+        const authResult = await requireAuthContextMock(req, options);
+        let response: Response;
+        if (authResult && typeof authResult === 'object' && 'response' in authResult) {
+          response = authResult.response;
+        } else {
+          try {
+            response = await handler(req, authResult.ctx, routeContext);
+          } catch {
+            response = NextResponse.json(
+              { code: 'INTERNAL_ERROR', message: 'サーバー内部でエラーが発生しました' },
+              { status: 500 },
+            );
+          }
+        }
+        response.headers.set('Cache-Control', 'private, no-store, max-age=0');
+        response.headers.set('Pragma', 'no-cache');
+        response.headers.set('X-Request-Id', '00000000-0000-4000-8000-000000000001');
+        response.headers.set(
+          'X-Correlation-Id',
+          req.headers.get('x-correlation-id') ?? '00000000-0000-4000-8000-000000000001',
+        );
+        return response;
+      };
+    },
+  );
+
+  return {
+    requireAuthContextMock,
+    withAuthContextMock,
+    syncCaseRiskCockpitOperationalTasksMock: vi.fn(),
+    withOrgContextMock: vi.fn(),
+  };
+});
 
 vi.mock('@/lib/auth/context', () => ({
-  requireAuthContext: requireAuthContextMock,
+  withAuthContext: withAuthContextMock,
 }));
 
 vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
-}));
-
-vi.mock('@/lib/utils/logger', () => ({
-  logger: {
-    error: loggerErrorMock,
-  },
 }));
 
 vi.mock('@/server/services/case-risk-task-sync', () => ({
@@ -37,6 +70,7 @@ import { POST } from './route';
 function createRequest() {
   return new NextRequest('http://localhost/api/cases/case_1/risk-cockpit/tasks', {
     method: 'POST',
+    headers: { 'x-correlation-id': 'risk_cockpit_tasks_test' },
   });
 }
 
@@ -79,6 +113,8 @@ describe('/api/cases/[id]/risk-cockpit/tasks', () => {
 
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
+    expect(response.headers.get('X-Request-Id')).toBe('00000000-0000-4000-8000-000000000001');
+    expect(response.headers.get('X-Correlation-Id')).toBe('risk_cockpit_tasks_test');
     expect(requireAuthContextMock).toHaveBeenCalledWith(expect.any(NextRequest), {
       permission: 'canVisit',
       message: 'ケースリスクタスク同期の権限がありません',
@@ -183,12 +219,5 @@ describe('/api/cases/[id]/risk-cockpit/tasks', () => {
     expect(JSON.stringify(body)).not.toContain('東京都千代田区');
     expect(JSON.stringify(body)).not.toContain('アムロジピン');
     expect(JSON.stringify(body)).not.toContain('provider raw error');
-    expect(loggerErrorMock).toHaveBeenCalledWith({
-      event: 'route_handler_unhandled_error',
-      route: '/api/cases/case_1/risk-cockpit/tasks',
-      method: 'POST',
-      code: 'Error',
-    });
-    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('山田花子');
   });
 });
