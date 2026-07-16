@@ -3235,7 +3235,19 @@ export function PharmacyCooperationWorkflowContent() {
     ]);
   };
 
-  const handleIrreversibleActionError = async (error: unknown, fallbackMessage: string) => {
+  type IrreversibleActionErrorCopy =
+    | '患者共有ケースの有効化に失敗しました'
+    | '患者リンクの更新に失敗しました'
+    | '患者共有同意の撤回に失敗しました'
+    | '訪問依頼の更新に失敗しました'
+    | '協力訪問記録の提出に失敗しました'
+    | '協力訪問記録の更新に失敗しました'
+    | '報告書ドラフトの作成に失敗しました';
+
+  const handleIrreversibleActionError = async (
+    error: unknown,
+    fallbackMessage: IrreversibleActionErrorCopy,
+  ) => {
     toast.error(messageFromError(error, fallbackMessage));
     await invalidateWorkflow();
   };
