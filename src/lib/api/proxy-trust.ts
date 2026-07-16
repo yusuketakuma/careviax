@@ -1,5 +1,3 @@
-import { BlockList, isIP } from 'node:net';
-
 export const MAX_TRUSTED_PROXY_HOPS = 8;
 
 export const TRUSTED_PROXY_TOPOLOGIES = ['single-overwrite', 'append-chain'] as const;
@@ -33,6 +31,24 @@ function isCanonicalNonNegativeInteger(value: string) {
   return /^(?:0|[1-9]\d*)$/u.test(value);
 }
 
+function ipFamily(value: string): 0 | 4 | 6 {
+  const ipv4Parts = value.split('.');
+  if (
+    ipv4Parts.length === 4 &&
+    ipv4Parts.every((part) => /^(?:0|[1-9]\d{0,2})$/u.test(part) && Number(part) <= 255)
+  ) {
+    return 4;
+  }
+
+  if (!value.includes(':') || value.includes('%')) return 0;
+  try {
+    const hostname = new URL(`http://[${value}]/`).hostname;
+    return hostname.startsWith('[') && hostname.endsWith(']') ? 6 : 0;
+  } catch {
+    return 0;
+  }
+}
+
 function parseTrustedProxyCidrs(value: string | undefined): string[] | null {
   const raw = value?.trim() ?? '';
   if (!raw) return [];
@@ -46,29 +62,13 @@ function parseTrustedProxyCidrs(value: string | undefined): string[] | null {
     const address = cidr.slice(0, separator);
     const rawPrefix = cidr.slice(separator + 1);
     if (!isCanonicalNonNegativeInteger(rawPrefix)) return null;
-    const family = isIP(address);
+    const family = ipFamily(address);
     const prefix = Number(rawPrefix);
     if ((family === 4 && prefix <= 32) || (family === 6 && prefix <= 128)) continue;
     return null;
   }
 
   return cidrs;
-}
-
-export function isAddressInCidr(address: string, cidr: string): boolean {
-  const separator = cidr.lastIndexOf('/');
-  const network = cidr.slice(0, separator);
-  const prefix = Number(cidr.slice(separator + 1));
-  const family = isIP(address);
-  if (family === 0 || family !== isIP(network)) return false;
-
-  try {
-    const blockList = new BlockList();
-    blockList.addSubnet(network, prefix, family === 4 ? 'ipv4' : 'ipv6');
-    return blockList.check(address, family === 4 ? 'ipv4' : 'ipv6');
-  } catch {
-    return false;
-  }
 }
 
 /**

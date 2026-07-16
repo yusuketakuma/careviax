@@ -1,5 +1,6 @@
 import { isIP } from 'node:net';
-import { isAddressInCidr, resolveTrustedProxyConfig } from './proxy-trust';
+import { isAddressInCidr } from './proxy-trust-cidr';
+import { resolveTrustedProxyConfig } from './proxy-trust';
 
 const MAX_FORWARDED_FOR_LENGTH = 512;
 

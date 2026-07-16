@@ -799,9 +799,9 @@ function FirstVisitPrintReadinessPanel({ summary }: { summary: FirstVisitPrintRe
   const badgeVariant = summary.status === 'blocked' ? 'destructive' : 'outline';
   const badgeClassName =
     summary.status === 'ready'
-      ? 'border-transparent bg-state-done/10 text-state-done'
+      ? 'border-state-done/30 bg-state-done/10 text-foreground'
       : summary.status === 'warning'
-        ? 'border-transparent bg-state-confirm/10 text-state-confirm'
+        ? 'border-state-confirm/30 bg-state-confirm/10 text-foreground'
         : undefined;
   const detailLabels =
     summary.status === 'blocked' ? summary.missingRequiredLabels : summary.warningLabels;
@@ -1306,13 +1306,16 @@ export function PrintHubContent() {
           </h2>
           <div className="mt-5 space-y-5">
             {outputOptions.map((option) => (
-              <div key={option.key} className="flex items-center gap-2.5">
+              <div key={option.key} className="flex min-h-11 items-center gap-2.5">
                 <Checkbox
                   id={option.id}
                   checked={settings[option.key]}
                   onCheckedChange={toggleSetting(option.key)}
                 />
-                <Label htmlFor={option.id} className="text-sm font-normal text-foreground">
+                <Label
+                  htmlFor={option.id}
+                  className="flex h-11 flex-1 items-center text-sm font-normal text-foreground"
+                >
                   {option.label}
                 </Label>
               </div>
@@ -1324,7 +1327,7 @@ export function PrintHubContent() {
           <div className="mt-14">
             <Button
               type="button"
-              className="min-h-11 w-full"
+              className="!min-h-11 w-full"
               data-testid="print-submit-button"
               onClick={() => void handlePrint()}
               aria-describedby={printDisabledReason ? PRINT_DISABLED_REASON_ID : undefined}
@@ -1348,7 +1351,7 @@ export function PrintHubContent() {
                 <Button
                   type="button"
                   variant="secondary"
-                  className="min-h-11 w-full"
+                  className="!min-h-11 w-full"
                   data-testid="first-visit-print-confirm-button"
                   onClick={() => void handleConfirmFirstVisitPrint()}
                   disabled={firstVisitPrintHistoryMutation.isPending}

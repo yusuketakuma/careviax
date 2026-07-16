@@ -5,6 +5,16 @@
 
 ---
 
+## 2026-07-16: Explicit-patient print hub `cc:完了`
+
+- [x] `MEDSAFE-PRINT-HUB-EXPLICIT-PATIENT-001`
+  - `/reports/print`を明示patient + type別exact resourceへ固定し、欠落・重複・不一致はzero PHI fetch / preview / audit / printへfail-closed化した。
+  - 2識別子、全印刷前ConfirmDialog、version/generation再照合、exact first-visit履歴、per-document deep linkを固定した。
+  - browser closeoutでNode-only proxy CIDR helperのclient bundle混入、44px touch target、readiness badgeのWCAG AA contrastを修正した。
+  - Chromium focused Playwrightでzero-fetch、exact patient/document reads、keyboard focus/Escape、390px mobile no-overflow、44px targets、200% zoom、axe serious/critical 0を確認した。
+
+---
+
 ## 直近トラック: 訪問支援・処方/調剤・共有要約 `cc:完了`
 
 <details>
