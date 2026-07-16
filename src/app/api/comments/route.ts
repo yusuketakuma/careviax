@@ -1,31 +1,26 @@
-import { unstable_rethrow } from 'next/navigation';
+import type { MemberRole, Prisma } from '@prisma/client';
 import { NextRequest } from 'next/server';
-import { requireAuthContext } from '@/lib/auth/context';
-import { runWithRequestAuthContext } from '@/lib/auth/request-context';
+import { z } from 'zod';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
-import { internalError, notFound, success, validationError } from '@/lib/api/response';
+import { notFound, success, validationError } from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
+import { withAuthContext, type AuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
-import { prisma } from '@/lib/db/client';
 import { buildDispenseTaskHref } from '@/lib/dispense/navigation';
 import { buildPatientHref } from '@/lib/patient/navigation';
 import { buildReportHref } from '@/lib/reports/navigation';
 import { buildSetPlanHref } from '@/lib/set/navigation';
+import { logger } from '@/lib/utils/logger';
 import { buildVisitHref } from '@/lib/visits/navigation';
-import type { MemberRole, Prisma } from '@prisma/client';
-import { dispatchNotificationEvent } from '@/server/services/notifications';
-import { broadcastOrgRealtimeEvent } from '@/server/services/org-realtime';
 import {
   canAccessCollaborationEntity,
   type CollaborationEntityType,
   collaborationEntityRefSchema,
   collaborationEntityTypeSchema,
 } from '@/server/services/collaboration-access';
-import { z } from 'zod';
-import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
-import { logger } from '@/lib/utils/logger';
-import { withRoutePerformance } from '@/lib/utils/performance';
+import { dispatchNotificationEvent } from '@/server/services/notifications';
+import { broadcastOrgRealtimeEvent } from '@/server/services/org-realtime';
 
-const ROUTE = '/api/comments';
 const COMMENT_THREAD_LIMIT = 100;
 const COMMENT_MENTION_LIMIT = 20;
 const COMMENT_MENTION_ID_LIMIT = 100;
@@ -36,28 +31,51 @@ const COMMENT_MENTION_RECIPIENT_ROLES = [
   'pharmacist_trainee',
 ] as const satisfies readonly MemberRole[];
 
+const commentMentionSchema = z
+  .array(z.string().trim().min(1, 'メンション先が不正です').max(COMMENT_MENTION_ID_LIMIT))
+  .max(COMMENT_MENTION_LIMIT, `メンション先は${COMMENT_MENTION_LIMIT}件までです`)
+  .superRefine((mentions, context) => {
+    if (new Set(mentions).size !== mentions.length) {
+      context.addIssue({
+        code: 'custom',
+        message: 'メンション先に重複があります',
+      });
+    }
+  });
+
 const createCommentSchema = z.object({
-  // 担当外の臨床エンティティ(care_report/visit_record 等)への越境コメントを防ぐため、
-  // entity_type は collaboration の許可 enum に限定し、後段で per-entity 認可を行う。
   entity_type: collaborationEntityTypeSchema,
   entity_id: z.string().trim().min(1, 'entity_idは必須です').max(100),
   content: z.string().trim().min(1, 'コメント内容は必須です').max(4000),
-  mentions: z
-    .array(z.string().trim().min(1, 'メンション先が不正です').max(COMMENT_MENTION_ID_LIMIT))
-    .max(COMMENT_MENTION_LIMIT, `メンション先は${COMMENT_MENTION_LIMIT}件までです`)
-    .default([]),
+  mentions: commentMentionSchema.default([]),
 });
 
-type CommentMentionLinkTx = Pick<Prisma.TransactionClient, 'medicationCycle'>;
+const commentListSelect = {
+  id: true,
+  author_id: true,
+  content: true,
+  mentions: true,
+  created_at: true,
+} as const;
 
-function normalizeCommentMentions(mentions: string[]) {
-  return Array.from(new Set(mentions));
-}
+const createdCommentSelect = {
+  id: true,
+  entity_type: true,
+  entity_id: true,
+  content: true,
+  mentions: true,
+  created_at: true,
+} as const;
 
-async function areCommentMentionRecipientsValid(orgId: string, mentions: string[]) {
+type CommentTx = Pick<
+  Prisma.TransactionClient,
+  'membership' | 'taskComment' | 'user' | 'medicationCycle'
+>;
+
+async function areCommentMentionRecipientsValid(tx: CommentTx, orgId: string, mentions: string[]) {
   if (mentions.length === 0) return true;
 
-  const memberships = await prisma.membership.findMany({
+  const memberships = await tx.membership.findMany({
     where: {
       org_id: orgId,
       is_active: true,
@@ -71,7 +89,7 @@ async function areCommentMentionRecipientsValid(orgId: string, mentions: string[
 }
 
 async function buildCommentMentionLink(
-  tx: CommentMentionLinkTx,
+  tx: CommentTx,
   args: { orgId: string; entityType: CollaborationEntityType; entityId: string },
 ) {
   if (args.entityType === 'medication_cycle') {
@@ -98,112 +116,95 @@ async function buildCommentMentionLink(
   }
 }
 
-async function authenticatedGET(req: NextRequest) {
-  const authResult = await requireAuthContext(req, {
-    // コメント閲覧はカード参加（多職種連携）であり、特権的な操作ではない。
-    // 事務（clerk）も参加者として表示・参加するため、組織メンバーレベルの canViewDashboard でゲートする。
-    permission: 'canViewDashboard',
-    message: 'コメントの閲覧権限がありません',
-  });
-  if ('response' in authResult) return authResult.response;
-  const { ctx } = authResult;
+function parseCommentEntityRef(searchParams: URLSearchParams) {
+  const entityTypeValues = searchParams.getAll('entity_type');
+  const entityIdValues = searchParams.getAll('entity_id');
+  if (entityTypeValues.length !== 1 || entityIdValues.length !== 1) return null;
 
-  return runWithRequestAuthContext(ctx, async () => {
-    const { searchParams } = new URL(req.url);
-    const parsedRef = collaborationEntityRefSchema.safeParse({
-      entity_type: searchParams.get('entity_type'),
-      entity_id: searchParams.get('entity_id'),
-    });
-    if (!parsedRef.success) {
-      return validationError('entity_typeとentity_idは必須です');
-    }
-    const { entity_type: entityType, entity_id: entityId } = parsedRef.data;
-
-    // 担当外エンティティのコメント(PHIを含み得る)閲覧を防ぐ per-entity 認可。
-    const canAccess = await canAccessCollaborationEntity(ctx, entityType, entityId);
-    if (!canAccess) return notFound('コメント対象が見つかりません');
-
-    const comments = await prisma.taskComment.findMany({
-      where: {
-        org_id: ctx.orgId,
-        entity_type: entityType,
-        entity_id: entityId,
-      },
-      orderBy: { created_at: 'desc' },
-      take: COMMENT_THREAD_LIMIT,
-    });
-    const commentsAscending = [...comments].reverse();
-
-    const authorIds = [...new Set(commentsAscending.map((c) => c.author_id))];
-    const authors =
-      authorIds.length === 0
-        ? []
-        : await prisma.user.findMany({
-            where: { id: { in: authorIds }, org_id: ctx.orgId },
-            select: { id: true, name: true },
-          });
-    const authorMap = new Map(authors.map((a) => [a.id, a.name]));
-
-    const data = commentsAscending.map((c) => ({
-      ...c,
-      author_name: authorMap.get(c.author_id) ?? '不明',
-    }));
-
-    return success({ data });
+  return collaborationEntityRefSchema.safeParse({
+    entity_type: entityTypeValues[0],
+    entity_id: entityIdValues[0],
   });
 }
 
-export async function GET(req: NextRequest) {
-  return withRoutePerformance(req, async () => {
-    try {
-      return withSensitiveNoStore(await authenticatedGET(req));
-    } catch (err) {
-      unstable_rethrow(err);
-      logger.error(
-        {
-          event: 'comments_get_unhandled_error',
-          route: ROUTE,
-          method: req.method,
-          status: 500,
+async function commentsGET(req: NextRequest, ctx: AuthContext) {
+  const parsedRef = parseCommentEntityRef(req.nextUrl.searchParams);
+  if (!parsedRef || !parsedRef.success) {
+    return withSensitiveNoStore(validationError('entity_typeとentity_idは必須です'));
+  }
+  const { entity_type: entityType, entity_id: entityId } = parsedRef.data;
+
+  const canAccess = await canAccessCollaborationEntity(ctx, entityType, entityId);
+  if (!canAccess) return withSensitiveNoStore(notFound('コメント対象が見つかりません'));
+
+  const data = await withOrgContext(
+    ctx.orgId,
+    async (tx) => {
+      const comments = await tx.taskComment.findMany({
+        where: {
+          org_id: ctx.orgId,
+          entity_type: entityType,
+          entity_id: entityId,
         },
-        err,
-      );
-      return withSensitiveNoStore(internalError());
-    }
-  });
+        select: commentListSelect,
+        orderBy: { created_at: 'desc' },
+        take: COMMENT_THREAD_LIMIT,
+      });
+      const commentsAscending = [...comments].reverse();
+      const authorIds = [...new Set(commentsAscending.map((comment) => comment.author_id))];
+      const authors =
+        authorIds.length === 0
+          ? []
+          : await tx.user.findMany({
+              where: { id: { in: authorIds }, org_id: ctx.orgId },
+              select: { id: true, name: true },
+            });
+      const authorMap = new Map(authors.map((author) => [author.id, author.name]));
+
+      return commentsAscending.map((comment) => ({
+        ...comment,
+        author_name: authorMap.get(comment.author_id) ?? '不明',
+      }));
+    },
+    { requestContext: ctx },
+  );
+
+  return withSensitiveNoStore(success({ data }));
 }
 
-async function authenticatedPOST(req: NextRequest) {
-  const authResult = await requireAuthContext(req, {
-    // コメント投稿も多職種連携の参加であり、組織メンバーレベルの canViewDashboard でゲートする。
-    permission: 'canViewDashboard',
-    message: 'コメントの投稿権限がありません',
-  });
-  if ('response' in authResult) return authResult.response;
-  const { ctx } = authResult;
+export const GET = withAuthContext(commentsGET, {
+  permission: 'canViewDashboard',
+  message: 'コメントの閲覧権限がありません',
+});
 
-  return runWithRequestAuthContext(ctx, async () => {
-    const payload = await readJsonObjectRequestBody(req);
-    if (!payload) return validationError('リクエストボディが不正です');
+async function commentsPOST(req: NextRequest, ctx: AuthContext) {
+  const payload = await readJsonObjectRequestBody(req);
+  if (!payload) return withSensitiveNoStore(validationError('リクエストボディが不正です'));
 
-    const parsed = createCommentSchema.safeParse(payload);
-    if (!parsed.success) {
-      return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
-    }
-    const mentions = normalizeCommentMentions(parsed.data.mentions);
-
-    // 担当外エンティティへの越境コメント投稿を防ぐ per-entity 認可。
-    const canAccess = await canAccessCollaborationEntity(
-      ctx,
-      parsed.data.entity_type,
-      parsed.data.entity_id,
+  const parsed = createCommentSchema.safeParse(payload);
+  if (!parsed.success) {
+    return withSensitiveNoStore(
+      validationError('入力値が不正です', parsed.error.flatten().fieldErrors),
     );
-    if (!canAccess) return notFound('コメント対象が見つかりません');
+  }
 
-    const canMentionRecipients = await areCommentMentionRecipientsValid(ctx.orgId, mentions);
-    if (!canMentionRecipients) return validationError('メンション先が不正です');
+  const canAccess = await canAccessCollaborationEntity(
+    ctx,
+    parsed.data.entity_type,
+    parsed.data.entity_id,
+  );
+  if (!canAccess) return withSensitiveNoStore(notFound('コメント対象が見つかりません'));
 
-    const created = await withOrgContext(ctx.orgId, async (tx) => {
+  const result = await withOrgContext(
+    ctx.orgId,
+    async (tx) => {
+      const recipientsValid = await areCommentMentionRecipientsValid(
+        tx,
+        ctx.orgId,
+        parsed.data.mentions,
+      );
+      if (!recipientsValid) return { kind: 'invalid_mentions' as const };
+
       const comment = await tx.taskComment.create({
         data: {
           org_id: ctx.orgId,
@@ -211,11 +212,12 @@ async function authenticatedPOST(req: NextRequest) {
           entity_id: parsed.data.entity_id,
           author_id: ctx.userId,
           content: parsed.data.content,
-          mentions,
+          mentions: parsed.data.mentions,
         },
+        select: createdCommentSelect,
       });
 
-      if (mentions.length > 0) {
+      if (parsed.data.mentions.length > 0) {
         const author = await tx.user.findFirst({
           where: { id: ctx.userId, org_id: ctx.orgId },
           select: { name: true },
@@ -234,38 +236,39 @@ async function authenticatedPOST(req: NextRequest) {
           title: `${authorName}があなたをメンションしました`,
           message: parsed.data.content.slice(0, 100),
           link,
-          explicitUserIds: mentions,
+          explicitUserIds: parsed.data.mentions,
         });
       }
 
-      return comment;
-    });
+      return { kind: 'created' as const, comment };
+    },
+    { requestContext: ctx },
+  );
 
-    await broadcastOrgRealtimeEvent({
-      orgId: ctx.orgId,
-      type: 'comment_refresh',
-    });
+  if (result.kind === 'invalid_mentions') {
+    return withSensitiveNoStore(validationError('メンション先が不正です'));
+  }
 
-    return success({ data: created }, 201);
+  await broadcastOrgRealtimeEvent({
+    orgId: ctx.orgId,
+    type: 'comment_refresh',
+  }).catch((cause: unknown) => {
+    logger.warn(
+      {
+        event: 'comments_realtime_broadcast_failed',
+        route: '/api/comments',
+        method: 'POST',
+        operation: 'comment_refresh_broadcast',
+        orgId: ctx.orgId,
+      },
+      cause,
+    );
   });
+
+  return withSensitiveNoStore(success({ data: result.comment }, 201));
 }
 
-export async function POST(req: NextRequest) {
-  return withRoutePerformance(req, async () => {
-    try {
-      return withSensitiveNoStore(await authenticatedPOST(req));
-    } catch (err) {
-      unstable_rethrow(err);
-      logger.error(
-        {
-          event: 'comments_post_unhandled_error',
-          route: ROUTE,
-          method: req.method,
-          status: 500,
-        },
-        err,
-      );
-      return withSensitiveNoStore(internalError());
-    }
-  });
-}
+export const POST = withAuthContext(commentsPOST, {
+  permission: 'canViewDashboard',
+  message: 'コメントの投稿権限がありません',
+});

@@ -4,6 +4,7 @@ import { expectNoStore } from '@/test/api-response-assertions';
 
 const {
   loggerErrorMock,
+  loggerWarnMock,
   requireAuthContextMock,
   runWithRequestAuthContextMock,
   withRoutePerformanceMock,
@@ -20,6 +21,7 @@ const {
   broadcastOrgRealtimeEventMock,
 } = vi.hoisted(() => ({
   loggerErrorMock: vi.fn(),
+  loggerWarnMock: vi.fn(),
   requireAuthContextMock: vi.fn(),
   runWithRequestAuthContextMock: vi.fn((_ctx, callback: () => unknown) => callback()),
   withRoutePerformanceMock: vi.fn((_req, callback: () => unknown) => callback()),
@@ -30,10 +32,15 @@ const {
   userFindFirstMock: vi.fn(),
   medicationCycleFindFirstMock: vi.fn(),
   transactionClientMock: {
+    membership: {
+      findMany: vi.fn(),
+    },
     taskComment: {
+      findMany: vi.fn(),
       create: vi.fn(),
     },
     user: {
+      findMany: vi.fn(),
       findFirst: vi.fn(),
     },
     medicationCycle: {
@@ -48,6 +55,47 @@ const {
 
 vi.mock('@/lib/auth/context', () => ({
   requireAuthContext: requireAuthContextMock,
+  withAuthContext: (
+    handler: (
+      req: NextRequest,
+      ctx: { orgId: string; userId: string; role: string },
+      routeContext: { params: Promise<Record<string, string>> },
+    ) => Promise<Response>,
+    options: unknown,
+  ) => {
+    return async (req: NextRequest, routeContext: { params: Promise<Record<string, string>> }) =>
+      withRoutePerformanceMock(req, async () => {
+        let response: Response;
+        try {
+          const authResult = await requireAuthContextMock(req, options);
+          response =
+            authResult && typeof authResult === 'object' && 'response' in authResult
+              ? authResult.response
+              : await runWithRequestAuthContextMock(authResult.ctx, () =>
+                  handler(req, authResult.ctx, routeContext),
+                );
+        } catch (error) {
+          loggerErrorMock(
+            {
+              event: 'route_handler_unhandled_error',
+              route: req.nextUrl.pathname,
+              method: req.method,
+            },
+            error,
+          );
+          response = new Response(
+            JSON.stringify({
+              code: 'INTERNAL_ERROR',
+              message: 'サーバー内部でエラーが発生しました',
+            }),
+            { status: 500, headers: { 'Content-Type': 'application/json' } },
+          );
+        }
+        response.headers.set('Cache-Control', 'private, no-store, max-age=0');
+        response.headers.set('Pragma', 'no-cache');
+        return response;
+      });
+  },
 }));
 
 vi.mock('@/lib/auth/request-context', () => ({
@@ -57,6 +105,7 @@ vi.mock('@/lib/auth/request-context', () => ({
 vi.mock('@/lib/utils/logger', () => ({
   logger: {
     error: loggerErrorMock,
+    warn: loggerWarnMock,
   },
 }));
 
@@ -96,7 +145,11 @@ vi.mock('@/server/services/collaboration-access', async (importOriginal) => ({
   canAccessCollaborationEntity: canAccessCollaborationEntityMock,
 }));
 
-import { GET, POST } from './route';
+import { GET as rawGET, POST as rawPOST } from './route';
+
+const emptyRouteContext = { params: Promise.resolve({}) };
+const GET = (req: NextRequest) => rawGET(req, emptyRouteContext);
+const POST = (req: NextRequest) => rawPOST(req, emptyRouteContext);
 
 function createGetRequest(query = '') {
   return new NextRequest(`http://localhost/api/comments${query ? `?${query}` : ''}`);
@@ -162,8 +215,12 @@ function expectPickerAlignedMentionLookup(mentions: string[]) {
   expect((query.where?.role as { in?: string[] }).in).not.toContain('clerk');
 }
 
-function expectNoCreateNotificationOrRealtimeSideEffects() {
-  expect(withOrgContextMock).not.toHaveBeenCalled();
+function expectNoCreateNotificationOrRealtimeSideEffects(transactionOpened = false) {
+  if (transactionOpened) {
+    expect(withOrgContextMock).toHaveBeenCalledOnce();
+  } else {
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+  }
   expect(taskCommentCreateMock).not.toHaveBeenCalled();
   expect(dispatchNotificationEventMock).not.toHaveBeenCalled();
   expect(broadcastOrgRealtimeEventMock).not.toHaveBeenCalled();
@@ -176,6 +233,9 @@ describe('/api/comments', () => {
     runWithRequestAuthContextMock.mockImplementation((_ctx, callback) => callback());
     withRoutePerformanceMock.mockImplementation((_req, callback) => callback());
     transactionClientMock.taskComment.create = taskCommentCreateMock;
+    transactionClientMock.taskComment.findMany = taskCommentFindManyMock;
+    transactionClientMock.membership.findMany = membershipFindManyMock;
+    transactionClientMock.user.findMany = userFindManyMock;
     transactionClientMock.user.findFirst = userFindFirstMock;
     transactionClientMock.medicationCycle.findFirst = medicationCycleFindFirstMock;
     taskCommentFindManyMock.mockResolvedValue([
@@ -252,6 +312,13 @@ describe('/api/comments', () => {
       expect(body.data[0].author_name).toBe('テスト薬剤師');
       expect(taskCommentFindManyMock).toHaveBeenCalledWith(
         expect.objectContaining({
+          select: {
+            id: true,
+            author_id: true,
+            content: true,
+            mentions: true,
+            created_at: true,
+          },
           orderBy: { created_at: 'desc' },
           take: 100,
         }),
@@ -263,6 +330,19 @@ describe('/api/comments', () => {
 
       expect(response.status).toBe(400);
       expectNoStore(response);
+    });
+
+    it('rejects duplicate entity query values before authorization or DB access', async () => {
+      const response = await GET(
+        createGetRequest(
+          'entity_type=dispense_task&entity_type=patient&entity_id=dt_1&entity_id=patient_1',
+        ),
+      );
+
+      expect(response.status).toBe(400);
+      expectNoStore(response);
+      expect(canAccessCollaborationEntityMock).not.toHaveBeenCalled();
+      expect(withOrgContextMock).not.toHaveBeenCalled();
     });
 
     it('returns a sanitized no-store 500 when comment listing fails unexpectedly', async () => {
@@ -279,10 +359,9 @@ describe('/api/comments', () => {
       expect(bodyText).not.toContain('raw patient comment secret');
       expect(loggerErrorMock).toHaveBeenCalledWith(
         {
-          event: 'comments_get_unhandled_error',
+          event: 'route_handler_unhandled_error',
           route: '/api/comments',
           method: 'GET',
-          status: 500,
         },
         unsafeError,
       );
@@ -344,6 +423,7 @@ describe('/api/comments', () => {
         data: expect.objectContaining({
           mentions: [],
         }),
+        select: expect.any(Object),
       });
       expect(membershipFindManyMock).not.toHaveBeenCalled();
       expect(dispatchNotificationEventMock).not.toHaveBeenCalled();
@@ -353,7 +433,37 @@ describe('/api/comments', () => {
       });
     });
 
-    it('normalizes and dedupes valid mentions before saving and dispatching', async () => {
+    it('keeps a committed comment successful when realtime refresh broadcasting fails', async () => {
+      const unsafeError = new Error('patient comment payload must not enter log context');
+      broadcastOrgRealtimeEventMock.mockRejectedValueOnce(unsafeError);
+
+      const response = await POST(
+        createPostRequest({
+          entity_type: 'dispense_task',
+          entity_id: 'dt_1',
+          content: 'committed comment',
+          mentions: [],
+        }),
+      );
+
+      expect(response.status).toBe(201);
+      expectNoStore(response);
+      expect(taskCommentCreateMock).toHaveBeenCalledOnce();
+      expect(loggerWarnMock).toHaveBeenCalledWith(
+        {
+          event: 'comments_realtime_broadcast_failed',
+          route: '/api/comments',
+          method: 'POST',
+          operation: 'comment_refresh_broadcast',
+          orgId: 'org_1',
+        },
+        unsafeError,
+      );
+      expect(JSON.stringify(loggerWarnMock.mock.calls[0]?.[0])).not.toContain('patient comment');
+      expect(loggerErrorMock).not.toHaveBeenCalled();
+    });
+
+    it('rejects duplicate mentions before recipient lookup or transaction', async () => {
       const response = (await POST(
         createPostRequest({
           entity_type: 'dispense_task',
@@ -363,22 +473,11 @@ describe('/api/comments', () => {
         }),
       ))!;
 
-      expect(response.status).toBe(201);
+      expect(response.status).toBe(400);
       expectNoStore(response);
-      expectPickerAlignedMentionLookup(['mentioned_1', 'mentioned_2']);
-      expect(taskCommentCreateMock).toHaveBeenCalledWith({
-        data: expect.objectContaining({
-          mentions: ['mentioned_1', 'mentioned_2'],
-        }),
-      });
-
-      const payload = expectCommentMentionNotification();
-      expect(payload.explicitUserIds).toEqual(['mentioned_1', 'mentioned_2']);
-      expect(payload.link).toBe('/dispense?taskId=dt_1');
-      expect(broadcastOrgRealtimeEventMock).toHaveBeenCalledWith({
-        orgId: 'org_1',
-        type: 'comment_refresh',
-      });
+      expect(canAccessCollaborationEntityMock).not.toHaveBeenCalled();
+      expect(membershipFindManyMock).not.toHaveBeenCalled();
+      expectNoCreateNotificationOrRealtimeSideEffects();
     });
 
     it('rejects mention recipients outside the picker-aligned membership set before creating a comment', async () => {
@@ -402,7 +501,7 @@ describe('/api/comments', () => {
       });
       expect(body.details).toBeUndefined();
       expectPickerAlignedMentionLookup(['mentioned_1', 'missing_1']);
-      expectNoCreateNotificationOrRealtimeSideEffects();
+      expectNoCreateNotificationOrRealtimeSideEffects(true);
     });
 
     it.each([
@@ -449,6 +548,7 @@ describe('/api/comments', () => {
         data: expect.objectContaining({
           mentions,
         }),
+        select: expect.any(Object),
       });
       const payload = expectCommentMentionNotification();
       expect(payload.explicitUserIds).toEqual(mentions);
@@ -487,6 +587,7 @@ describe('/api/comments', () => {
             entity_id: hostileEntityId,
             mentions: ['mentioned_1'],
           }),
+          select: expect.any(Object),
         });
         expectPickerAlignedMentionLookup(['mentioned_1']);
         expect(medicationCycleFindFirstMock).not.toHaveBeenCalled();
@@ -526,6 +627,7 @@ describe('/api/comments', () => {
           entity_id: 'cycle_1',
           mentions: ['mentioned_1'],
         }),
+        select: expect.any(Object),
       });
       expectPickerAlignedMentionLookup(['mentioned_1']);
       expect(medicationCycleFindFirstMock).toHaveBeenCalledWith({
@@ -581,6 +683,7 @@ describe('/api/comments', () => {
           entity_type: 'medication_cycle',
           entity_id: 'cycle_1',
         }),
+        select: expect.any(Object),
       });
       expectPickerAlignedMentionLookup(['mentioned_1']);
       const payload = expectCommentMentionNotification();
@@ -641,10 +744,9 @@ describe('/api/comments', () => {
       expect(JSON.stringify(body)).not.toContain('raw comment');
       expect(loggerErrorMock).toHaveBeenCalledWith(
         {
-          event: 'comments_post_unhandled_error',
+          event: 'route_handler_unhandled_error',
           route: '/api/comments',
           method: 'POST',
-          status: 500,
         },
         unsafeError,
       );
