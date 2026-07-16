@@ -80,7 +80,7 @@ export async function refreshSskDrugMaster() {
   const latestZipPayload = await fetchLatestSskDrugMasterZip();
   const dedupeKey = buildSskDrugMasterDedupeKey(latestZipPayload.sourceFileHash);
 
-  const latestCompletedJob = await prisma.integrationJob.findFirst({
+  const latestCompletedJob = await prisma.systemIntegrationJob.findFirst({
     where: {
       job_type: 'drug_master_refresh',
       status: 'completed',

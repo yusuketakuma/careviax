@@ -158,6 +158,7 @@ const HARDENED_FINAL_STATE_TABLES = [
   'DomainEventOutbox',
   'ProviderDeliveryReceipt',
   'JahisSupplementalRecord',
+  'IntegrationJob',
   'PatientLabObservation',
   'QrScanDraft',
   'SetBatchChangeLog',

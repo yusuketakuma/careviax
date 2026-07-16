@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import type { Prisma } from '@prisma/client';
 import { withAuthContext, type AuthContext } from '@/lib/auth/context';
 import { prisma } from '@/lib/db/client';
+import { withOrgContext } from '@/lib/db/rls';
 import { success } from '@/lib/api/response';
 import { readJsonObject } from '@/lib/db/json';
 
@@ -281,25 +282,36 @@ function toJobRunDto(job: LatestRun | null): JobRunDto | null {
 const RECENT_JOB_RUN_WINDOW = 50;
 
 async function listJobs(_req: NextRequest, ctx: AuthContext) {
-  const latestRuns = await prisma.integrationJob.findMany({
-    where: {
-      OR: [{ org_id: ctx.orgId }, { org_id: null }],
-    },
-    select: {
-      id: true,
-      job_type: true,
-      status: true,
-      output: true,
-      error_log: true,
-      retry_count: true,
-      max_retries: true,
-      started_at: true,
-      completed_at: true,
-      created_at: true,
-    },
-    orderBy: { created_at: 'desc' },
-    take: RECENT_JOB_RUN_WINDOW,
-  });
+  const select = {
+    id: true,
+    job_type: true,
+    status: true,
+    output: true,
+    error_log: true,
+    retry_count: true,
+    max_retries: true,
+    started_at: true,
+    completed_at: true,
+    created_at: true,
+  } satisfies Prisma.IntegrationJobSelect;
+  const [tenantRuns, systemRuns] = await Promise.all([
+    withOrgContext(ctx.orgId, (tx) =>
+      tx.integrationJob.findMany({
+        where: { org_id: ctx.orgId },
+        select,
+        orderBy: { created_at: 'desc' },
+        take: RECENT_JOB_RUN_WINDOW,
+      }),
+    ),
+    prisma.systemIntegrationJob.findMany({
+      select,
+      orderBy: { created_at: 'desc' },
+      take: RECENT_JOB_RUN_WINDOW,
+    }),
+  ]);
+  const latestRuns = [...tenantRuns, ...systemRuns]
+    .sort((left, right) => right.created_at.getTime() - left.created_at.getTime())
+    .slice(0, RECENT_JOB_RUN_WINDOW);
 
   return success({
     data: JOB_DEFINITIONS.map((definition) => ({

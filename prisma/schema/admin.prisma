@@ -238,7 +238,7 @@ model AuditLogReview {
 
 model IntegrationJob {
   id           String    @id @default(cuid())
-  org_id       String?
+  org_id       String
   job_type     String
   dedupe_key   String?
   status       String    @default("pending") // pending/running/completed/failed
@@ -255,6 +255,31 @@ model IntegrationJob {
   updated_at   DateTime  @updatedAt
 
   @@unique([job_type, org_id, dedupe_key])
+  @@index([job_type])
+  @@index([status])
+  @@index([run_at])
+}
+
+/// Global scheduler ledger. It is physically separate from tenant-scoped
+/// IntegrationJob so tenant FORCE RLS never needs a nullable/global exception.
+model SystemIntegrationJob {
+  id           String    @id @default(cuid())
+  job_type     String
+  dedupe_key   String?
+  status       String    @default("pending")
+  input        Json?
+  output       Json?
+  error_log    String?
+  run_at       DateTime?
+  locked_at    DateTime?
+  started_at   DateTime?
+  completed_at DateTime?
+  retry_count  Int       @default(0)
+  max_retries  Int       @default(3)
+  created_at   DateTime  @default(now())
+  updated_at   DateTime  @updatedAt
+
+  @@unique([job_type, dedupe_key])
   @@index([job_type])
   @@index([status])
   @@index([run_at])

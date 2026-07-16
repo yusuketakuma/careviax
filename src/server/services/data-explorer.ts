@@ -279,6 +279,7 @@ export const DATA_EXPLORER_MAX_OFFSET = 999_900;
 const DATA_EXPLORER_MODEL_EXCLUSIONS: ReadonlySet<string> = new Set([
   'Setting',
   'IntegrationJob',
+  'SystemIntegrationJob',
   'LabelDictionary',
   'ExternalAccessGrant',
   'PatientMcsLink',

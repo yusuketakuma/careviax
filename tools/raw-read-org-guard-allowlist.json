@@ -100,6 +100,15 @@
       "expectedCount": 2
     },
     {
+      "path": "src/app/api/jobs/route.ts",
+      "rule": "missing_org_scope",
+      "owner": "JOB-TENANT-EXECUTION-001",
+      "debtId": "RAW-READ-ORG-054",
+      "reason": "SystemIntegrationJob is a physically separate global scheduler ledger with no org_id column; the admin route reads at most 50 rows and exposes only the existing safe job projection.",
+      "plannedAction": "Keep the system ledger global and backend-only; tenant IntegrationJob reads must remain inside withOrgContext.",
+      "expectedCount": 1
+    },
+    {
       "path": "src/app/api/me/activity-summary/route.ts",
       "rule": "missing_org_scope",
       "owner": "RLS-RAW-READ-GUARD-001",

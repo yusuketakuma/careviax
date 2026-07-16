@@ -698,15 +698,13 @@ CREATE POLICY tenant_isolation ON "PharmacySiteInsuranceConfig"
   WITH CHECK (org_id = public.app_enforced_org_id());
 ALTER TABLE "PharmacySiteInsuranceConfig" FORCE ROW LEVEL SECURITY;
 
--- ─── IntegrationJob — skip RLS for safety (org_id nullable, system jobs) ──────
--- org_id is nullable and the job runner (src/server/jobs/runner.ts) creates/updates
--- rows via the BASE prisma client OUTSIDE withOrgContext. The /api/jobs admin path
--- supplies a non-NULL org_id (refreshMedicalInstitutionMaster/refreshCareServiceOfficeMaster
--- with targetOrgIds:[ctx.orgId] → runJob(..., orgId)), so a fail-close FORCE-RLS policy
--- would RAISE 'RLS context missing' on that INSERT and 500 the master-refresh endpoint
--- under any RLS-enforcing (non-superuser) prod role. System jobs must remain accessible
--- regardless of context, so RLS is intentionally skipped until the runner is reworked to
--- run org-scoped writes inside withOrgContext. Tracked in src/tools/rls-known-gaps.ts.
+-- ─── IntegrationJob — tenant ledger only; global rows use SystemIntegrationJob ───
+ALTER TABLE "IntegrationJob" ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON "IntegrationJob";
+CREATE POLICY tenant_isolation ON "IntegrationJob"
+  USING (org_id = public.app_enforced_org_id())
+  WITH CHECK (org_id = public.app_enforced_org_id());
+ALTER TABLE "IntegrationJob" FORCE ROW LEVEL SECURITY;
 
 -- ─── id_sequence / IdSequence — intentional RLS exclusion (internal counter) ──
 -- id_sequence stores only per-scope display_id counters: org_id, prefix, next_value,
@@ -859,6 +857,7 @@ ALTER TABLE "PharmacistShiftTemplate" FORCE ROW LEVEL SECURITY;
 ALTER TABLE "BillingCandidate" FORCE ROW LEVEL SECURITY;
 ALTER TABLE "BillingEvidence" FORCE ROW LEVEL SECURITY;
 ALTER TABLE "Notification" FORCE ROW LEVEL SECURITY;
+ALTER TABLE "IntegrationJob" FORCE ROW LEVEL SECURITY;
 ALTER TABLE "AuditLog" FORCE ROW LEVEL SECURITY;
 ALTER TABLE "Template" FORCE ROW LEVEL SECURITY;
 ALTER TABLE "DocumentDeliveryRule" FORCE ROW LEVEL SECURITY;
@@ -1187,6 +1186,7 @@ BEGIN
     'FirstVisitDocument',
     'HandoffBoard',
     'InquiryRecord',
+    'IntegrationJob',
     'Intervention',
     'JahisSupplementalRecord',
     'ManagementPlan',

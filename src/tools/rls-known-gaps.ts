@@ -88,21 +88,8 @@ export const RLS_MISSING_GAPS: readonly RlsMissingGap[] = [
   //   VisitScheduleOverride(N06) / BillingRule(N14) / BusinessHoliday(N29) /
   //   FacilityUnit(N12) / FormularyChangeRequest(F79) / FormularyTemplate(F79/N11) /
   //   NotificationRule(N33) / PackagingMethodMaster(N28) / PharmacySiteInsuranceConfig(N17)。
-  // 残置は design 判定 2 表 + runner 改修待ち 1 表（IntegrationJob）。
-  {
-    table: 'IntegrationJob',
-    findingId: 'machine-derived',
-    category: 'tenant-operational',
-    phi: true,
-    reason:
-      'ジョブ実行台帳。tenant runJob と薬歴PDF workerのread/create/updateはwithOrgContext対応済みだが、' +
-      'org_id NULLのsystem-wide jobを同じtableへbase Prismaで保存する。input/output(Json?)はjob_type次第で' +
-      'PHIを保持しうるためtenant rowのDB backstopは必須だが、単一app roleのままfail-close FORCE RLSを' +
-      '追加するとsystem ledgerのread/writeが停止する。',
-    plannedAction:
-      'org_id NULLのsystem ledgerを専用tableまたは専用DB roleへ分離し、IntegrationJobをorg_id NOT NULLへ' +
-      '移行する。その後ENABLE+FORCE+app_enforced_org_id() policyとNOBYPASSRLS実DB proofを追加する。',
-  },
+  // 残置は design 判定 2 表。IntegrationJob は system ledger 分離後に
+  // org_id NOT NULL + FORCE RLSへ移行し、missing/nullable gapを解消済み。
   {
     table: 'PrescriberInstitution',
     findingId: 'CXR2-RLS01',
@@ -151,13 +138,6 @@ export const RLS_NULLABLE_ORG_ID_GAPS: readonly RlsNullableOrgIdGap[] = [
       '薬剤アラートルールは global default と org override を同じ table で表す既存設計。org_id NULL 行は全組織共通設定を意味する。',
     plannedAction:
       'global master と org override の table 分離、または nullable 行を明示する scope column を追加して tenant RLS/unique の契約を再定義する。',
-  },
-  {
-    table: 'IntegrationJob',
-    reason:
-      'tenant runnerはRLS transaction対応済みだが、system jobとorg-scoped jobを同じtableで保持し、org_id NULL行をsystem-wide jobに使う。',
-    plannedAction:
-      'system job ledgerを専用tableまたは専用roleへ分離し、tenant IntegrationJobをorg_id NOT NULL + FORCE RLSへ移行する。',
   },
 ];
 

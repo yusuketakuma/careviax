@@ -27,13 +27,14 @@ type RunJobResult =
   | { processedCount: 0; skipped: true };
 const activeJobRuns = new Map<string, Promise<RunJobResult>>();
 
-type JobLedgerDb = Pick<Prisma.TransactionClient, 'integrationJob'>;
-
-function withJobLedgerDb<T>(
-  orgId: string | undefined,
-  work: (db: JobLedgerDb) => Promise<T>,
-): Promise<T> {
-  return orgId ? withOrgContext(orgId, work) : work(prisma);
+function updateJobLedger(
+  jobId: string,
+  data: Prisma.SystemIntegrationJobUpdateInput,
+  orgId?: string,
+) {
+  return orgId
+    ? withOrgContext(orgId, (tx) => tx.integrationJob.update({ where: { id: jobId }, data }))
+    : prisma.systemIntegrationJob.update({ where: { id: jobId }, data });
 }
 
 function getValidatedJobRequestTrace(): RequestTraceContext | undefined {
@@ -68,17 +69,22 @@ function resolveJobStaleLockMs(value: string | undefined = process.env.JOB_STALE
  */
 async function isJobAlreadyRunning(jobType: string, orgId?: string): Promise<boolean> {
   const lockedAfter = new Date(Date.now() - resolveJobStaleLockMs());
-  const existing = await withJobLedgerDb(orgId, (db) =>
-    db.integrationJob.findFirst({
-      where: {
-        job_type: jobType,
-        status: 'running',
-        ...(orgId ? { org_id: orgId } : {}),
-        OR: [{ locked_at: null }, { locked_at: { gt: lockedAfter } }],
-      },
-      select: { id: true },
-    }),
-  );
+  const runningWhere = {
+    job_type: jobType,
+    status: 'running',
+    OR: [{ locked_at: null }, { locked_at: { gt: lockedAfter } }],
+  } satisfies Prisma.SystemIntegrationJobWhereInput;
+  const existing = orgId
+    ? await withOrgContext(orgId, (tx) =>
+        tx.integrationJob.findFirst({
+          where: { ...runningWhere, org_id: orgId },
+          select: { id: true },
+        }),
+      )
+    : await prisma.systemIntegrationJob.findFirst({
+        where: runningWhere,
+        select: { id: true },
+      });
   return existing !== null;
 }
 
@@ -106,47 +112,51 @@ async function runJobOnce(
     return { processedCount: 0, skipped: true };
   }
 
-  const job = await withJobLedgerDb(orgId, (db) =>
-    db.integrationJob.create({
-      data: {
-        job_type: jobType,
-        dedupe_key: dedupeKey ?? null,
-        status: 'running',
-        org_id: orgId,
-        max_retries: MAX_RETRIES,
-        run_at: new Date(),
-        locked_at: new Date(),
-        started_at: new Date(),
-        ...(requestTrace
-          ? {
-              input: {
-                request_trace: {
-                  request_id: requestTrace.requestId,
-                  correlation_id: requestTrace.correlationId,
-                },
-              },
-            }
-          : {}),
-      },
-    }),
-  );
+  const createData = {
+    job_type: jobType,
+    dedupe_key: dedupeKey ?? null,
+    status: 'running',
+    max_retries: MAX_RETRIES,
+    run_at: new Date(),
+    locked_at: new Date(),
+    started_at: new Date(),
+    ...(requestTrace
+      ? {
+          input: {
+            request_trace: {
+              request_id: requestTrace.requestId,
+              correlation_id: requestTrace.correlationId,
+            },
+          },
+        }
+      : {}),
+  } satisfies Prisma.SystemIntegrationJobUncheckedCreateInput;
+  const job = orgId
+    ? await withOrgContext(orgId, (tx) =>
+        tx.integrationJob.create({
+          data: {
+            ...createData,
+            org_id: orgId,
+          },
+        }),
+      )
+    : await prisma.systemIntegrationJob.create({ data: createData });
 
   let lastError: unknown;
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     try {
       const result = await fn();
-      await withJobLedgerDb(orgId, (db) =>
-        db.integrationJob.update({
-          where: { id: job.id },
-          data: {
-            status: 'completed',
-            output: toPrismaJsonInput(result),
-            completed_at: new Date(),
-            locked_at: null,
-            retry_count: attempt,
-          },
-        }),
+      await updateJobLedger(
+        job.id,
+        {
+          status: 'completed',
+          output: toPrismaJsonInput(result),
+          completed_at: new Date(),
+          locked_at: null,
+          retry_count: attempt,
+        },
+        orgId,
       );
       return result;
     } catch (error) {
@@ -154,14 +164,13 @@ async function runJobOnce(
 
       if (attempt < MAX_RETRIES) {
         // Update retry count and continue to next attempt
-        await withJobLedgerDb(orgId, (db) =>
-          db.integrationJob.update({
-            where: { id: job.id },
-            data: {
-              retry_count: attempt + 1,
-              error_log: `Attempt ${attempt + 1}/${MAX_RETRIES} failed: ${JOB_EXECUTION_FAILED_MESSAGE}`,
-            },
-          }),
+        await updateJobLedger(
+          job.id,
+          {
+            retry_count: attempt + 1,
+            error_log: `Attempt ${attempt + 1}/${MAX_RETRIES} failed: ${JOB_EXECUTION_FAILED_MESSAGE}`,
+          },
+          orgId,
         );
         continue;
       }
@@ -171,17 +180,16 @@ async function runJobOnce(
       // (a) leave the row stuck as 'running' silently while still throwing the
       // wrong error upstream, nor (b) overwrite the original failure.
       try {
-        await withJobLedgerDb(orgId, (db) =>
-          db.integrationJob.update({
-            where: { id: job.id },
-            data: {
-              status: 'failed',
-              error_log: `All ${MAX_RETRIES} retries exhausted. Last error: ${JOB_EXECUTION_FAILED_MESSAGE}`,
-              completed_at: new Date(),
-              locked_at: null,
-              retry_count: attempt + 1,
-            },
-          }),
+        await updateJobLedger(
+          job.id,
+          {
+            status: 'failed',
+            error_log: `All ${MAX_RETRIES} retries exhausted. Last error: ${JOB_EXECUTION_FAILED_MESSAGE}`,
+            completed_at: new Date(),
+            locked_at: null,
+            retry_count: attempt + 1,
+          },
+          orgId,
         );
       } catch (cleanupError) {
         logger.error(

@@ -14,8 +14,8 @@ prisma/migrations と prisma/rls-policies.sql の RLS 有効化実態（ENABLE /
 | 指標 | 件数 |
 | --- | ---: |
 | テナントテーブル（org_id 列を持つモデル） | 154 |
-| RLS 完全被覆（ENABLE+FORCE+POLICY） | 151 |
-| RLS 完全欠落（ギャップ 1a） | 3 |
+| RLS 完全被覆（ENABLE+FORCE+POLICY） | 152 |
+| RLS 完全欠落（ギャップ 1a） | 2 |
 | ENABLE のみ/policy 不完全（即修正対象） | 0 |
 | SSOT ドリフト（migration 済・rls-policies.sql 欠、ギャップ 1b） | 0 |
 
@@ -26,7 +26,6 @@ W1-7 で ENABLE+FORCE+tenant_isolation policy を追加する。
 
 | テーブル | finding | 分類 | PHI | 理由 | 対応予定（W1-7） |
 | --- | --- | --- | :---: | --- | --- |
-| `IntegrationJob` | machine-derived | 運用データ | ⚠️ 有 | ジョブ実行台帳。tenant runJob と薬歴PDF workerのread/create/updateはwithOrgContext対応済みだが、org_id NULLのsystem-wide jobを同じtableへbase Prismaで保存する。input/output(Json?)はjob_type次第でPHIを保持しうるためtenant rowのDB backstopは必須だが、単一app roleのままfail-close FORCE RLSを追加するとsystem ledgerのread/writeが停止する。 | org_id NULLのsystem ledgerを専用tableまたは専用DB roleへ分離し、IntegrationJobをorg_id NOT NULLへ移行する。その後ENABLE+FORCE+app_enforced_org_id() policyとNOBYPASSRLS実DB proofを追加する。 |
 | `PrescriberInstitution` | CXR2-RLS01 | design 判定要 | — | 処方元医療機関。org-scoped（拠点別ディレクトリ）か global master かで RLS 適用要否が変わる。要 design 判定。 | W1-7 前に design 判定。org-scoped なら tenant_isolation、global master なら org_id 列自体の撤去/意図明示。 |
 | `User` | CXR2-RLS02 | design 判定要 | — | 認証/identity テーブル。org_id 列有だが RLS 適用は auth 境界に触れるため慎重。cross-org ユーザー参照の要件を含め design review が必要。 | auth 境界レーンで human 承認のもと design review。RLS 適用可否・cross-org 参照要件を確定してから migration。 |
 
@@ -40,7 +39,7 @@ migration で ENABLE+FORCE+POLICY 済のため本番 DB は保護されている
 
 ## 参考: RLS 完全被覆テーブル一覧
 
-以下 151 テーブルは ENABLE+FORCE+POLICY が揃い、SSOT にも反映済み（contract テストで機械検証）。
+以下 152 テーブルは ENABLE+FORCE+POLICY が揃い、SSOT にも反映済み（contract テストで機械検証）。
 
 <details><summary>展開</summary>
 
@@ -102,6 +101,7 @@ migration で ENABLE+FORCE+POLICY 済のため本番 DB は保護されている
 - `InboundSourceMapping`
 - `IncidentReport`
 - `InquiryRecord`
+- `IntegrationJob`
 - `Intervention`
 - `JahisSupplementalRecord`
 - `ManagementPlan`

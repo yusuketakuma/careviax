@@ -22,7 +22,7 @@ const {
 
 vi.mock('@/lib/db/client', () => ({
   prisma: {
-    integrationJob: {
+    systemIntegrationJob: {
       findFirst: integrationJobFindFirstMock,
     },
     drugMasterImportLog: {

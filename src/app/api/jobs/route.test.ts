@@ -1,10 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
-const { requireAuthContextMock, integrationJobFindManyMock } = vi.hoisted(() => ({
-  requireAuthContextMock: vi.fn(),
-  integrationJobFindManyMock: vi.fn(),
-}));
+const { requireAuthContextMock, integrationJobFindManyMock, systemIntegrationJobFindManyMock } =
+  vi.hoisted(() => ({
+    requireAuthContextMock: vi.fn(),
+    integrationJobFindManyMock: vi.fn(),
+    systemIntegrationJobFindManyMock: vi.fn(),
+  }));
 
 vi.mock('@/lib/auth/context', () => ({
   requireAuthContext: requireAuthContextMock,
@@ -22,7 +24,19 @@ vi.mock('@/lib/db/client', () => ({
     integrationJob: {
       findMany: integrationJobFindManyMock,
     },
+    systemIntegrationJob: {
+      findMany: systemIntegrationJobFindManyMock,
+    },
   },
+}));
+
+vi.mock('@/lib/db/rls', () => ({
+  withOrgContext: vi.fn(
+    (
+      _orgId: string,
+      work: (tx: { integrationJob: { findMany: typeof integrationJobFindManyMock } }) => unknown,
+    ) => work({ integrationJob: { findMany: integrationJobFindManyMock } }),
+  ),
 }));
 
 import { GET as rawGET } from './route';
@@ -82,6 +96,7 @@ describe('/api/jobs GET', () => {
         created_at: new Date('2026-03-28T02:00:00.000Z'),
       },
     ]);
+    systemIntegrationJobFindManyMock.mockResolvedValue([]);
   });
 
   it('returns the authorization response before reading job runs', async () => {
@@ -95,6 +110,7 @@ describe('/api/jobs GET', () => {
 
     expect(response).toBe(deniedResponse);
     expect(integrationJobFindManyMock).not.toHaveBeenCalled();
+    expect(systemIntegrationJobFindManyMock).not.toHaveBeenCalled();
   });
 
   it('returns expanded job definitions with latest runs', async () => {
@@ -194,6 +210,36 @@ describe('/api/jobs GET', () => {
     expect(bulkExportEntry?.latest_export_run).not.toHaveProperty('input');
     expect(bulkExportEntry?.latest_export_run).not.toHaveProperty('error_log');
     expect(bulkExportEntry?.latest_export_run?.output).not.toHaveProperty('errors');
+  });
+
+  it('merges the global system ledger with the current tenant RLS ledger', async () => {
+    integrationJobFindManyMock.mockResolvedValueOnce([]);
+    systemIntegrationJobFindManyMock.mockResolvedValueOnce([
+      {
+        id: 'system_job_1',
+        job_type: 'daily',
+        status: 'completed',
+        output: { processedCount: 4 },
+        error_log: null,
+        retry_count: 0,
+        max_retries: 3,
+        started_at: new Date('2026-03-28T00:00:00.000Z'),
+        completed_at: new Date('2026-03-28T00:01:00.000Z'),
+        created_at: new Date('2026-03-28T00:00:00.000Z'),
+      },
+    ]);
+
+    const response = await GET(createRequest());
+    const payload = await response.json();
+    const daily = payload.data.find((entry: { job_type: string }) => entry.job_type === 'daily');
+
+    expect(daily.latest_run).toMatchObject({ id: 'system_job_1', status: 'completed' });
+    expect(integrationJobFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { org_id: 'org_1' }, take: 50 }),
+    );
+    expect(systemIntegrationJobFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({ take: 50 }),
+    );
   });
 
   it('keeps drain run state separate from latest export partial-success output', async () => {

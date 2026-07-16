@@ -4,6 +4,9 @@ const {
   integrationJobFindFirstMock,
   integrationJobCreateMock,
   integrationJobUpdateMock,
+  systemIntegrationJobFindFirstMock,
+  systemIntegrationJobCreateMock,
+  systemIntegrationJobUpdateMock,
   membershipFindManyMock,
   dispatchNotificationEventMock,
   withOrgContextMock,
@@ -13,6 +16,9 @@ const {
   integrationJobFindFirstMock: vi.fn(),
   integrationJobCreateMock: vi.fn(),
   integrationJobUpdateMock: vi.fn(),
+  systemIntegrationJobFindFirstMock: vi.fn(),
+  systemIntegrationJobCreateMock: vi.fn(),
+  systemIntegrationJobUpdateMock: vi.fn(),
   membershipFindManyMock: vi.fn(),
   dispatchNotificationEventMock: vi.fn(),
   withOrgContextMock: vi.fn(),
@@ -26,6 +32,11 @@ vi.mock('@/lib/db/client', () => ({
       findFirst: integrationJobFindFirstMock,
       create: integrationJobCreateMock,
       update: integrationJobUpdateMock,
+    },
+    systemIntegrationJob: {
+      findFirst: systemIntegrationJobFindFirstMock,
+      create: systemIntegrationJobCreateMock,
+      update: systemIntegrationJobUpdateMock,
     },
     membership: {
       findMany: membershipFindManyMock,
@@ -69,6 +80,11 @@ describe('runJob', () => {
     integrationJobFindFirstMock.mockResolvedValue(null);
     integrationJobCreateMock.mockResolvedValue({ id: 'job_1' });
     integrationJobUpdateMock.mockResolvedValue({ id: 'job_1' });
+    systemIntegrationJobFindFirstMock.mockImplementation((args) =>
+      integrationJobFindFirstMock(args),
+    );
+    systemIntegrationJobCreateMock.mockImplementation((args) => integrationJobCreateMock(args));
+    systemIntegrationJobUpdateMock.mockImplementation((args) => integrationJobUpdateMock(args));
     membershipFindManyMock.mockResolvedValue([]);
     dispatchNotificationEventMock.mockResolvedValue([]);
     withOrgContextMock.mockImplementation((_orgId: string, fn: (tx: unknown) => Promise<unknown>) =>
@@ -105,6 +121,9 @@ describe('runJob', () => {
       }),
     });
     expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(systemIntegrationJobFindFirstMock).toHaveBeenCalledOnce();
+    expect(systemIntegrationJobCreateMock).toHaveBeenCalledOnce();
+    expect(systemIntegrationJobUpdateMock).toHaveBeenCalledOnce();
   });
 
   it('runs every tenant ledger operation inside the explicit organization context', async () => {
@@ -130,6 +149,9 @@ describe('runJob', () => {
         data: expect.objectContaining({ status: 'completed' }),
       }),
     );
+    expect(systemIntegrationJobFindFirstMock).not.toHaveBeenCalled();
+    expect(systemIntegrationJobCreateMock).not.toHaveBeenCalled();
+    expect(systemIntegrationJobUpdateMock).not.toHaveBeenCalled();
   });
 
   it('persists only a validated request trace in the job input', async () => {

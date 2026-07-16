@@ -114,6 +114,7 @@ const COVERAGE_CATEGORY_ENTRIES = {
     'PharmacyInvoiceTransitionIntent',
     'ProviderDeliveryReceipt',
     'IntegrationJob',
+    'SystemIntegrationJob',
     'LabelDictionary',
     'SourceOfTruthMatrix',
     'CommunicationResponse',
