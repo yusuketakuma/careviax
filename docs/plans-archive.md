@@ -15,6 +15,7 @@
 - [x] `MEDSAFE-CARE-CASE-WRITE-OCC-001` — fresh transactional authz + CareCase version CAS (`f5c4cbf05`)
 - [x] `BILLING-PARTNER-INVOICE-TRANSITION-IDEMPOTENCY-001` — durable lifecycle intent and exact-once reissue (`31b145bb3`)
 - [x] `RLS-NOTIFICATION-STREAM-POLL-001` — org-scoped bounded lossless SSE safety poll (`21167b82a`)
+- [x] `RLS-CONTRACT-FINAL-STATE-001` — ordered migration/SSOT final-state scanner and NOBYPASSRLS proof (`1c7243c0e`)
 
 These tasks had current DONE evidence in `ops/refactor/STATE.md` but remained in the active implementation table. They were removed from the active queue, and the active-board checker now rejects any exact ID shared by the completed archive and an active queue.
 

@@ -257,7 +257,7 @@ external ecosystem enableは子taskのコードが完成しても個別human gat
 4. A4 / B1 / B2のexit後にB3 runtime conformance gateを閉じる。B4 schemaは設計・reviewまでとし、human approval前にmigration applyしない。
 5. approved B4後にB5 / B6 / C1 / C2を進め、C3〜C5とD1〜D3でread-only replica、JAHIS分離、opaque outbox、yrese sandbox reconciliationを閉じる。production external sendはhuman gateを維持する。
 6. E1 / E3 / E4 / E5のconverter・UI dogfood・FHIR REST・transactionが揃った後だけE2 hard cutover rehearsalへ進む。E2 cutoverとE6/E7 offline/external ecosystem enableは個別human gateとする。
-7. `AUTH-CREDENTIAL-CHANGE-SESSION-REVOCATION-001`は完了済み。`BILLING-CLAIMS-CONFORMANCE-FAIL-CLOSED-001`のofficial yrese conformance残件と`RLS-CONTRACT-FINAL-STATE-001`の実DB最終証跡をP0で閉じる。
+7. `AUTH-CREDENTIAL-CHANGE-SESSION-REVOCATION-001`と`RLS-CONTRACT-FINAL-STATE-001`は完了済み。`BILLING-CLAIMS-CONFORMANCE-FAIL-CLOSED-001`はofficial yrese conformance残件だけをP0で閉じる。
 8. `MEDSAFE-CARE-CASE-WRITE-OCC-001`と`RLS-NOTIFICATION-STREAM-POLL-001`は完了済み。`BILLING-PARTNER-CONTRACT-APPROVAL-SOD-001`はlegal/operations批准までactive化を広げず、残るmigration/human gateだけを扱う。
 9. `SEC-FILE-OBJECT-IMMUTABILITY-001` / `SEC-CSRF-CANONICAL-ORIGIN-001` / `OPS-RATE-CLIENT-IP-READINESS-001`はlocal implementation完了済み。live AWS/bucket/proxy変更は個別human gateまで実行しない。
 10. `MEDSAFE-PRINT-HUB-EXPLICIT-PATIENT-001`は完了済み。zero-fetch、exact patient/resource、印刷前2識別子、keyboard/mobile/200%/axeの証跡は`ops/refactor/STATE.md`と`docs/plans-archive.md`へ移した。
@@ -560,7 +560,7 @@ Wave 4 acceptance merge: `AUTHZ-PRIVILEGED-ACCOUNT-LIFECYCLE-001`のsession/offl
 **次に着手する推奨順**:
 
 1. `FHIR-NATIVE-P0-FOUNDATION-001`: v0.5のpackage lock、3 plane、Resource ownership、canonical identity、IG/Terminology、CapabilityStatement、Consent/security、hard-cutover policyを先に確定する。
-2. `AUTH-CREDENTIAL-CHANGE-SESSION-REVOCATION-001`は完了済み。`BILLING-CLAIMS-CONFORMANCE-FAIL-CLOSED-001`のofficial yrese conformance残件と`RLS-CONTRACT-FINAL-STATE-001`の実DB最終証跡をP0で閉じる。
+2. credential-change session revocationとRLS final-state実DB証跡は完了済み。`BILLING-CLAIMS-CONFORMANCE-FAIL-CLOSED-001`はofficial yrese conformance残件だけをP0で閉じる。
 3. `MEDSAFE-CARE-CASE-WRITE-OCC-001`と`RLS-NOTIFICATION-STREAM-POLL-001`は完了済み。`BILLING-PARTNER-CONTRACT-APPROVAL-SOD-001`は批准前のfail-closed境界を維持し、既存active移行はhuman gateとする。
 4. file object immutability、canonical CSRF origin、trusted proxy topologyのlocal safety boundaryは完了済み。AWS bucket/proxy/live設定はhuman gateまでapplyしない。
 5. `FHIR-NATIVE-PHOS-SERVER-001` / `FHIR-NATIVE-CONFORMANCE-001`: synthetic fixtureだけで新FHIR Serverとconformance pipelineを完成させる。旧Clinical Modelや旧臨床APIへ接続しない。
