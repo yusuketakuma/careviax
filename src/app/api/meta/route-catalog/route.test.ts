@@ -149,7 +149,13 @@ describe('/api/meta/route-catalog GET', () => {
         }),
         expect.objectContaining({
           path: '/api/visit-records/:id',
-          methods: ['GET', 'PATCH'],
+          methods: ['GET'],
+          permission: 'canViewDashboard',
+          area: 'visits',
+        }),
+        expect.objectContaining({
+          path: '/api/visit-records/:id',
+          methods: ['PATCH'],
           permission: 'canVisit',
           area: 'visits',
         }),

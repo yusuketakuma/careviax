@@ -174,7 +174,13 @@ describe('routeCatalog', () => {
         }),
         expect.objectContaining({
           path: '/api/visit-records/:id',
-          methods: ['GET', 'PATCH'],
+          methods: ['GET'],
+          permission: 'canViewDashboard',
+          area: 'visits',
+        }),
+        expect.objectContaining({
+          path: '/api/visit-records/:id',
+          methods: ['PATCH'],
           permission: 'canVisit',
           area: 'visits',
         }),

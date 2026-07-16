@@ -247,9 +247,16 @@ export const routeCatalog: RouteCatalogEntry[] = [
   },
   {
     path: '/api/visit-records/:id',
-    methods: ['GET', 'PATCH'],
+    methods: ['GET'],
+    permission: 'canViewDashboard',
+    description: '訪問記録詳細取得',
+    area: 'visits',
+  },
+  {
+    path: '/api/visit-records/:id',
+    methods: ['PATCH'],
     permission: 'canVisit',
-    description: '訪問記録詳細取得と更新',
+    description: '訪問記録更新',
     area: 'visits',
   },
   {

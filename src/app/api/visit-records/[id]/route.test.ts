@@ -320,6 +320,10 @@ describe('/api/visit-records/[id]', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
+    expect(requireAuthContextMock).toHaveBeenCalledWith(expect.any(NextRequest), {
+      permission: 'canViewDashboard',
+      message: '訪問記録の閲覧権限がありません',
+    });
     const body = await response.json();
     expect(Object.keys(body)).toEqual(['data']);
     expect(body.data).toMatchObject({

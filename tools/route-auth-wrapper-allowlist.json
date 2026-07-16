@@ -1511,7 +1511,7 @@
     {
       "path": "src/app/api/visit-records/[id]/route.ts",
       "expectedCount": 2,
-      "permissions": ["canVisit"],
+      "permissions": ["canViewDashboard", "canVisit"],
       "sensitiveNoStore": true,
       "routePerformance": false,
       "owner": "platform-routing",
