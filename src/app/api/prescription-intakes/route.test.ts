@@ -35,6 +35,7 @@ const {
   notifyWebhookEventForOrgMock,
   enforceFeatureRateLimitMock,
   canAccessPrescriptionPatientMock,
+  applyPrescriptionSupplyForIntakeMock,
 } = vi.hoisted(() => ({
   withAuthContextMock: vi.fn(
     (
@@ -71,6 +72,7 @@ const {
   notifyWebhookEventForOrgMock: vi.fn().mockResolvedValue(undefined),
   enforceFeatureRateLimitMock: vi.fn().mockResolvedValue(null),
   canAccessPrescriptionPatientMock: vi.fn().mockResolvedValue(true),
+  applyPrescriptionSupplyForIntakeMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
@@ -113,6 +115,10 @@ vi.mock('@/server/services/outbound-webhook', () => ({
 vi.mock('@/server/services/prescription-access', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/server/services/prescription-access')>()),
   canAccessPrescriptionPatient: canAccessPrescriptionPatientMock,
+}));
+
+vi.mock('@/modules/pharmacy/medication-stock/application/apply-prescription-supply', () => ({
+  applyPrescriptionSupplyForIntake: applyPrescriptionSupplyForIntakeMock,
 }));
 
 vi.mock('@/lib/db/client', () => ({
@@ -342,6 +348,13 @@ describe('/api/prescription-intakes POST', () => {
       gender: 'male',
     });
     notifyWebhookEventForOrgMock.mockResolvedValue(undefined);
+    applyPrescriptionSupplyForIntakeMock.mockResolvedValue({
+      intake_id: 'intake_1',
+      applied_count: 0,
+      review_required_count: 0,
+      skipped_count: 0,
+      results: [],
+    });
   });
 
   it('rejects refill intakes when the next dispense date is outside the allowed window', async () => {
@@ -985,6 +998,12 @@ describe('/api/prescription-intakes POST', () => {
     expect(await response.json()).toEqual({
       data: expect.objectContaining({ id: 'intake_1' }),
     });
+    expect(applyPrescriptionSupplyForIntakeMock).toHaveBeenCalledWith(expect.anything(), {
+      orgId: 'org_1',
+      userId: 'user_1',
+      intakeId: 'intake_1',
+      patientId: 'patient_1',
+    });
     expect(validateOrgReferencesMock).toHaveBeenCalledWith('org_1', {
       case_id: 'case_1',
       patient_id: 'patient_1',
@@ -1433,6 +1452,12 @@ describe('/api/prescription-intakes POST', () => {
     expect(response.status).toBe(201);
     expect(await response.json()).toEqual({
       data: expect.objectContaining({ id: 'intake_qr' }),
+    });
+    expect(applyPrescriptionSupplyForIntakeMock).toHaveBeenCalledWith(expect.anything(), {
+      orgId: 'org_1',
+      userId: 'user_1',
+      intakeId: 'intake_qr',
+      patientId: 'patient_qr',
     });
     expect(qrDraftClaimMock).toHaveBeenCalledWith({
       where: {
