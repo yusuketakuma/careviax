@@ -1,4 +1,8 @@
-import { Prisma, type PharmacyCooperationMessageThread } from '@prisma/client';
+import {
+  Prisma,
+  type PharmacyCooperationMessage,
+  type PharmacyCooperationMessageThread,
+} from '@prisma/client';
 import type { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { withAuthContext, type AuthContext } from '@/lib/auth/context';
@@ -16,6 +20,25 @@ const MAX_MESSAGE_BODY_LENGTH = 4000;
 const DEFAULT_MESSAGE_LIMIT = 50;
 const MAX_MESSAGE_LIMIT = 100;
 const COOPERATION_MESSAGE_EVENT_TYPE = 'pharmacy_cooperation_message_created';
+const viewContextSchema = z
+  .enum(['pharmacy_cooperation_workflow', 'pharmacy_cooperation_message_threads_api'])
+  .default('pharmacy_cooperation_message_threads_api');
+
+const messageSelect = {
+  id: true,
+  org_id: true,
+  thread_id: true,
+  sender_user_id: true,
+  sender_side: true,
+  body: true,
+  created_at: true,
+  updated_at: true,
+} satisfies Prisma.PharmacyCooperationMessageSelect;
+
+type MessageThreadWithMessages = PharmacyCooperationMessageThread & {
+  messages: Array<Pick<PharmacyCooperationMessage, keyof typeof messageSelect>>;
+  _count: { messages: number };
+};
 
 const createMessageSchema = z
   .object({
@@ -65,6 +88,28 @@ function readPresentOptionalSearchParam(
     };
   }
   return { ok: true as const, value };
+}
+
+function buildMessageThreadInclude(messageLimit: number) {
+  return {
+    messages: {
+      orderBy: [{ created_at: 'desc' as const }, { id: 'desc' as const }],
+      take: messageLimit,
+      select: messageSelect,
+    },
+    _count: { select: { messages: true } },
+  } satisfies Prisma.PharmacyCooperationMessageThreadInclude;
+}
+
+function toMessageThreadResponse(row: MessageThreadWithMessages) {
+  const { _count, messages, ...thread } = row;
+  return {
+    ...thread,
+    messages: [...messages].reverse(),
+    message_returned_count: messages.length,
+    message_total_count: _count.messages,
+    message_scope_complete: messages.length === _count.messages,
+  };
 }
 
 function buildMessageLink(context: MessageContext) {
@@ -229,74 +274,95 @@ export const GET = withAuthContext(
       '訪問依頼IDを指定してください',
     );
     if (!visitRequestIdResult.ok) return visitRequestIdResult.response;
+    const rawViewContextResult = readPresentOptionalSearchParam(
+      searchParams,
+      'view_context',
+      '閲覧画面を指定してください',
+    );
+    if (!rawViewContextResult.ok) return rawViewContextResult.response;
     const shareCaseId = shareCaseIdResult.value;
     const visitRequestId = visitRequestIdResult.value;
+    const viewContext = viewContextSchema.safeParse(rawViewContextResult.value ?? undefined);
+    if (!viewContext.success) {
+      return withSensitiveNoStore(
+        validationError('検索条件が不正です', {
+          view_context: ['対応していない閲覧画面です'],
+        }),
+      );
+    }
+    const shouldExposeWorkflowMeta = viewContext.data === 'pharmacy_cooperation_workflow';
     const now = new Date();
 
-    const result = await withOrgContext(ctx.orgId, async (tx) => {
-      const resolved = await resolveMessageContext({
-        tx,
-        ctx,
-        shareCaseId,
-        visitRequestId,
-        now,
-      });
-      if (hasResponse(resolved)) return resolved;
+    const result = await withOrgContext(
+      ctx.orgId,
+      async (tx) => {
+        const resolved = await resolveMessageContext({
+          tx,
+          ctx,
+          shareCaseId,
+          visitRequestId,
+          now,
+        });
+        if (hasResponse(resolved)) return resolved;
 
-      const rows = await tx.pharmacyCooperationMessageThread.findMany({
-        where: {
+        const threadWhere = {
           org_id: ctx.orgId,
           share_case_id: resolved.context.shareCaseId,
           visit_request_id: resolved.context.visitRequestId,
-        },
-        take: limit + 1,
-        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-        orderBy: [{ updated_at: 'desc' }, { id: 'desc' }],
-        include: {
-          messages: {
-            orderBy: [{ created_at: 'asc' }, { id: 'asc' }],
-            take: messageLimit,
-            select: {
-              id: true,
-              org_id: true,
-              thread_id: true,
-              sender_user_id: true,
-              sender_side: true,
-              body: true,
-              created_at: true,
-              updated_at: true,
+        } satisfies Prisma.PharmacyCooperationMessageThreadWhereInput;
+        const rows = await tx.pharmacyCooperationMessageThread.findMany({
+          where: threadWhere,
+          take: limit + 1,
+          ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+          orderBy: [{ updated_at: 'desc' }, { id: 'desc' }],
+          include: buildMessageThreadInclude(messageLimit),
+        });
+
+        const page = buildCursorPage(rows, limit, (row) => row.id);
+        const totalCount = shouldExposeWorkflowMeta
+          ? await tx.pharmacyCooperationMessageThread.count({ where: threadWhere })
+          : null;
+        const responseRows = page.data.map(toMessageThreadResponse);
+        const messageCount = responseRows.reduce((sum, row) => sum + row.message_returned_count, 0);
+        await createAuditLogEntry(tx, ctx, {
+          action: 'pharmacy_cooperation_messages_viewed',
+          targetType: 'PharmacyCooperationMessageThread',
+          targetId:
+            page.data[0]?.id ?? resolved.context.visitRequestId ?? resolved.context.shareCaseId,
+          patientId: resolved.context.patientId,
+          changes: jsonInput({
+            share_case_id: resolved.context.shareCaseId,
+            visit_request_id: resolved.context.visitRequestId,
+            context_type: resolved.context.contextType,
+            thread_count: page.data.length,
+            message_count: messageCount,
+          }),
+        });
+
+        return {
+          data: {
+            data: responseRows,
+            meta: {
+              has_more: page.hasMore,
+              next_cursor: page.nextCursor ?? null,
+              ...(totalCount !== null
+                ? {
+                    returned_count: responseRows.length,
+                    total_count: totalCount,
+                    count_basis: 'filtered_query_exact' as const,
+                    filters_applied: {
+                      share_case_id: resolved.context.shareCaseId,
+                      visit_request_id: resolved.context.visitRequestId,
+                    },
+                    request_cursor: cursor ?? null,
+                  }
+                : {}),
             },
           },
-        },
-      });
-
-      const page = buildCursorPage(rows, limit, (row) => row.id);
-      const messageCount = page.data.reduce((sum, row) => sum + row.messages.length, 0);
-      await createAuditLogEntry(tx, ctx, {
-        action: 'pharmacy_cooperation_messages_viewed',
-        targetType: 'PharmacyCooperationMessageThread',
-        targetId:
-          page.data[0]?.id ?? resolved.context.visitRequestId ?? resolved.context.shareCaseId,
-        patientId: resolved.context.patientId,
-        changes: jsonInput({
-          share_case_id: resolved.context.shareCaseId,
-          visit_request_id: resolved.context.visitRequestId,
-          context_type: resolved.context.contextType,
-          thread_count: page.data.length,
-          message_count: messageCount,
-        }),
-      });
-
-      return {
-        data: {
-          data: page.data,
-          meta: {
-            has_more: page.hasMore,
-            next_cursor: page.nextCursor ?? null,
-          },
-        },
-      };
-    });
+        };
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead },
+    );
 
     if (hasResponse(result)) return withSensitiveNoStore(result.response);
     return withSensitiveNoStore(
@@ -366,22 +432,7 @@ export const POST = withAuthContext(
       const thread = await tx.pharmacyCooperationMessageThread.update({
         where: { id_org_id: { id: threadResult.thread.id, org_id: ctx.orgId } },
         data: { last_message_at: message.created_at },
-        include: {
-          messages: {
-            orderBy: [{ created_at: 'asc' }, { id: 'asc' }],
-            take: DEFAULT_MESSAGE_LIMIT,
-            select: {
-              id: true,
-              org_id: true,
-              thread_id: true,
-              sender_user_id: true,
-              sender_side: true,
-              body: true,
-              created_at: true,
-              updated_at: true,
-            },
-          },
-        },
+        include: buildMessageThreadInclude(DEFAULT_MESSAGE_LIMIT),
       });
 
       await createAuditLogEntry(tx, ctx, {
@@ -423,7 +474,7 @@ export const POST = withAuthContext(
 
       return {
         data: {
-          thread,
+          thread: toMessageThreadResponse(thread),
           notification_count: notifications.length,
         },
       };

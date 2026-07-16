@@ -6,6 +6,7 @@ const {
   patientShareCaseFindFirstMock,
   pharmacyVisitRequestFindFirstMock,
   threadFindManyMock,
+  threadCountMock,
   threadFindFirstMock,
   threadCreateMock,
   threadUpdateMock,
@@ -17,6 +18,7 @@ const {
   patientShareCaseFindFirstMock: vi.fn(),
   pharmacyVisitRequestFindFirstMock: vi.fn(),
   threadFindManyMock: vi.fn(),
+  threadCountMock: vi.fn(),
   threadFindFirstMock: vi.fn(),
   threadCreateMock: vi.fn(),
   threadUpdateMock: vi.fn(),
@@ -111,8 +113,10 @@ describe('/api/pharmacy-cooperation-message-threads', () => {
             updated_at: new Date('2026-06-19T01:00:00.000Z'),
           },
         ],
+        _count: { messages: 1 },
       },
     ]);
+    threadCountMock.mockResolvedValue(1);
     threadFindFirstMock.mockResolvedValue(null);
     threadCreateMock.mockResolvedValue({
       id: 'thread_1',
@@ -159,6 +163,7 @@ describe('/api/pharmacy-cooperation-message-threads', () => {
           updated_at: new Date('2026-06-19T01:00:00.000Z'),
         },
       ],
+      _count: { messages: 1 },
     });
     createAuditLogEntryMock.mockResolvedValue({ id: 'audit_1' });
     dispatchNotificationEventMock.mockResolvedValue([{ id: 'notification_1' }]);
@@ -168,6 +173,7 @@ describe('/api/pharmacy-cooperation-message-threads', () => {
         pharmacyVisitRequest: { findFirst: pharmacyVisitRequestFindFirstMock },
         pharmacyCooperationMessageThread: {
           findMany: threadFindManyMock,
+          count: threadCountMock,
           findFirst: threadFindFirstMock,
           create: threadCreateMock,
           update: threadUpdateMock,
@@ -178,7 +184,9 @@ describe('/api/pharmacy-cooperation-message-threads', () => {
   });
 
   it('lists patient-share-case threads through active share-case access and writes a compact read audit', async () => {
-    const response = await GET(createGetRequest('?share_case_id=share_case_1'));
+    const response = await GET(
+      createGetRequest('?share_case_id=share_case_1&view_context=pharmacy_cooperation_workflow'),
+    );
 
     expect(response.status).toBe(200);
     expect(response.headers.get('Cache-Control')).toContain('no-store');
@@ -200,8 +208,24 @@ describe('/api/pharmacy-cooperation-message-threads', () => {
           share_case_id: 'share_case_1',
           visit_request_id: null,
         },
+        take: 51,
+        orderBy: [{ updated_at: 'desc' }, { id: 'desc' }],
+        include: expect.objectContaining({
+          messages: expect.objectContaining({
+            orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
+            take: 50,
+          }),
+          _count: { select: { messages: true } },
+        }),
       }),
     );
+    expect(threadCountMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        share_case_id: 'share_case_1',
+        visit_request_id: null,
+      },
+    });
     expect(createAuditLogEntryMock).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({ orgId: 'org_1', userId: 'user_1' }),
@@ -229,13 +253,129 @@ describe('/api/pharmacy-cooperation-message-threads', () => {
               body: '患者名 山田花子: A薬の確認をお願いします',
             }),
           ],
+          message_returned_count: 1,
+          message_total_count: 1,
+          message_scope_complete: true,
         }),
       ],
       meta: {
         has_more: false,
         next_cursor: null,
+        returned_count: 1,
+        total_count: 1,
+        count_basis: 'filtered_query_exact',
+        filters_applied: {
+          share_case_id: 'share_case_1',
+          visit_request_id: null,
+        },
+        request_cursor: null,
       },
     });
+    expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
+      isolationLevel: 'RepeatableRead',
+    });
+  });
+
+  it('returns the newest bounded messages in chronological display order', async () => {
+    threadFindManyMock.mockResolvedValue([
+      {
+        id: 'thread_1',
+        org_id: 'org_1',
+        share_case_id: 'share_case_1',
+        visit_request_id: null,
+        context_type: 'patient_share_case',
+        status: 'open',
+        created_by: 'user_1',
+        last_message_at: new Date('2026-06-19T03:00:00.000Z'),
+        created_at: new Date('2026-06-19T00:00:00.000Z'),
+        updated_at: new Date('2026-06-19T03:00:00.000Z'),
+        messages: [
+          {
+            id: 'message_3',
+            org_id: 'org_1',
+            thread_id: 'thread_1',
+            sender_user_id: 'user_1',
+            sender_side: 'base_pharmacy',
+            body: 'latest',
+            created_at: new Date('2026-06-19T03:00:00.000Z'),
+            updated_at: new Date('2026-06-19T03:00:00.000Z'),
+          },
+          {
+            id: 'message_2',
+            org_id: 'org_1',
+            thread_id: 'thread_1',
+            sender_user_id: 'user_2',
+            sender_side: 'partner_pharmacy',
+            body: 'previous',
+            created_at: new Date('2026-06-19T02:00:00.000Z'),
+            updated_at: new Date('2026-06-19T02:00:00.000Z'),
+          },
+        ],
+        _count: { messages: 3 },
+      },
+    ]);
+
+    const response = await GET(
+      createGetRequest(
+        '?share_case_id=share_case_1&message_limit=2&view_context=pharmacy_cooperation_workflow',
+      ),
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      data: [
+        {
+          messages: [{ id: 'message_2' }, { id: 'message_3' }],
+          message_returned_count: 2,
+          message_total_count: 3,
+          message_scope_complete: false,
+        },
+      ],
+    });
+  });
+
+  it('returns an exact 8-of-9 thread page with a stable equal-key tie-breaker', async () => {
+    threadFindManyMock.mockResolvedValue(
+      Array.from({ length: 9 }, (_, index) => ({
+        id: `thread_${String(index + 1).padStart(2, '0')}`,
+        org_id: 'org_1',
+        share_case_id: 'share_case_1',
+        visit_request_id: null,
+        context_type: 'patient_share_case',
+        status: 'open',
+        created_by: 'user_1',
+        last_message_at: null,
+        created_at: new Date('2026-06-19T00:00:00.000Z'),
+        updated_at: new Date('2026-06-19T00:00:00.000Z'),
+        messages: [],
+        _count: { messages: 0 },
+      })),
+    );
+    threadCountMock.mockResolvedValue(9);
+
+    const response = await GET(
+      createGetRequest(
+        '?share_case_id=share_case_1&limit=8&view_context=pharmacy_cooperation_workflow',
+      ),
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      data: expect.arrayContaining([expect.objectContaining({ id: 'thread_08' })]),
+      meta: {
+        has_more: true,
+        next_cursor: 'thread_08',
+        returned_count: 8,
+        total_count: 9,
+        request_cursor: null,
+      },
+    });
+    expect(threadFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        take: 9,
+        orderBy: [{ updated_at: 'desc' }, { id: 'desc' }],
+      }),
+    );
   });
 
   it.each([
@@ -331,6 +471,16 @@ describe('/api/pharmacy-cooperation-message-threads', () => {
       }),
       select: expect.any(Object),
     });
+    expect(threadUpdateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        include: expect.objectContaining({
+          messages: expect.objectContaining({
+            orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
+            take: 50,
+          }),
+        }),
+      }),
+    );
     expect(createAuditLogEntryMock).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({ orgId: 'org_1', userId: 'user_1' }),

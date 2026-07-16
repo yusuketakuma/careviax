@@ -3,7 +3,7 @@
 import type { Dispatch, ReactNode, SetStateAction } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
 import { useState } from 'react';
-import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm, useWatch, type UseFormReturn } from 'react-hook-form';
 import {
@@ -987,7 +987,114 @@ type PharmacyCooperationMessageThreadRow = {
   created_at: string;
   updated_at: string;
   messages: PharmacyCooperationMessageRow[];
+  message_returned_count: number;
+  message_total_count: number;
+  message_scope_complete: boolean;
 };
+
+type MessageThreadPage = CursorPaginatedPage<PharmacyCooperationMessageThreadRow> & {
+  total_count: number;
+  returned_count: number;
+  count_basis: 'filtered_query_exact';
+  filters_applied: { share_case_id: string; visit_request_id: string | null };
+  request_cursor: string | null;
+};
+
+type MessageThreadAggregate = {
+  rows: PharmacyCooperationMessageThreadRow[];
+  totalCount: number;
+  scopeComplete: boolean;
+  contractError: string | null;
+};
+
+function aggregateMessageThreadPages(pages: MessageThreadPage[]): MessageThreadAggregate {
+  const firstPage = pages[0];
+  if (!firstPage) {
+    return { rows: [], totalCount: 0, scopeComplete: false, contractError: null };
+  }
+
+  const rows: PharmacyCooperationMessageThreadRow[] = [];
+  const seenIds = new Set<string>();
+  const seenCursors = new Set<string>();
+  const expectedFilters = JSON.stringify(firstPage.filters_applied);
+
+  for (const [index, page] of pages.entries()) {
+    const previousPage = pages[index - 1];
+    if (page.total_count !== firstPage.total_count) {
+      return {
+        rows,
+        totalCount: firstPage.total_count,
+        scopeComplete: false,
+        contractError: '連携メッセージの総件数がページ間で一致しません。',
+      };
+    }
+    if (JSON.stringify(page.filters_applied) !== expectedFilters) {
+      return {
+        rows,
+        totalCount: firstPage.total_count,
+        scopeComplete: false,
+        contractError: '連携メッセージの検索範囲がページ間で一致しません。',
+      };
+    }
+    if (
+      index === 0 ? page.request_cursor !== null : page.request_cursor !== previousPage?.nextCursor
+    ) {
+      return {
+        rows,
+        totalCount: firstPage.total_count,
+        scopeComplete: false,
+        contractError: '連携メッセージのカーソル連鎖が一致しません。',
+      };
+    }
+    for (const row of page.data) {
+      if (seenIds.has(row.id)) {
+        return {
+          rows,
+          totalCount: firstPage.total_count,
+          scopeComplete: false,
+          contractError: '連携メッセージに重複したスレッドが含まれています。',
+        };
+      }
+      seenIds.add(row.id);
+      rows.push(row);
+    }
+    if (page.nextCursor) {
+      if (seenCursors.has(page.nextCursor)) {
+        return {
+          rows,
+          totalCount: firstPage.total_count,
+          scopeComplete: false,
+          contractError: '連携メッセージのカーソルが循環しています。',
+        };
+      }
+      seenCursors.add(page.nextCursor);
+    }
+  }
+
+  const lastPage = pages[pages.length - 1];
+  if (rows.length > firstPage.total_count) {
+    return {
+      rows,
+      totalCount: firstPage.total_count,
+      scopeComplete: false,
+      contractError: '連携メッセージの読込件数が総件数を超えています。',
+    };
+  }
+  if (lastPage && !lastPage.hasMore && rows.length !== firstPage.total_count) {
+    return {
+      rows,
+      totalCount: firstPage.total_count,
+      scopeComplete: false,
+      contractError: '連携メッセージの終端件数が総件数と一致しません。',
+    };
+  }
+  return {
+    rows,
+    totalCount: firstPage.total_count,
+    scopeComplete: Boolean(lastPage && !lastPage.hasMore && rows.length === firstPage.total_count),
+    contractError: null,
+  };
+}
 
 const patientShareCaseRowSchema = z.object({
   id: z.string(),
@@ -1136,19 +1243,36 @@ const pharmacyCooperationMessageRowSchema = z.object({
   updated_at: z.string(),
 });
 
-const pharmacyCooperationMessageThreadRowSchema = z.object({
-  id: z.string(),
-  org_id: z.string(),
-  share_case_id: z.string(),
-  visit_request_id: z.string().nullable(),
-  context_type: z.enum(['patient_share_case', 'visit_request']),
-  status: z.string(),
-  created_by: z.string(),
-  last_message_at: z.string().nullable(),
-  created_at: z.string(),
-  updated_at: z.string(),
-  messages: z.array(pharmacyCooperationMessageRowSchema),
-});
+const pharmacyCooperationMessageThreadRowSchema = z
+  .object({
+    id: z.string(),
+    org_id: z.string(),
+    share_case_id: z.string(),
+    visit_request_id: z.string().nullable(),
+    context_type: z.enum(['patient_share_case', 'visit_request']),
+    status: z.string(),
+    created_by: z.string(),
+    last_message_at: z.string().nullable(),
+    created_at: z.string(),
+    updated_at: z.string(),
+    messages: z.array(pharmacyCooperationMessageRowSchema),
+    message_returned_count: z.number().int().nonnegative(),
+    message_total_count: z.number().int().nonnegative(),
+    message_scope_complete: z.boolean(),
+  })
+  .superRefine((value, ctx) => {
+    if (
+      value.message_returned_count !== value.messages.length ||
+      value.message_total_count < value.message_returned_count ||
+      value.message_scope_complete !== (value.message_returned_count === value.message_total_count)
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['message_total_count'],
+        message: 'message counts must match the returned message scope',
+      });
+    }
+  });
 
 const messageThreadResultSchema = apiDataSchema(
   z.object({
@@ -1573,16 +1697,27 @@ const patientShareConsentPageSchema: z.ZodType<PatientShareConsentPage> = z
 const patientShareConsentResponseSchema = apiDataSchema(patientShareConsentRowSchema).transform(
   ({ data }) => data,
 );
-const pharmacyCooperationMessageThreadPageSchema: z.ZodType<
-  CursorPaginatedPage<PharmacyCooperationMessageThreadRow>
-> = z
+const pharmacyCooperationMessageThreadPageSchema: z.ZodType<MessageThreadPage> = z
   .object({
     data: z.array(pharmacyCooperationMessageThreadRowSchema),
-    meta: z.object({
-      has_more: z.boolean(),
-      next_cursor: z.string().trim().min(1).nullable(),
-    }),
+    meta: z
+      .object({
+        has_more: z.boolean(),
+        next_cursor: z.string().trim().min(1).nullable(),
+        returned_count: z.number().int().nonnegative(),
+        total_count: z.number().int().nonnegative(),
+        count_basis: z.literal('filtered_query_exact'),
+        filters_applied: z
+          .object({
+            share_case_id: z.string().trim().min(1),
+            visit_request_id: z.string().trim().min(1).nullable(),
+          })
+          .strict(),
+        request_cursor: z.string().trim().min(1).nullable(),
+      })
+      .strict(),
   })
+  .strict()
   .superRefine((value, ctx) => {
     if (value.meta.has_more && !value.meta.next_cursor) {
       ctx.addIssue({
@@ -1591,11 +1726,33 @@ const pharmacyCooperationMessageThreadPageSchema: z.ZodType<
         message: 'next_cursor is required when has_more is true',
       });
     }
+    if (value.meta.next_cursor && value.meta.next_cursor === value.meta.request_cursor) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['meta', 'next_cursor'],
+        message: 'next_cursor must advance beyond request_cursor',
+      });
+    }
+    if (
+      value.meta.returned_count !== value.data.length ||
+      value.meta.total_count < value.meta.returned_count
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['meta', 'total_count'],
+        message: 'thread counts must match the returned scope',
+      });
+    }
   })
   .transform(({ data, meta }) => ({
     data,
     hasMore: meta.has_more,
     ...(meta.next_cursor ? { nextCursor: meta.next_cursor } : {}),
+    returned_count: meta.returned_count,
+    total_count: meta.total_count,
+    count_basis: meta.count_basis,
+    filters_applied: meta.filters_applied,
+    request_cursor: meta.request_cursor,
   }));
 
 type MessageForm = {
@@ -1837,21 +1994,32 @@ async function fetchMessageThreads(
   orgId: string,
   shareCaseId: string,
   visitRequestId: string | null,
+  cursor: string | null,
 ) {
   const params = new URLSearchParams({
     limit: '8',
     message_limit: '20',
     share_case_id: shareCaseId,
+    view_context: 'pharmacy_cooperation_workflow',
   });
   if (visitRequestId) params.set('visit_request_id', visitRequestId);
+  if (cursor) params.set('cursor', cursor);
 
   const response = await fetch(`/api/pharmacy-cooperation-message-threads?${params.toString()}`, {
     headers: buildOrgHeaders(orgId),
   });
-  return readApiJson<CursorPaginatedPage<PharmacyCooperationMessageThreadRow>>(response, {
+  const page = await readApiJson<MessageThreadPage>(response, {
     fallbackMessage: '連携メッセージの取得に失敗しました',
     schema: pharmacyCooperationMessageThreadPageSchema,
   });
+  if (
+    page.request_cursor !== cursor ||
+    page.filters_applied.share_case_id !== shareCaseId ||
+    page.filters_applied.visit_request_id !== visitRequestId
+  ) {
+    throw new Error('連携メッセージの検索条件が応答と一致しません');
+  }
+  return page;
 }
 
 function formatDateTime(value: string | null | undefined) {
@@ -4083,9 +4251,15 @@ function MessageThreadsPanel({
   setForm,
   isLoading,
   isError,
+  hasContinuationError,
   error,
+  countLabel,
+  contractError,
+  hasNextPage,
+  isFetchingNextPage,
   isBusy,
   onRetry,
+  onLoadNextPage,
   onCreate,
 }: {
   activeShareCases: PatientShareCaseRow[];
@@ -4100,9 +4274,15 @@ function MessageThreadsPanel({
   setForm: Dispatch<SetStateAction<MessageForm>>;
   isLoading: boolean;
   isError: boolean;
+  hasContinuationError: boolean;
   error: unknown;
+  countLabel: string;
+  contractError: string | null;
+  hasNextPage: boolean;
+  isFetchingNextPage: boolean;
   isBusy: boolean;
   onRetry: () => void;
+  onLoadNextPage: () => void;
   onCreate: () => void;
 }) {
   const visitRequestOptions = visitRequests.filter(
@@ -4187,51 +4367,86 @@ function MessageThreadsPanel({
       ) : null}
 
       <QueryFallback isLoading={isLoading} isError={isError} error={error} onRetry={onRetry}>
-        {messageThreads.length === 0 ? (
-          <EmptyState title="メッセージはまだありません" />
-        ) : (
-          <div className="space-y-3" aria-label="薬局間連携メッセージ一覧">
-            {messageThreads.map((thread) => (
-              <article key={thread.id} className="rounded-lg border border-border/70 p-3">
-                <div className="flex flex-wrap items-start justify-between gap-2">
-                  <div>
-                    <h3 className="text-sm font-semibold text-foreground">
-                      {messageContextLabel(thread)}
-                    </h3>
-                    <TinyMeta>
-                      {thread.id} / 最終{' '}
-                      {formatDateTime(thread.last_message_at ?? thread.updated_at)}
-                    </TinyMeta>
+        <div className="space-y-3">
+          <TinyMeta>{countLabel}</TinyMeta>
+          {contractError ? (
+            <ErrorState
+              title="連携メッセージの取得結果を確認できません"
+              description={contractError}
+            />
+          ) : null}
+          {messageThreads.length === 0 ? (
+            <EmptyState title="メッセージはまだありません" />
+          ) : (
+            <div className="space-y-3" aria-label="薬局間連携メッセージ一覧">
+              {messageThreads.map((thread) => (
+                <article key={thread.id} className="rounded-lg border border-border/70 p-3">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div>
+                      <h3 className="text-sm font-semibold text-foreground">
+                        {messageContextLabel(thread)}
+                      </h3>
+                      <TinyMeta>
+                        {thread.id} / 最終{' '}
+                        {formatDateTime(thread.last_message_at ?? thread.updated_at)}
+                      </TinyMeta>
+                      <TinyMeta>
+                        メッセージ 読込済み {thread.message_returned_count} / 全{' '}
+                        {thread.message_total_count} 件
+                        {thread.message_scope_complete ? '（全件読込済み）' : '（最新分を表示）'}
+                      </TinyMeta>
+                    </div>
+                    <Badge variant={statusVariant(thread.status)}>
+                      {statusLabel(thread.status)}
+                    </Badge>
                   </div>
-                  <Badge variant={statusVariant(thread.status)}>{statusLabel(thread.status)}</Badge>
-                </div>
-                {thread.messages.length === 0 ? (
-                  <div className="mt-3">
-                    <TinyMeta>このスレッドのメッセージはありません</TinyMeta>
-                  </div>
-                ) : (
-                  <ol className="mt-3 space-y-2">
-                    {thread.messages.map((message) => (
-                      <li key={message.id} className="rounded-md border border-border/60 p-3">
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <span className="text-xs font-medium text-muted-foreground">
-                            {messageSenderSideLabel(message.sender_side)}
-                          </span>
-                          <span className="text-xs tabular-nums text-muted-foreground">
-                            {formatDateTime(message.created_at)}
-                          </span>
-                        </div>
-                        <p className="mt-2 whitespace-pre-wrap break-words text-sm text-foreground">
-                          {message.body}
-                        </p>
-                      </li>
-                    ))}
-                  </ol>
-                )}
-              </article>
-            ))}
-          </div>
-        )}
+                  {thread.messages.length === 0 ? (
+                    <div className="mt-3">
+                      <TinyMeta>このスレッドのメッセージはありません</TinyMeta>
+                    </div>
+                  ) : (
+                    <ol className="mt-3 space-y-2">
+                      {thread.messages.map((message) => (
+                        <li key={message.id} className="rounded-md border border-border/60 p-3">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <span className="text-xs font-medium text-muted-foreground">
+                              {messageSenderSideLabel(message.sender_side)}
+                            </span>
+                            <span className="text-xs tabular-nums text-muted-foreground">
+                              {formatDateTime(message.created_at)}
+                            </span>
+                          </div>
+                          <p className="mt-2 whitespace-pre-wrap break-words text-sm text-foreground">
+                            {message.body}
+                          </p>
+                        </li>
+                      ))}
+                    </ol>
+                  )}
+                </article>
+              ))}
+            </div>
+          )}
+          {hasContinuationError ? (
+            <ErrorState
+              title="連携メッセージの続き取得に失敗しました"
+              description={messageFromError(error, '読み込み済みの内容は保持されています。')}
+              onRetry={onRetry}
+            />
+          ) : null}
+          {hasNextPage && !contractError ? (
+            <div className="flex justify-center">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={isFetchingNextPage}
+                onClick={onLoadNextPage}
+              >
+                {isFetchingNextPage ? '続きを読込中' : '連携メッセージをさらに読み込む'}
+              </Button>
+            </div>
+          ) : null}
+        </div>
       </QueryFallback>
     </div>
   );
@@ -4451,19 +4666,22 @@ export function PharmacyCooperationWorkflowContent() {
     staleTime: 20_000,
   });
 
-  const messageThreadsQuery = useQuery({
+  const messageThreadsQuery = useInfiniteQuery({
     queryKey: [
       'pharmacy-cooperation-message-threads',
       orgId,
       effectiveMessageShareCaseId,
       effectiveMessageVisitRequestId,
     ],
-    queryFn: () =>
+    queryFn: ({ pageParam }) =>
       fetchMessageThreads(
         orgId,
         effectiveMessageShareCaseId,
         effectiveMessageVisitRequestId || null,
+        pageParam,
       ),
+    initialPageParam: null as string | null,
+    getNextPageParam: (lastPage) => (lastPage.hasMore ? lastPage.nextCursor : undefined),
     enabled: enabled && effectiveMessageShareCaseId.length > 0,
     staleTime: 10_000,
   });
@@ -5050,7 +5268,13 @@ export function PharmacyCooperationWorkflowContent() {
   }`;
   const patientShareConsentInitialError =
     patientShareConsentsQuery.isError && patientShareConsentPages.length === 0;
-  const messageThreads = messageThreadsQuery.data?.data ?? [];
+  const messageThreadPages = messageThreadsQuery.data?.pages ?? [];
+  const messageThreadAggregate = aggregateMessageThreadPages(messageThreadPages);
+  const messageThreads = messageThreadAggregate.rows;
+  const messageThreadCountLabel = `連携スレッド 読込済み ${messageThreads.length} / 全 ${messageThreadAggregate.totalCount} 件${
+    messageThreadAggregate.scopeComplete ? '（全件読込済み）' : ''
+  }`;
+  const messageThreadInitialError = messageThreadsQuery.isError && messageThreadPages.length === 0;
   const submittedRecordCount = partnerVisitRecordAggregate.statusCounts.submitted;
   const requestedVisitCount = visitRequestAggregate.statusCounts.requested;
 
@@ -5402,10 +5626,19 @@ export function PharmacyCooperationWorkflowContent() {
           form={messageForm}
           setForm={setMessageForm}
           isLoading={messageThreadsQuery.isLoading}
-          isError={messageThreadsQuery.isError}
+          isError={messageThreadInitialError}
+          hasContinuationError={messageThreadsQuery.isError && messageThreadPages.length > 0}
           error={messageThreadsQuery.error}
+          countLabel={messageThreadCountLabel}
+          contractError={messageThreadAggregate.contractError}
+          hasNextPage={Boolean(messageThreadsQuery.hasNextPage)}
+          isFetchingNextPage={messageThreadsQuery.isFetchingNextPage}
           isBusy={isBusy}
-          onRetry={() => void messageThreadsQuery.refetch()}
+          onRetry={() => {
+            if (messageThreadPages.length === 0) void messageThreadsQuery.refetch();
+            else void messageThreadsQuery.fetchNextPage();
+          }}
+          onLoadNextPage={() => void messageThreadsQuery.fetchNextPage()}
           onCreate={() => createMessageMutation.mutate()}
         />
       </SectionShell>

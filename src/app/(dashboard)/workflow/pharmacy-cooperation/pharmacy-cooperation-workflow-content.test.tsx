@@ -181,6 +181,62 @@ function createVisitRequestRow(id: string, status = 'requested') {
   };
 }
 
+function createMessageThreadRow(id: string, shareCaseId = 'share_case_active') {
+  return {
+    id,
+    org_id: 'org_1',
+    share_case_id: shareCaseId,
+    visit_request_id: null,
+    context_type: 'patient_share_case',
+    status: 'open',
+    created_by: 'base_user',
+    last_message_at: '2026-06-20T01:40:00.000Z',
+    created_at: '2026-06-20T01:30:00.000Z',
+    updated_at: '2026-06-20T01:40:00.000Z',
+    messages: [
+      {
+        id: `message_${id}`,
+        org_id: 'org_1',
+        thread_id: id,
+        sender_user_id: 'partner_user',
+        sender_side: 'partner_pharmacy',
+        body: `本文 ${id}`,
+        created_at: '2026-06-20T01:40:00.000Z',
+        updated_at: '2026-06-20T01:40:00.000Z',
+      },
+    ],
+    message_returned_count: 1,
+    message_total_count: 1,
+    message_scope_complete: true,
+  };
+}
+
+function messageThreadMeta({
+  returnedCount,
+  totalCount = returnedCount,
+  hasMore = false,
+  nextCursor = null,
+  requestCursor = null,
+  shareCaseId = 'share_case_active',
+}: {
+  returnedCount: number;
+  totalCount?: number;
+  hasMore?: boolean;
+  nextCursor?: string | null;
+  requestCursor?: string | null;
+  shareCaseId?: string;
+}) {
+  return {
+    has_more: hasMore,
+    next_cursor: nextCursor,
+    returned_count: returnedCount,
+    total_count: totalCount,
+    count_basis: 'filtered_query_exact',
+    filters_applied: { share_case_id: shareCaseId, visit_request_id: null },
+    request_cursor: requestCursor,
+  };
+}
+
 const emptyPartnerVisitRecordStatusCounts = {
   draft: 0,
   submitted: 0,
@@ -819,11 +875,22 @@ describe('PharmacyCooperationWorkflowContent', () => {
                       updated_at: '2026-06-20T01:40:00.000Z',
                     },
                   ],
+                  message_returned_count: 1,
+                  message_total_count: 1,
+                  message_scope_complete: true,
                 },
               ],
               meta: {
                 has_more: false,
                 next_cursor: null,
+                returned_count: 1,
+                total_count: 1,
+                count_basis: 'filtered_query_exact',
+                filters_applied: {
+                  share_case_id: shareCaseId,
+                  visit_request_id: visitRequestId,
+                },
+                request_cursor: params.get('cursor'),
               },
             }),
             { status: 200 },
@@ -989,6 +1056,9 @@ describe('PharmacyCooperationWorkflowContent', () => {
                       updated_at: '2026-06-20T01:45:00.000Z',
                     },
                   ],
+                  message_returned_count: 1,
+                  message_total_count: 1,
+                  message_scope_complete: true,
                 },
                 notification_count: 1,
               },
@@ -3254,6 +3324,120 @@ describe('PharmacyCooperationWorkflowContent', () => {
     expect(screen.getByLabelText<HTMLTextAreaElement>('薬局間連携メッセージ本文').value).toBe(
       '服薬状況を共有します',
     );
+  });
+
+  it('loads a ninth message thread through the exact cursor continuation without duplicates', async () => {
+    const originalFetch = vi.mocked(fetch).getMockImplementation();
+    expect(originalFetch).toBeTruthy();
+    const firstPageRows = Array.from({ length: 8 }, (_, index) =>
+      createMessageThreadRow(`message_thread_page_${String(index + 1).padStart(2, '0')}`),
+    );
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (
+        url ===
+        '/api/pharmacy-cooperation-message-threads?limit=8&message_limit=20&share_case_id=share_case_active&view_context=pharmacy_cooperation_workflow'
+      ) {
+        return new Response(
+          JSON.stringify({
+            data: firstPageRows,
+            meta: messageThreadMeta({
+              returnedCount: 8,
+              totalCount: 9,
+              hasMore: true,
+              nextCursor: 'message_thread_page_08',
+            }),
+          }),
+          { status: 200 },
+        );
+      }
+      if (
+        url ===
+        '/api/pharmacy-cooperation-message-threads?limit=8&message_limit=20&share_case_id=share_case_active&view_context=pharmacy_cooperation_workflow&cursor=message_thread_page_08'
+      ) {
+        return new Response(
+          JSON.stringify({
+            data: [createMessageThreadRow('message_thread_page_09')],
+            meta: messageThreadMeta({
+              returnedCount: 1,
+              totalCount: 9,
+              requestCursor: 'message_thread_page_08',
+            }),
+          }),
+          { status: 200 },
+        );
+      }
+      return originalFetch!(input, init);
+    });
+
+    renderContent();
+    expect(await screen.findByText('連携スレッド 読込済み 8 / 全 9 件')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '連携メッセージをさらに読み込む' }));
+
+    expect(await screen.findByText('本文 message_thread_page_09')).toBeTruthy();
+    expect(screen.getByText('連携スレッド 読込済み 9 / 全 9 件（全件読込済み）')).toBeTruthy();
+    expect(screen.getAllByText('本文 message_thread_page_01')).toHaveLength(1);
+  });
+
+  it('retains loaded message threads and retries a failed continuation', async () => {
+    const originalFetch = vi.mocked(fetch).getMockImplementation();
+    expect(originalFetch).toBeTruthy();
+    const firstPageRows = Array.from({ length: 8 }, (_, index) =>
+      createMessageThreadRow(`message_thread_retry_${String(index + 1).padStart(2, '0')}`),
+    );
+    let continuationAttempts = 0;
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (
+        url ===
+        '/api/pharmacy-cooperation-message-threads?limit=8&message_limit=20&share_case_id=share_case_active&view_context=pharmacy_cooperation_workflow'
+      ) {
+        return new Response(
+          JSON.stringify({
+            data: firstPageRows,
+            meta: messageThreadMeta({
+              returnedCount: 8,
+              totalCount: 9,
+              hasMore: true,
+              nextCursor: 'message_thread_retry_08',
+            }),
+          }),
+          { status: 200 },
+        );
+      }
+      if (
+        url ===
+        '/api/pharmacy-cooperation-message-threads?limit=8&message_limit=20&share_case_id=share_case_active&view_context=pharmacy_cooperation_workflow&cursor=message_thread_retry_08'
+      ) {
+        continuationAttempts += 1;
+        if (continuationAttempts === 1) {
+          return new Response(JSON.stringify({ message: 'temporary failure' }), { status: 503 });
+        }
+        return new Response(
+          JSON.stringify({
+            data: [createMessageThreadRow('message_thread_retry_09')],
+            meta: messageThreadMeta({
+              returnedCount: 1,
+              totalCount: 9,
+              requestCursor: 'message_thread_retry_08',
+            }),
+          }),
+          { status: 200 },
+        );
+      }
+      return originalFetch!(input, init);
+    });
+
+    renderContent();
+    await screen.findByText('本文 message_thread_retry_01');
+    fireEvent.click(screen.getByRole('button', { name: '連携メッセージをさらに読み込む' }));
+
+    expect(await screen.findByText('連携メッセージの続き取得に失敗しました')).toBeTruthy();
+    expect(screen.getByText('本文 message_thread_retry_01')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '再試行' }));
+
+    expect(await screen.findByText('本文 message_thread_retry_09')).toBeTruthy();
+    expect(screen.queryByText('連携メッセージの続き取得に失敗しました')).toBeNull();
   });
 
   it('rejects malformed partner visit record draft success before clearing record fields', async () => {
