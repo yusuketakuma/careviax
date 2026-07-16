@@ -12,8 +12,14 @@ import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { conflict, notFound, success, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { toPrismaJsonInput } from '@/lib/db/json';
+import { acquireAdvisoryTxLock } from '@/lib/db/advisory-lock';
 import { withOrgContext } from '@/lib/db/rls';
-import { buildActivePatientShareCaseReadWhere } from '@/server/services/patient-share-access';
+import {
+  buildActivePatientShareCaseMutationWhere,
+  buildActivePatientShareCaseReadWhere,
+  buildPatientShareCaseConsentLockKey,
+  PATIENT_SHARE_CASE_CONSENT_LOCK_NAMESPACE,
+} from '@/server/services/patient-share-access';
 import { dispatchNotificationEvent } from '@/server/services/notifications';
 
 const MAX_MESSAGE_BODY_LENGTH = 4000;
@@ -124,11 +130,18 @@ async function resolveMessageContext(args: {
   shareCaseId?: string;
   visitRequestId?: string;
   now: Date;
+  accessMode?: 'read' | 'mutation';
 }): Promise<{ context: MessageContext } | { response: NextResponse }> {
-  const activeShareCaseWhere = buildActivePatientShareCaseReadWhere({
-    orgId: args.ctx.orgId,
-    asOf: args.now,
-  });
+  const activeShareCaseWhere =
+    args.accessMode === 'mutation'
+      ? buildActivePatientShareCaseMutationWhere({
+          orgId: args.ctx.orgId,
+          asOf: args.now,
+        })
+      : buildActivePatientShareCaseReadWhere({
+          orgId: args.ctx.orgId,
+          asOf: args.now,
+        });
 
   if (args.visitRequestId) {
     const visitRequest = await args.tx.pharmacyVisitRequest.findFirst({
@@ -245,8 +258,9 @@ async function getOrCreateOpenThread(args: {
     return { thread };
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
-      const thread = await findExistingThread(args);
-      if (thread?.status === 'open') return { thread };
+      return {
+        response: conflict('メッセージスレッドが同時に作成されました。再読み込みしてください'),
+      };
     }
     throw error;
   }
@@ -391,94 +405,120 @@ export const POST = withAuthContext(
     }
 
     const now = new Date();
-    const result = await withOrgContext(ctx.orgId, async (tx) => {
-      const resolved = await resolveMessageContext({
-        tx,
-        ctx,
-        shareCaseId: parsed.data.share_case_id,
-        visitRequestId: parsed.data.visit_request_id,
-        now,
-      });
-      if (hasResponse(resolved)) return resolved;
+    const result = await withOrgContext(
+      ctx.orgId,
+      async (tx) => {
+        const initialResolved = await resolveMessageContext({
+          tx,
+          ctx,
+          shareCaseId: parsed.data.share_case_id,
+          visitRequestId: parsed.data.visit_request_id,
+          now,
+          accessMode: 'mutation',
+        });
+        if (hasResponse(initialResolved)) return initialResolved;
 
-      const threadResult = await getOrCreateOpenThread({
-        tx,
-        orgId: ctx.orgId,
-        userId: ctx.userId,
-        context: resolved.context,
-      });
-      if (hasResponse(threadResult)) return threadResult;
+        await acquireAdvisoryTxLock(
+          tx,
+          PATIENT_SHARE_CASE_CONSENT_LOCK_NAMESPACE,
+          buildPatientShareCaseConsentLockKey({
+            orgId: ctx.orgId,
+            shareCaseId: initialResolved.context.shareCaseId,
+          }),
+        );
 
-      const message = await tx.pharmacyCooperationMessage.create({
-        data: {
-          org_id: ctx.orgId,
-          thread_id: threadResult.thread.id,
-          sender_user_id: ctx.userId,
-          sender_side: 'base_pharmacy',
-          body: parsed.data.body,
-        },
-        select: {
-          id: true,
-          org_id: true,
-          thread_id: true,
-          sender_user_id: true,
-          sender_side: true,
-          body: true,
-          created_at: true,
-          updated_at: true,
-        },
-      });
+        const resolved = await resolveMessageContext({
+          tx,
+          ctx,
+          shareCaseId: parsed.data.share_case_id,
+          visitRequestId: parsed.data.visit_request_id,
+          now,
+          accessMode: 'mutation',
+        });
+        if (hasResponse(resolved)) {
+          return { response: conflict('患者共有の同意状態が更新されています') };
+        }
 
-      const thread = await tx.pharmacyCooperationMessageThread.update({
-        where: { id_org_id: { id: threadResult.thread.id, org_id: ctx.orgId } },
-        data: { last_message_at: message.created_at },
-        include: buildMessageThreadInclude(DEFAULT_MESSAGE_LIMIT),
-      });
+        const threadResult = await getOrCreateOpenThread({
+          tx,
+          orgId: ctx.orgId,
+          userId: ctx.userId,
+          context: resolved.context,
+        });
+        if (hasResponse(threadResult)) return threadResult;
 
-      await createAuditLogEntry(tx, ctx, {
-        action: COOPERATION_MESSAGE_EVENT_TYPE,
-        targetType: 'PharmacyCooperationMessage',
-        targetId: message.id,
-        patientId: resolved.context.patientId,
-        changes: jsonInput({
-          thread_id: thread.id,
-          share_case_id: resolved.context.shareCaseId,
-          visit_request_id: resolved.context.visitRequestId,
-          context_type: resolved.context.contextType,
-          sender_side: message.sender_side,
-          body_length: parsed.data.body.length,
-        }),
-      });
+        const message = await tx.pharmacyCooperationMessage.create({
+          data: {
+            org_id: ctx.orgId,
+            thread_id: threadResult.thread.id,
+            sender_user_id: ctx.userId,
+            sender_side: 'base_pharmacy',
+            body: parsed.data.body,
+          },
+          select: {
+            id: true,
+            org_id: true,
+            thread_id: true,
+            sender_user_id: true,
+            sender_side: true,
+            body: true,
+            created_at: true,
+            updated_at: true,
+          },
+        });
 
-      const explicitUserIds =
-        resolved.context.requestedBy && resolved.context.requestedBy !== ctx.userId
-          ? [resolved.context.requestedBy]
-          : undefined;
-      const notifications = await dispatchNotificationEvent(tx, {
-        orgId: ctx.orgId,
-        eventType: COOPERATION_MESSAGE_EVENT_TYPE,
-        type: 'business',
-        title: '薬局間連携メッセージ',
-        message: 'アプリで詳細を確認してください',
-        link: buildMessageLink(resolved.context),
-        explicitUserIds,
-        metadata: jsonInput({
-          thread_id: thread.id,
-          message_id: message.id,
-          share_case_id: resolved.context.shareCaseId,
-          visit_request_id: resolved.context.visitRequestId,
-          context_type: resolved.context.contextType,
-        }),
-        dedupeKey: `${COOPERATION_MESSAGE_EVENT_TYPE}:${message.id}`,
-      });
+        const thread = await tx.pharmacyCooperationMessageThread.update({
+          where: { id_org_id: { id: threadResult.thread.id, org_id: ctx.orgId } },
+          data: { last_message_at: message.created_at },
+          include: buildMessageThreadInclude(DEFAULT_MESSAGE_LIMIT),
+        });
 
-      return {
-        data: {
-          thread: toMessageThreadResponse(thread),
-          notification_count: notifications.length,
-        },
-      };
-    });
+        await createAuditLogEntry(tx, ctx, {
+          action: COOPERATION_MESSAGE_EVENT_TYPE,
+          targetType: 'PharmacyCooperationMessage',
+          targetId: message.id,
+          patientId: resolved.context.patientId,
+          changes: jsonInput({
+            thread_id: thread.id,
+            share_case_id: resolved.context.shareCaseId,
+            visit_request_id: resolved.context.visitRequestId,
+            context_type: resolved.context.contextType,
+            sender_side: message.sender_side,
+            body_length: parsed.data.body.length,
+          }),
+        });
+
+        const explicitUserIds =
+          resolved.context.requestedBy && resolved.context.requestedBy !== ctx.userId
+            ? [resolved.context.requestedBy]
+            : undefined;
+        const notifications = await dispatchNotificationEvent(tx, {
+          orgId: ctx.orgId,
+          eventType: COOPERATION_MESSAGE_EVENT_TYPE,
+          type: 'business',
+          title: '薬局間連携メッセージ',
+          message: 'アプリで詳細を確認してください',
+          link: buildMessageLink(resolved.context),
+          explicitUserIds,
+          metadata: jsonInput({
+            thread_id: thread.id,
+            message_id: message.id,
+            share_case_id: resolved.context.shareCaseId,
+            visit_request_id: resolved.context.visitRequestId,
+            context_type: resolved.context.contextType,
+          }),
+          dedupeKey: `${COOPERATION_MESSAGE_EVENT_TYPE}:${message.id}`,
+        });
+
+        return {
+          data: {
+            thread: toMessageThreadResponse(thread),
+            notification_count: notifications.length,
+          },
+        };
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+    );
 
     if (hasResponse(result)) return withSensitiveNoStore(result.response);
     return withSensitiveNoStore(success({ data: result.data }, 201));

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
+import { Prisma } from '@prisma/client';
 
 const {
   withOrgContextMock,
@@ -13,6 +14,7 @@ const {
   messageCreateMock,
   createAuditLogEntryMock,
   dispatchNotificationEventMock,
+  acquireAdvisoryTxLockMock,
 } = vi.hoisted(() => ({
   withOrgContextMock: vi.fn(),
   patientShareCaseFindFirstMock: vi.fn(),
@@ -25,6 +27,7 @@ const {
   messageCreateMock: vi.fn(),
   createAuditLogEntryMock: vi.fn(),
   dispatchNotificationEventMock: vi.fn(),
+  acquireAdvisoryTxLockMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
@@ -45,6 +48,10 @@ vi.mock('@/lib/auth/context', () => ({
 
 vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
+}));
+
+vi.mock('@/lib/db/advisory-lock', () => ({
+  acquireAdvisoryTxLock: acquireAdvisoryTxLockMock,
 }));
 
 vi.mock('@/lib/audit/audit-entry', () => ({
@@ -167,6 +174,7 @@ describe('/api/pharmacy-cooperation-message-threads', () => {
     });
     createAuditLogEntryMock.mockResolvedValue({ id: 'audit_1' });
     dispatchNotificationEventMock.mockResolvedValue([{ id: 'notification_1' }]);
+    acquireAdvisoryTxLockMock.mockResolvedValue(undefined);
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
         patientShareCase: { findFirst: patientShareCaseFindFirstMock },
@@ -447,6 +455,21 @@ describe('/api/pharmacy-cooperation-message-threads', () => {
 
     expect(response.status).toBe(201);
     expect(response.headers.get('Cache-Control')).toContain('no-store');
+    expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
+      isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+    });
+    expect(pharmacyVisitRequestFindFirstMock).toHaveBeenCalledTimes(2);
+    expect(acquireAdvisoryTxLockMock).toHaveBeenCalledWith(
+      expect.anything(),
+      'patient_share_case_consent',
+      'org_1:share_case_1',
+    );
+    expect(pharmacyVisitRequestFindFirstMock.mock.invocationCallOrder[0]).toBeLessThan(
+      acquireAdvisoryTxLockMock.mock.invocationCallOrder[0],
+    );
+    expect(acquireAdvisoryTxLockMock.mock.invocationCallOrder[0]).toBeLessThan(
+      pharmacyVisitRequestFindFirstMock.mock.invocationCallOrder[1],
+    );
     expect(pharmacyVisitRequestFindFirstMock).toHaveBeenCalledWith({
       where: expect.objectContaining({
         id: 'visit_request_1',
@@ -551,6 +574,62 @@ describe('/api/pharmacy-cooperation-message-threads', () => {
     expect(response.status).toBe(404);
     expect(threadCreateMock).not.toHaveBeenCalled();
     expect(messageCreateMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+    expect(dispatchNotificationEventMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects consent deactivation after locking before thread or message side effects', async () => {
+    const current = await pharmacyVisitRequestFindFirstMock();
+    pharmacyVisitRequestFindFirstMock.mockClear();
+    pharmacyVisitRequestFindFirstMock.mockResolvedValueOnce(current).mockResolvedValueOnce(null);
+
+    const response = await POST(
+      createPostRequest({
+        share_case_id: 'share_case_1',
+        visit_request_id: 'visit_request_1',
+        body: 'メッセージ',
+      }),
+    );
+
+    expect(response.status).toBe(409);
+    expect(response.headers.get('Cache-Control')).toContain('no-store');
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: '患者共有の同意状態が更新されています',
+    });
+    expect(acquireAdvisoryTxLockMock).toHaveBeenCalledOnce();
+    expect(threadFindFirstMock).not.toHaveBeenCalled();
+    expect(threadCreateMock).not.toHaveBeenCalled();
+    expect(messageCreateMock).not.toHaveBeenCalled();
+    expect(threadUpdateMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+    expect(dispatchNotificationEventMock).not.toHaveBeenCalled();
+  });
+
+  it('returns conflict without querying an aborted transaction after a thread unique race', async () => {
+    threadCreateMock.mockRejectedValueOnce(
+      new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+        code: 'P2002',
+        clientVersion: 'test',
+      }),
+    );
+
+    const response = await POST(
+      createPostRequest({
+        share_case_id: 'share_case_1',
+        visit_request_id: 'visit_request_1',
+        body: 'メッセージ',
+      }),
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: 'メッセージスレッドが同時に作成されました。再読み込みしてください',
+    });
+    expect(threadFindFirstMock).toHaveBeenCalledOnce();
+    expect(messageCreateMock).not.toHaveBeenCalled();
+    expect(threadUpdateMock).not.toHaveBeenCalled();
     expect(createAuditLogEntryMock).not.toHaveBeenCalled();
     expect(dispatchNotificationEventMock).not.toHaveBeenCalled();
   });
