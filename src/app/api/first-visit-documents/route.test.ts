@@ -15,6 +15,7 @@ const {
   firstVisitDocumentFindManyMock,
   templateFindFirstMock,
   requireWritablePatientMock,
+  requireWritablePatientForUpdateMock,
   withOrgContextMock,
 } = vi.hoisted(() => ({
   loggerErrorMock: vi.fn(),
@@ -29,11 +30,53 @@ const {
   firstVisitDocumentFindManyMock: vi.fn(),
   templateFindFirstMock: vi.fn(),
   requireWritablePatientMock: vi.fn(),
+  requireWritablePatientForUpdateMock: vi.fn(),
   withOrgContextMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
   requireAuthContext: requireAuthContextMock,
+  withAuthContext: (
+    handler: (
+      req: NextRequest,
+      ctx: { orgId: string; userId: string; role: string },
+      routeContext: { params: Promise<Record<string, string>> },
+    ) => Promise<Response>,
+    options: unknown,
+  ) => {
+    return async (req: NextRequest, routeContext: { params: Promise<Record<string, string>> }) =>
+      withRoutePerformanceMock(req, async () => {
+        let response: Response;
+        try {
+          const authResult = await requireAuthContextMock(req, options);
+          response =
+            authResult && typeof authResult === 'object' && 'response' in authResult
+              ? authResult.response
+              : await runWithRequestAuthContextMock(authResult.ctx, () =>
+                  handler(req, authResult.ctx, routeContext),
+                );
+        } catch (error) {
+          loggerErrorMock(
+            {
+              event: 'route_handler_unhandled_error',
+              route: req.nextUrl.pathname,
+              method: req.method,
+            },
+            error,
+          );
+          response = new Response(
+            JSON.stringify({
+              code: 'INTERNAL_ERROR',
+              message: 'サーバー内部でエラーが発生しました',
+            }),
+            { status: 500, headers: { 'Content-Type': 'application/json' } },
+          );
+        }
+        response.headers.set('Cache-Control', 'private, no-store, max-age=0');
+        response.headers.set('Pragma', 'no-cache');
+        return response;
+      });
+  },
 }));
 
 vi.mock('@/lib/auth/request-context', () => ({
@@ -74,12 +117,14 @@ vi.mock('@/lib/db/rls', () => ({
 
 vi.mock('@/server/services/patient-write-guard', () => ({
   requireWritablePatient: requireWritablePatientMock,
+  requireWritablePatientForUpdate: requireWritablePatientForUpdateMock,
 }));
 
 import { GET as rawGET, POST as rawPOST } from './route';
 
-const GET = (req: NextRequest) => rawGET(req);
-const POST = (req: NextRequest) => rawPOST(req);
+const emptyRouteContext = { params: Promise.resolve({}) };
+const GET = (req: NextRequest) => rawGET(req, emptyRouteContext);
+const POST = (req: NextRequest) => rawPOST(req, emptyRouteContext);
 
 function createRequest(url: string, body?: unknown) {
   return new NextRequest(url, {
@@ -111,12 +156,14 @@ describe('/api/first-visit-documents', () => {
     requireWritablePatientMock.mockResolvedValue({
       patient: { id: 'patient_1', archived_at: null },
     });
+    requireWritablePatientForUpdateMock.mockResolvedValue({
+      patient: { id: 'patient_1', archived_at: null },
+    });
     careCaseFindFirstMock.mockResolvedValue({ id: 'case_1' });
     careCaseFindManyMock.mockResolvedValue([{ id: 'case_1' }]);
     firstVisitDocumentFindManyMock.mockResolvedValue([
       {
         id: 'doc_1',
-        org_id: 'org_1',
         patient_id: 'patient_1',
         case_id: 'case_1',
         emergency_contacts: [],
@@ -194,6 +241,17 @@ describe('/api/first-visit-documents', () => {
       expect(careCaseFindManyMock).not.toHaveBeenCalled();
       expect(firstVisitDocumentFindManyMock).toHaveBeenCalledWith(
         expect.objectContaining({
+          select: {
+            id: true,
+            patient_id: true,
+            case_id: true,
+            emergency_contacts: true,
+            document_url: true,
+            delivered_at: true,
+            delivered_to: true,
+            created_at: true,
+            updated_at: true,
+          },
           orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
           where: {
             org_id: 'org_1',
@@ -211,6 +269,7 @@ describe('/api/first-visit-documents', () => {
         },
       });
       expect(body.data).toHaveLength(1);
+      expect(body.data[0]).not.toHaveProperty('org_id');
       expect(body).not.toHaveProperty('hasMore');
       expect(body).not.toHaveProperty('nextCursor');
     });
@@ -270,6 +329,16 @@ describe('/api/first-visit-documents', () => {
         'case_id=case_1&case_id=case_2',
         { case_id: ['case_id は1つだけ指定してください'] },
       ],
+      ['blank cursor', 'cursor=', { cursor: ['cursor を指定してください'] }],
+      ['padded cursor', 'cursor=%20doc_1', { cursor: ['cursor の形式が不正です'] }],
+      [
+        'duplicate cursor',
+        'cursor=doc_1&cursor=doc_2',
+        { cursor: ['cursor は1つだけ指定してください'] },
+      ],
+      ['invalid limit', 'limit=many', { limit: ['limit は整数で指定してください'] }],
+      ['out-of-range limit', 'limit=101', { limit: ['limit は1以上100以下で指定してください'] }],
+      ['duplicate limit', 'limit=20&limit=50', { limit: ['limit は1つだけ指定してください'] }],
     ])(
       'rejects malformed explicit %s on read before scope resolution',
       async (_name, query, details) => {
@@ -310,10 +379,9 @@ describe('/api/first-visit-documents', () => {
       expect(JSON.stringify(body)).not.toContain('raw first visit');
       expect(loggerErrorMock).toHaveBeenCalledWith(
         expect.objectContaining({
-          event: 'first_visit_documents_get_unhandled_error',
+          event: 'route_handler_unhandled_error',
           route: '/api/first-visit-documents',
           method: 'GET',
-          status: 500,
         }),
         err,
       );
@@ -471,6 +539,33 @@ describe('/api/first-visit-documents', () => {
       expect(contactPartyFindManyMock).not.toHaveBeenCalled();
       expect(templateFindFirstMock).not.toHaveBeenCalled();
       expect(withOrgContextMock).not.toHaveBeenCalled();
+      expect(firstVisitDocumentCreateMock).not.toHaveBeenCalled();
+      expect(auditLogCreateMock).not.toHaveBeenCalled();
+    });
+
+    it('rejects a patient archived after preflight when the transaction acquires the write lock', async () => {
+      requireWritablePatientForUpdateMock.mockResolvedValueOnce({
+        response: Response.json(
+          { message: 'アーカイブ中の患者は復元するまで更新できません' },
+          { status: 409 },
+        ),
+      });
+
+      const response = (await POST(
+        createRequest('http://localhost/api/first-visit-documents', {
+          patient_id: 'patient_1',
+          case_id: 'case_1',
+          template_id: 'template_default',
+        }),
+      ))!;
+
+      expect(response.status).toBe(409);
+      expectSensitiveNoStore(response);
+      expect(requireWritablePatientForUpdateMock).toHaveBeenCalledWith(
+        expect.any(Object),
+        expect.objectContaining({ orgId: 'org_1', userId: 'user_1' }),
+        'patient_1',
+      );
       expect(firstVisitDocumentCreateMock).not.toHaveBeenCalled();
       expect(auditLogCreateMock).not.toHaveBeenCalled();
     });
@@ -730,10 +825,9 @@ describe('/api/first-visit-documents', () => {
       expect(JSON.stringify(body)).not.toContain('raw first visit');
       expect(loggerErrorMock).toHaveBeenCalledWith(
         expect.objectContaining({
-          event: 'first_visit_documents_post_unhandled_error',
+          event: 'route_handler_unhandled_error',
           route: '/api/first-visit-documents',
           method: 'POST',
-          status: 500,
         }),
         err,
       );

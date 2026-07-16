@@ -1,25 +1,21 @@
 import { randomUUID } from 'crypto';
 import { NextRequest } from 'next/server';
-import { unstable_rethrow } from 'next/navigation';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
-import { requireAuthContext } from '@/lib/auth/context';
-import { runWithRequestAuthContext } from '@/lib/auth/request-context';
+import { withAuthContext, type AuthContext } from '@/lib/auth/context';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
-import { conflict, internalError, notFound, success, validationError } from '@/lib/api/response';
+import { conflict, notFound, success, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { withOrgContext } from '@/lib/db/rls';
 import { readJsonObject } from '@/lib/db/json';
 import { recordFirstVisitDocumentPrintBatchSchema } from '@/lib/validations/first-visit-document';
 import { canAccessCareCase } from '@/server/services/patient-access';
 import { getPatientDocumentsData } from '@/server/services/patient-detail-documents';
+import { requireWritablePatientForUpdate } from '@/server/services/patient-write-guard';
 import type { Prisma } from '@prisma/client';
-import { logger } from '@/lib/utils/logger';
-import { withRoutePerformance } from '@/lib/utils/performance';
-
-const ROUTE = '/api/first-visit-documents/print-batch';
 
 type FirstVisitPrintBatchResult =
   | { data: { print_batch_id: string; printed_document_ids: string[]; document_count: number } }
+  | { response: Response }
   | { error: 'not_found' | 'conflict' | 'print_blocked'; message?: string };
 
 class FirstVisitPrintBatchConflictError extends Error {}
@@ -72,204 +68,186 @@ function latestDocumentActionByTargetId(
   return latest;
 }
 
-async function authenticatedPOST(req: NextRequest) {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canVisit',
-    message: '初回文書の印刷権限がありません',
-  });
-  if ('response' in authResult) return authResult.response;
-  const { ctx } = authResult;
+async function firstVisitDocumentPrintBatchPOST(req: NextRequest, ctx: AuthContext) {
+  const payload = await readJsonObjectRequestBody(req);
+  if (!payload) return validationError('リクエストボディが不正です');
 
-  return runWithRequestAuthContext(ctx, async () => {
-    const payload = await readJsonObjectRequestBody(req);
-    if (!payload) return validationError('リクエストボディが不正です');
+  const parsed = recordFirstVisitDocumentPrintBatchSchema.safeParse(payload);
+  if (!parsed.success) {
+    return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
+  }
 
-    const parsed = recordFirstVisitDocumentPrintBatchSchema.safeParse(payload);
-    if (!parsed.success) {
-      return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
-    }
+  const documentIds = [...new Set(parsed.data.document_ids)];
 
-    const documentIds = [...new Set(parsed.data.document_ids)];
-
-    const result = await withOrgContext(
-      ctx.orgId,
-      async (tx): Promise<FirstVisitPrintBatchResult> => {
-        const documents = await tx.firstVisitDocument.findMany({
-          where: {
-            id: { in: documentIds },
-            org_id: ctx.orgId,
-            patient_id: parsed.data.patient_id,
-          },
-          orderBy: [{ created_at: 'asc' }],
-          select: {
-            id: true,
-            patient_id: true,
-            case_id: true,
-            document_url: true,
-            delivered_at: true,
-            delivered_to: true,
-            updated_at: true,
-          },
-        });
-
-        if (documents.length !== documentIds.length) {
-          return { error: 'not_found' };
-        }
-
-        for (const document of documents) {
-          const canAccessScope = await canAccessCareCase({
-            db: tx,
-            orgId: ctx.orgId,
-            patientId: document.patient_id,
-            caseId: document.case_id,
-            accessContext: ctx,
-          });
-          if (!canAccessScope) return { error: 'not_found' };
-        }
-
-        const documentsData = await getPatientDocumentsData(tx, {
-          orgId: ctx.orgId,
-          patientId: parsed.data.patient_id,
-          role: ctx.role,
-          userId: ctx.userId,
-        });
-        if (!documentsData) return { error: 'not_found' };
-
-        const readiness = documentsData.print_readiness;
-        if (readiness.overall_status === 'blocked' || readiness.missing_required_count > 0) {
-          return { error: 'print_blocked', message: buildPrintBlockedMessage(readiness) };
-        }
-
-        const latestAuditLogs = await tx.auditLog.findMany({
-          where: {
-            org_id: ctx.orgId,
-            target_type: 'first_visit_document',
-            target_id: { in: documentIds },
-            action: { startsWith: 'first_visit_document.' },
-          },
-          orderBy: [{ created_at: 'desc' }],
-          take: documentIds.length * 10,
-          select: {
-            target_id: true,
-            changes: true,
-          },
-        });
-        const latestActionByDocumentId = latestDocumentActionByTargetId(latestAuditLogs);
-        const printBatchId = buildServerPrintBatchId();
-
-        for (const document of documents) {
-          const documentUrl = parsed.data.save_copy
-            ? buildFirstVisitPrintCopyUrl({
-                patientId: parsed.data.patient_id,
-                documentId: document.id,
-              })
-            : document.document_url;
-          if (parsed.data.save_copy && document.document_url !== documentUrl) {
-            const updateResult = await tx.firstVisitDocument.updateMany({
-              where: {
-                id: document.id,
-                org_id: ctx.orgId,
-                updated_at: document.updated_at,
-              },
-              data: { document_url: documentUrl },
-            });
-            if (updateResult.count !== 1) {
-              throw new FirstVisitPrintBatchConflictError(
-                '初回文書が他のユーザーによって更新されています。最新のデータを取得してください。',
-              );
-            }
-          }
-
-          const latestAction = latestActionByDocumentId.get(document.id);
-          await createAuditLogEntry(tx, ctx, {
-            action: 'first_visit_document.printed',
-            targetType: 'first_visit_document',
-            targetId: document.id,
-            changes: {
-              document_action: {
-                action: 'printed',
-                document_type:
-                  typeof latestAction?.document_type === 'string'
-                    ? latestAction.document_type
-                    : 'first_visit_document',
-                template_name:
-                  typeof latestAction?.template_name === 'string'
-                    ? latestAction.template_name
-                    : '契約・同意控え',
-                template_version:
-                  typeof latestAction?.template_version === 'string'
-                    ? latestAction.template_version
-                    : 'print-preview',
-                print_batch_id: printBatchId,
-                storage_location:
-                  typeof latestAction?.storage_location === 'string'
-                    ? latestAction.storage_location
-                    : null,
-                note: parsed.data.save_copy
-                  ? '印刷ハブから一括印刷し、控えリンクを保存'
-                  : '印刷ハブから一括印刷',
-              },
-              patient_id: document.patient_id,
-              case_id: document.case_id,
-              previous: {
-                document_url: document.document_url,
-                delivered_at: document.delivered_at?.toISOString() ?? null,
-                delivered_to: document.delivered_to,
-              },
-              next: {
-                document_url: documentUrl,
-                delivered_at: document.delivered_at?.toISOString() ?? null,
-                delivered_to: document.delivered_to,
-              },
-            },
-          });
-        }
-
-        return {
-          data: {
-            print_batch_id: printBatchId,
-            printed_document_ids: documents.map((document) => document.id),
-            document_count: documents.length,
-          },
-        };
-      },
-    ).catch((error): FirstVisitPrintBatchResult => {
-      if (error instanceof FirstVisitPrintBatchConflictError) {
-        return { error: 'conflict', message: error.message };
-      }
-      throw error;
-    });
-
-    if ('error' in result) {
-      if (result.error === 'conflict') {
-        return conflict(result.message ?? '初回文書が他のユーザーによって更新されています');
-      }
-      if (result.error === 'print_blocked') {
-        return conflict(result.message ?? '初回文書の印刷前チェックが未完了です');
-      }
-      return notFound('印刷対象の初回文書が見つかりません');
-    }
-
-    return success({ data: result.data });
-  });
-}
-
-export async function POST(req: NextRequest) {
-  return withRoutePerformance(req, async () => {
-    try {
-      return withSensitiveNoStore(await authenticatedPOST(req));
-    } catch (err) {
-      unstable_rethrow(err);
-      logger.error(
-        {
-          event: 'first_visit_documents_print_batch_post_unhandled_error',
-          route: ROUTE,
-          method: req.method,
-          status: 500,
+  const result = await withOrgContext(
+    ctx.orgId,
+    async (tx): Promise<FirstVisitPrintBatchResult> => {
+      const documents = await tx.firstVisitDocument.findMany({
+        where: {
+          id: { in: documentIds },
+          org_id: ctx.orgId,
+          patient_id: parsed.data.patient_id,
         },
-        err,
-      );
-      return withSensitiveNoStore(internalError());
+        orderBy: [{ created_at: 'asc' }],
+        select: {
+          id: true,
+          patient_id: true,
+          case_id: true,
+          document_url: true,
+          delivered_at: true,
+          delivered_to: true,
+          updated_at: true,
+        },
+      });
+
+      if (documents.length !== documentIds.length) {
+        return { error: 'not_found' };
+      }
+
+      for (const document of documents) {
+        const canAccessScope = await canAccessCareCase({
+          db: tx,
+          orgId: ctx.orgId,
+          patientId: document.patient_id,
+          caseId: document.case_id,
+          accessContext: ctx,
+        });
+        if (!canAccessScope) return { error: 'not_found' };
+      }
+
+      const writable = await requireWritablePatientForUpdate(tx, ctx, parsed.data.patient_id);
+      if ('response' in writable) return { response: writable.response };
+
+      const documentsData = await getPatientDocumentsData(tx, {
+        orgId: ctx.orgId,
+        patientId: parsed.data.patient_id,
+        role: ctx.role,
+        userId: ctx.userId,
+      });
+      if (!documentsData) return { error: 'not_found' };
+
+      const readiness = documentsData.print_readiness;
+      if (readiness.overall_status === 'blocked' || readiness.missing_required_count > 0) {
+        return { error: 'print_blocked', message: buildPrintBlockedMessage(readiness) };
+      }
+
+      const latestAuditLogs = await tx.auditLog.findMany({
+        where: {
+          org_id: ctx.orgId,
+          target_type: 'first_visit_document',
+          target_id: { in: documentIds },
+          action: { startsWith: 'first_visit_document.' },
+        },
+        orderBy: [{ created_at: 'desc' }],
+        take: documentIds.length * 10,
+        select: {
+          target_id: true,
+          changes: true,
+        },
+      });
+      const latestActionByDocumentId = latestDocumentActionByTargetId(latestAuditLogs);
+      const printBatchId = buildServerPrintBatchId();
+
+      for (const document of documents) {
+        const documentUrl = parsed.data.save_copy
+          ? buildFirstVisitPrintCopyUrl({
+              patientId: parsed.data.patient_id,
+              documentId: document.id,
+            })
+          : document.document_url;
+        if (parsed.data.save_copy && document.document_url !== documentUrl) {
+          const updateResult = await tx.firstVisitDocument.updateMany({
+            where: {
+              id: document.id,
+              org_id: ctx.orgId,
+              updated_at: document.updated_at,
+            },
+            data: { document_url: documentUrl },
+          });
+          if (updateResult.count !== 1) {
+            throw new FirstVisitPrintBatchConflictError(
+              '初回文書が他のユーザーによって更新されています。最新のデータを取得してください。',
+            );
+          }
+        }
+
+        const latestAction = latestActionByDocumentId.get(document.id);
+        await createAuditLogEntry(tx, ctx, {
+          action: 'first_visit_document.printed',
+          targetType: 'first_visit_document',
+          targetId: document.id,
+          changes: {
+            document_action: {
+              action: 'printed',
+              document_type:
+                typeof latestAction?.document_type === 'string'
+                  ? latestAction.document_type
+                  : 'first_visit_document',
+              template_name:
+                typeof latestAction?.template_name === 'string'
+                  ? latestAction.template_name
+                  : '契約・同意控え',
+              template_version:
+                typeof latestAction?.template_version === 'string'
+                  ? latestAction.template_version
+                  : 'print-preview',
+              print_batch_id: printBatchId,
+              storage_location:
+                typeof latestAction?.storage_location === 'string'
+                  ? latestAction.storage_location
+                  : null,
+              note: parsed.data.save_copy
+                ? '印刷ハブから一括印刷し、控えリンクを保存'
+                : '印刷ハブから一括印刷',
+            },
+            patient_id: document.patient_id,
+            case_id: document.case_id,
+            previous: {
+              document_url: document.document_url,
+              delivered_at: document.delivered_at?.toISOString() ?? null,
+              delivered_to: document.delivered_to,
+            },
+            next: {
+              document_url: documentUrl,
+              delivered_at: document.delivered_at?.toISOString() ?? null,
+              delivered_to: document.delivered_to,
+            },
+          },
+        });
+      }
+
+      return {
+        data: {
+          print_batch_id: printBatchId,
+          printed_document_ids: documents.map((document) => document.id),
+          document_count: documents.length,
+        },
+      };
+    },
+    { requestContext: ctx },
+  ).catch((error): FirstVisitPrintBatchResult => {
+    if (error instanceof FirstVisitPrintBatchConflictError) {
+      return { error: 'conflict', message: error.message };
     }
+    throw error;
   });
+
+  if ('response' in result) return result.response;
+
+  if ('error' in result) {
+    if (result.error === 'conflict') {
+      return conflict(result.message ?? '初回文書が他のユーザーによって更新されています');
+    }
+    if (result.error === 'print_blocked') {
+      return conflict(result.message ?? '初回文書の印刷前チェックが未完了です');
+    }
+    return notFound('印刷対象の初回文書が見つかりません');
+  }
+
+  return withSensitiveNoStore(success({ data: result.data }));
 }
+
+export const POST = withAuthContext(firstVisitDocumentPrintBatchPOST, {
+  permission: 'canVisit',
+  message: '初回文書の印刷権限がありません',
+});

@@ -1,13 +1,14 @@
-import { unstable_rethrow } from 'next/navigation';
 import { NextRequest } from 'next/server';
-import { requireAuthContext } from '@/lib/auth/context';
-import { runWithRequestAuthContext } from '@/lib/auth/request-context';
+import { withAuthContext, type AuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
-import { conflict, internalError, notFound, success, validationError } from '@/lib/api/response';
-import { readStrictOptionalSearchParam } from '@/lib/api/search-params';
+import { conflict, notFound, success, validationError } from '@/lib/api/response';
+import {
+  parseExactIntegerSearchParam,
+  readStrictOptionalSearchParam,
+} from '@/lib/api/search-params';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
-import { buildCursorPage, parsePaginationParams } from '@/lib/api/pagination';
+import { buildCursorPage } from '@/lib/api/pagination';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { createFirstVisitDocumentSchema } from '@/lib/validations/first-visit-document';
 import { prisma } from '@/lib/db/client';
@@ -20,13 +21,12 @@ import {
   listAccessibleCareCaseIds,
   listAccessiblePatientCaseIds,
 } from '@/server/services/patient-access';
-import { requireWritablePatient } from '@/server/services/patient-write-guard';
+import {
+  requireWritablePatient,
+  requireWritablePatientForUpdate,
+} from '@/server/services/patient-write-guard';
 import type { Prisma } from '@prisma/client';
 import { toSafeFirstVisitDocumentMutationResponse } from './response';
-import { logger } from '@/lib/utils/logger';
-import { withRoutePerformance } from '@/lib/utils/performance';
-
-const ROUTE = '/api/first-visit-documents';
 const FIRST_VISIT_TEMPLATE_TYPES = [
   'contract_document',
   'important_matters',
@@ -61,6 +61,25 @@ function relationLabelForDocument(relation: string) {
 }
 
 function parseFirstVisitDocumentListFilters(searchParams: URLSearchParams) {
+  const cursorResult = readStrictOptionalSearchParam(searchParams, 'cursor', {
+    blank: 'cursor を指定してください',
+    invalid: 'cursor の形式が不正です',
+  });
+  if (!cursorResult.ok) {
+    return {
+      ok: false as const,
+      response: validationError('検索条件が不正です', cursorResult.fieldErrors),
+    };
+  }
+
+  const limitResult = parseExactIntegerSearchParam(searchParams, 'limit', 1, 100, 50);
+  if (!limitResult.ok) {
+    return {
+      ok: false as const,
+      response: validationError('検索条件が不正です', { limit: [limitResult.message] }),
+    };
+  }
+
   const patientResult = readStrictOptionalSearchParam(searchParams, 'patient_id', {
     blank: 'patient_id を指定してください',
     invalid: 'patient_id の形式が不正です',
@@ -85,6 +104,8 @@ function parseFirstVisitDocumentListFilters(searchParams: URLSearchParams) {
 
   return {
     ok: true as const,
+    cursor: cursorResult.value,
+    limit: limitResult.value ?? 50,
     patientId: patientResult.value,
     caseId: caseResult.value,
   };
@@ -126,209 +147,180 @@ async function buildFirstVisitDocumentAssignmentWhere(args: {
   return { case_id: { in: caseIds } };
 }
 
-async function authenticatedGET(req: NextRequest) {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canVisit',
-    message: '初回文書の閲覧権限がありません',
+async function firstVisitDocumentsGET(req: NextRequest, ctx: AuthContext) {
+  const { searchParams } = new URL(req.url);
+  const filters = parseFirstVisitDocumentListFilters(searchParams);
+  if (!filters.ok) return filters.response;
+  const { cursor, limit } = filters;
+
+  const assignmentWhere = await buildFirstVisitDocumentAssignmentWhere({
+    orgId: ctx.orgId,
+    patientId: filters.patientId,
+    caseId: filters.caseId,
+    accessContext: ctx,
   });
-  if ('response' in authResult) return authResult.response;
-  const { ctx } = authResult;
 
-  return runWithRequestAuthContext(ctx, async () => {
-    const { searchParams } = new URL(req.url);
-    const { cursor, limit } = parsePaginationParams(searchParams);
+  const where = {
+    org_id: ctx.orgId,
+    ...(filters.patientId ? { patient_id: filters.patientId } : {}),
+    ...(filters.caseId ? { case_id: filters.caseId } : {}),
+    ...assignmentWhere,
+  };
 
-    const filters = parseFirstVisitDocumentListFilters(searchParams);
-    if (!filters.ok) return filters.response;
+  const docs = await prisma.firstVisitDocument.findMany({
+    where,
+    take: limit + 1,
+    ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+    orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
+    select: {
+      id: true,
+      patient_id: true,
+      case_id: true,
+      emergency_contacts: true,
+      document_url: true,
+      delivered_at: true,
+      delivered_to: true,
+      created_at: true,
+      updated_at: true,
+    },
+  });
 
-    const assignmentWhere = await buildFirstVisitDocumentAssignmentWhere({
-      orgId: ctx.orgId,
-      patientId: filters.patientId,
-      caseId: filters.caseId,
-      accessContext: ctx,
-    });
+  const page = buildCursorPage(docs, limit, (doc) => doc.id);
 
-    const where = {
-      org_id: ctx.orgId,
-      ...(filters.patientId ? { patient_id: filters.patientId } : {}),
-      ...(filters.caseId ? { case_id: filters.caseId } : {}),
-      ...assignmentWhere,
-    };
-
-    const docs = await prisma.firstVisitDocument.findMany({
-      where,
-      take: limit + 1,
-      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-      orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
-      select: {
-        id: true,
-        org_id: true,
-        patient_id: true,
-        case_id: true,
-        emergency_contacts: true,
-        document_url: true,
-        delivered_at: true,
-        delivered_to: true,
-        created_at: true,
-        updated_at: true,
-      },
-    });
-
-    const page = buildCursorPage(docs, limit, (doc) => doc.id);
-
-    return success({
-      data: page.data,
-      meta: {
-        limit,
-        has_more: page.hasMore,
-        next_cursor: page.nextCursor ?? null,
-      },
-    });
+  return success({
+    data: page.data,
+    meta: {
+      limit,
+      has_more: page.hasMore,
+      next_cursor: page.nextCursor ?? null,
+    },
   });
 }
 
-export async function GET(req: NextRequest) {
-  return withRoutePerformance(req, async () => {
-    try {
-      return withSensitiveNoStore(await authenticatedGET(req));
-    } catch (err) {
-      unstable_rethrow(err);
-      logger.error(
-        {
-          event: 'first_visit_documents_get_unhandled_error',
-          route: ROUTE,
-          method: req.method,
-          status: 500,
-        },
-        err,
-      );
-      return withSensitiveNoStore(internalError());
-    }
+export const GET = withAuthContext(firstVisitDocumentsGET, {
+  permission: 'canVisit',
+  message: '初回文書の閲覧権限がありません',
+});
+
+async function firstVisitDocumentsPOST(req: NextRequest, ctx: AuthContext) {
+  const payload = await readJsonObjectRequestBody(req);
+  if (!payload) return validationError('リクエストボディが不正です');
+
+  const parsed = createFirstVisitDocumentSchema.safeParse(payload);
+  if (!parsed.success) {
+    return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
+  }
+
+  const canAccessScope = await canAccessCareCase({
+    db: prisma,
+    orgId: ctx.orgId,
+    caseId: parsed.data.case_id,
+    patientId: parsed.data.patient_id,
+    accessContext: ctx,
   });
-}
+  if (!canAccessScope) return notFound('患者またはケースが見つかりません');
 
-async function authenticatedPOST(req: NextRequest) {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canVisit',
-    message: '初回文書の作成権限がありません',
-  });
-  if ('response' in authResult) return authResult.response;
-  const { ctx } = authResult;
+  const writable = await requireWritablePatient(prisma, ctx, parsed.data.patient_id);
+  if ('response' in writable) {
+    return writable.response ?? conflict('アーカイブ中の患者は復元するまで更新できません');
+  }
 
-  return runWithRequestAuthContext(ctx, async () => {
-    const payload = await readJsonObjectRequestBody(req);
-    if (!payload) return validationError('リクエストボディが不正です');
-
-    const parsed = createFirstVisitDocumentSchema.safeParse(payload);
-    if (!parsed.success) {
-      return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
-    }
-
-    const canAccessScope = await canAccessCareCase({
-      db: prisma,
-      orgId: ctx.orgId,
-      caseId: parsed.data.case_id,
-      patientId: parsed.data.patient_id,
-      accessContext: ctx,
-    });
-    if (!canAccessScope) return notFound('患者またはケースが見つかりません');
-
-    const writable = await requireWritablePatient(prisma, ctx, parsed.data.patient_id);
-    if ('response' in writable) {
-      return writable.response ?? conflict('アーカイブ中の患者は復元するまで更新できません');
-    }
-
-    const emergencyContacts =
-      parsed.data.emergency_contacts && parsed.data.emergency_contacts.length > 0
-        ? parsed.data.emergency_contacts
-        : (
-            await prisma.contactParty.findMany({
-              where: {
-                org_id: ctx.orgId,
-                patient_id: parsed.data.patient_id,
-                OR: [{ is_primary: true }, { is_emergency_contact: true }],
-              },
-              orderBy: [
-                { is_primary: 'desc' },
-                { is_emergency_contact: 'desc' },
-                { created_at: 'asc' },
-              ],
-              take: 5,
-              select: {
-                name: true,
-                relation: true,
-                phone: true,
-                email: true,
-                fax: true,
-                organization_name: true,
-                department: true,
-                is_primary: true,
-                is_emergency_contact: true,
-              },
-            })
-          ).flatMap((contact) => {
-            if (!contact.phone && !contact.email && !contact.fax) return [];
-            return [
-              {
-                name: contact.name,
-                relationship: relationLabelForDocument(contact.relation),
-                relation: relationLabelForDocument(contact.relation),
-                phone: contact.phone,
-                email: contact.email,
-                fax: contact.fax,
-                organization_name: contact.organization_name,
-                department: contact.department,
-                is_primary: contact.is_primary,
-                is_emergency_contact: contact.is_emergency_contact,
-              },
-            ];
-          });
-
-    if (emergencyContacts.length === 0) {
-      return validationError('緊急連絡先を1件以上入力してください', {
-        emergency_contacts: ['緊急連絡先を1件以上入力してください'],
-      });
-    }
-
-    const today = new Date();
-    const template = parsed.data.template_id
-      ? await prisma.template.findFirst({
-          where: {
-            id: parsed.data.template_id,
-            org_id: ctx.orgId,
-            template_type: { in: [...FIRST_VISIT_TEMPLATE_TYPES] },
-          },
-          select: {
-            id: true,
-            name: true,
-            template_type: true,
-            version: true,
-          },
-        })
-      : await prisma.template.findFirst({
-          where: {
-            org_id: ctx.orgId,
-            template_type: 'consent_form',
-            is_default: true,
-            OR: [{ effective_from: null }, { effective_from: { lte: today } }],
-            AND: [{ OR: [{ effective_to: null }, { effective_to: { gte: today } }] }],
-          },
-          orderBy: [{ version: 'desc' }, { updated_at: 'desc' }],
-          select: {
-            id: true,
-            name: true,
-            template_type: true,
-            version: true,
-          },
+  const emergencyContacts =
+    parsed.data.emergency_contacts && parsed.data.emergency_contacts.length > 0
+      ? parsed.data.emergency_contacts
+      : (
+          await prisma.contactParty.findMany({
+            where: {
+              org_id: ctx.orgId,
+              patient_id: parsed.data.patient_id,
+              OR: [{ is_primary: true }, { is_emergency_contact: true }],
+            },
+            orderBy: [
+              { is_primary: 'desc' },
+              { is_emergency_contact: 'desc' },
+              { created_at: 'asc' },
+            ],
+            take: 5,
+            select: {
+              name: true,
+              relation: true,
+              phone: true,
+              email: true,
+              fax: true,
+              organization_name: true,
+              department: true,
+              is_primary: true,
+              is_emergency_contact: true,
+            },
+          })
+        ).flatMap((contact) => {
+          if (!contact.phone && !contact.email && !contact.fax) return [];
+          return [
+            {
+              name: contact.name,
+              relationship: relationLabelForDocument(contact.relation),
+              relation: relationLabelForDocument(contact.relation),
+              phone: contact.phone,
+              email: contact.email,
+              fax: contact.fax,
+              organization_name: contact.organization_name,
+              department: contact.department,
+              is_primary: contact.is_primary,
+              is_emergency_contact: contact.is_emergency_contact,
+            },
+          ];
         });
 
-    if (parsed.data.template_id && !template) {
-      return validationError('入力値が不正です', {
-        template_id: ['指定されたテンプレートを確認できません'],
-      });
-    }
+  if (emergencyContacts.length === 0) {
+    return validationError('緊急連絡先を1件以上入力してください', {
+      emergency_contacts: ['緊急連絡先を1件以上入力してください'],
+    });
+  }
 
-    const doc = await withOrgContext(ctx.orgId, async (tx) => {
+  const today = new Date();
+  const template = parsed.data.template_id
+    ? await prisma.template.findFirst({
+        where: {
+          id: parsed.data.template_id,
+          org_id: ctx.orgId,
+          template_type: { in: [...FIRST_VISIT_TEMPLATE_TYPES] },
+        },
+        select: {
+          id: true,
+          name: true,
+          template_type: true,
+          version: true,
+        },
+      })
+    : await prisma.template.findFirst({
+        where: {
+          org_id: ctx.orgId,
+          template_type: 'consent_form',
+          is_default: true,
+          OR: [{ effective_from: null }, { effective_from: { lte: today } }],
+          AND: [{ OR: [{ effective_to: null }, { effective_to: { gte: today } }] }],
+        },
+        orderBy: [{ version: 'desc' }, { updated_at: 'desc' }],
+        select: {
+          id: true,
+          name: true,
+          template_type: true,
+          version: true,
+        },
+      });
+
+  if (parsed.data.template_id && !template) {
+    return validationError('入力値が不正です', {
+      template_id: ['指定されたテンプレートを確認できません'],
+    });
+  }
+
+  const result = await withOrgContext(
+    ctx.orgId,
+    async (tx) => {
+      const lockedWritable = await requireWritablePatientForUpdate(tx, ctx, parsed.data.patient_id);
+      if ('response' in lockedWritable) return { response: lockedWritable.response };
+
       const created = await tx.firstVisitDocument.create({
         data: {
           org_id: ctx.orgId,
@@ -365,29 +357,19 @@ async function authenticatedPOST(req: NextRequest) {
         },
       });
 
-      return created;
-    });
+      return { document: created };
+    },
+    { requestContext: ctx },
+  );
 
-    return success({ data: toSafeFirstVisitDocumentMutationResponse(doc) }, 201);
-  });
+  if ('response' in result) return result.response;
+
+  return withSensitiveNoStore(
+    success({ data: toSafeFirstVisitDocumentMutationResponse(result.document) }, 201),
+  );
 }
 
-export async function POST(req: NextRequest) {
-  return withRoutePerformance(req, async () => {
-    try {
-      return withSensitiveNoStore(await authenticatedPOST(req));
-    } catch (err) {
-      unstable_rethrow(err);
-      logger.error(
-        {
-          event: 'first_visit_documents_post_unhandled_error',
-          route: ROUTE,
-          method: req.method,
-          status: 500,
-        },
-        err,
-      );
-      return withSensitiveNoStore(internalError());
-    }
-  });
-}
+export const POST = withAuthContext(firstVisitDocumentsPOST, {
+  permission: 'canVisit',
+  message: '初回文書の作成権限がありません',
+});

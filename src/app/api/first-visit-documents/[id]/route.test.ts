@@ -13,6 +13,7 @@ const {
   firstVisitDocumentUpdateManyMock,
   auditLogCreateMock,
   requireWritablePatientMock,
+  requireWritablePatientForUpdateMock,
   getPatientDocumentsDataMock,
   withOrgContextMock,
 } = vi.hoisted(() => ({
@@ -26,12 +27,54 @@ const {
   firstVisitDocumentUpdateManyMock: vi.fn(),
   auditLogCreateMock: vi.fn(),
   requireWritablePatientMock: vi.fn(),
+  requireWritablePatientForUpdateMock: vi.fn(),
   getPatientDocumentsDataMock: vi.fn(),
   withOrgContextMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
   requireAuthContext: requireAuthContextMock,
+  withAuthContext: (
+    handler: (
+      req: NextRequest,
+      ctx: { orgId: string; userId: string; role: string },
+      routeContext: { params: Promise<Record<string, string>> },
+    ) => Promise<Response>,
+    options: unknown,
+  ) => {
+    return async (req: NextRequest, routeContext: { params: Promise<Record<string, string>> }) =>
+      withRoutePerformanceMock(req, async () => {
+        let response: Response;
+        try {
+          const authResult = await requireAuthContextMock(req, options);
+          response =
+            authResult && typeof authResult === 'object' && 'response' in authResult
+              ? authResult.response
+              : await runWithRequestAuthContextMock(authResult.ctx, () =>
+                  handler(req, authResult.ctx, routeContext),
+                );
+        } catch (error) {
+          loggerErrorMock(
+            {
+              event: 'route_handler_unhandled_error',
+              route: req.nextUrl.pathname,
+              method: req.method,
+            },
+            error,
+          );
+          response = new Response(
+            JSON.stringify({
+              code: 'INTERNAL_ERROR',
+              message: 'サーバー内部でエラーが発生しました',
+            }),
+            { status: 500, headers: { 'Content-Type': 'application/json' } },
+          );
+        }
+        response.headers.set('Cache-Control', 'private, no-store, max-age=0');
+        response.headers.set('Pragma', 'no-cache');
+        return response;
+      });
+  },
 }));
 
 vi.mock('@/lib/auth/request-context', () => ({
@@ -69,6 +112,7 @@ vi.mock('@/server/services/patient-detail-documents', () => ({
 
 vi.mock('@/server/services/patient-write-guard', () => ({
   requireWritablePatient: requireWritablePatientMock,
+  requireWritablePatientForUpdate: requireWritablePatientForUpdateMock,
 }));
 
 import { PATCH as rawPATCH } from './route';
@@ -106,6 +150,9 @@ describe('/api/first-visit-documents/[id]', () => {
     runWithRequestAuthContextMock.mockImplementation((_ctx, callback) => callback());
     withRoutePerformanceMock.mockImplementation((_req, callback) => callback());
     requireWritablePatientMock.mockResolvedValue({
+      patient: { id: 'patient_1', archived_at: null },
+    });
+    requireWritablePatientForUpdateMock.mockResolvedValue({
       patient: { id: 'patient_1', archived_at: null },
     });
     careCaseFindFirstMock.mockResolvedValue({ id: 'case_1' });
@@ -382,6 +429,32 @@ describe('/api/first-visit-documents/[id]', () => {
     expect(response.status).toBe(409);
     expectSensitiveNoStore(response);
     expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(firstVisitDocumentUpdateManyMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects a patient archived after preflight when the transaction acquires the write lock', async () => {
+    requireWritablePatientForUpdateMock.mockResolvedValueOnce({
+      response: Response.json(
+        { message: 'アーカイブ中の患者は復元するまで更新できません' },
+        { status: 409 },
+      ),
+    });
+
+    const response = (await PATCH(
+      createPatchRequest({
+        delivered_at: '2026-06-16T00:00:00.000Z',
+        delivered_to: '山田太郎',
+      }),
+    ))!;
+
+    expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
+    expect(requireWritablePatientForUpdateMock).toHaveBeenCalledWith(
+      expect.any(Object),
+      expect.objectContaining({ orgId: 'org_1', userId: 'user_1' }),
+      'patient_1',
+    );
     expect(firstVisitDocumentUpdateManyMock).not.toHaveBeenCalled();
     expect(auditLogCreateMock).not.toHaveBeenCalled();
   });
@@ -721,10 +794,9 @@ describe('/api/first-visit-documents/[id]', () => {
     expect(JSON.stringify(body)).not.toContain('raw first visit');
     expect(loggerErrorMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        event: 'first_visit_documents_id_patch_unhandled_error',
-        route: '/api/first-visit-documents/[id]',
+        event: 'route_handler_unhandled_error',
+        route: '/api/first-visit-documents/doc_1',
         method: 'PATCH',
-        status: 500,
       }),
       err,
     );

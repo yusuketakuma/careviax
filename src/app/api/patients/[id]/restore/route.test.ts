@@ -1,13 +1,19 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
-const { requireAuthContextMock, patientFindFirstMock, patientUpdateMock, withOrgContextMock } =
-  vi.hoisted(() => ({
-    requireAuthContextMock: vi.fn(),
-    patientFindFirstMock: vi.fn(),
-    patientUpdateMock: vi.fn(),
-    withOrgContextMock: vi.fn(),
-  }));
+const {
+  requireAuthContextMock,
+  acquirePatientWriteStateLockMock,
+  patientFindFirstMock,
+  patientUpdateMock,
+  withOrgContextMock,
+} = vi.hoisted(() => ({
+  requireAuthContextMock: vi.fn(),
+  acquirePatientWriteStateLockMock: vi.fn(),
+  patientFindFirstMock: vi.fn(),
+  patientUpdateMock: vi.fn(),
+  withOrgContextMock: vi.fn(),
+}));
 
 vi.mock('@/lib/auth/context', () => ({
   requireAuthContext: requireAuthContextMock,
@@ -32,6 +38,10 @@ vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
 }));
 
+vi.mock('@/server/services/patient-write-guard', () => ({
+  acquirePatientWriteStateLock: acquirePatientWriteStateLockMock,
+}));
+
 import { PATCH } from './route';
 
 function createRequest() {
@@ -49,6 +59,7 @@ describe('/api/patients/[id]/restore PATCH', () => {
     requireAuthContextMock.mockResolvedValue({
       ctx: { orgId: 'org_1', userId: 'user_1', role: 'admin' },
     });
+    acquirePatientWriteStateLockMock.mockResolvedValue(undefined);
     patientFindFirstMock.mockResolvedValue({
       id: 'patient_1',
       archived_at: new Date('2026-04-01T00:00:00.000Z'),
@@ -61,6 +72,7 @@ describe('/api/patients/[id]/restore PATCH', () => {
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
         patient: {
+          findFirst: patientFindFirstMock,
           update: patientUpdateMock,
         },
       }),
@@ -120,6 +132,11 @@ describe('/api/patients/[id]/restore PATCH', () => {
     expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
       requestContext: expect.objectContaining({ orgId: 'org_1', userId: 'user_1' }),
     });
+    expect(acquirePatientWriteStateLockMock).toHaveBeenCalledWith(
+      expect.any(Object),
+      'org_1',
+      'patient_1',
+    );
     expect(patientUpdateMock).toHaveBeenCalledWith({
       where: { id: 'patient_1' },
       data: {
@@ -128,5 +145,11 @@ describe('/api/patients/[id]/restore PATCH', () => {
       },
       select: { id: true, archived_at: true, archived_by: true },
     });
+    expect(acquirePatientWriteStateLockMock.mock.invocationCallOrder[0]).toBeLessThan(
+      patientFindFirstMock.mock.invocationCallOrder[0],
+    );
+    expect(patientFindFirstMock.mock.invocationCallOrder[0]).toBeLessThan(
+      patientUpdateMock.mock.invocationCallOrder[0],
+    );
   });
 });

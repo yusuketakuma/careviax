@@ -3,7 +3,11 @@ import { withAuthContext, type AuthContext, type AuthRouteContext } from '@/lib/
 import { withOrgContext } from '@/lib/db/rls';
 import { success, notFound, conflict, validationError } from '@/lib/api/response';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
-import { prisma } from '@/lib/db/client';
+import { acquirePatientWriteStateLock } from '@/server/services/patient-write-guard';
+
+type RestorePatientResult =
+  | { patient: { id: string; archived_at: Date | null; archived_by: string | null } }
+  | { error: 'not_found' | 'not_archived' };
 
 async function restorePatient(
   _req: NextRequest,
@@ -14,17 +18,18 @@ async function restorePatient(
   const id = normalizeRequiredRouteParam(rawId);
   if (!id) return validationError('患者IDが不正です');
 
-  const existing = await prisma.patient.findFirst({
-    where: { id, org_id: ctx.orgId },
-    select: { id: true, archived_at: true },
-  });
-  if (!existing) return notFound('患者が見つかりません');
-  if (!existing.archived_at) return conflict('患者はアーカイブされていません');
-
-  const updated = await withOrgContext(
+  const result = await withOrgContext(
     ctx.orgId,
-    async (tx) => {
-      return tx.patient.update({
+    async (tx): Promise<RestorePatientResult> => {
+      await acquirePatientWriteStateLock(tx, ctx.orgId, id);
+      const existing = await tx.patient.findFirst({
+        where: { id, org_id: ctx.orgId },
+        select: { id: true, archived_at: true },
+      });
+      if (!existing) return { error: 'not_found' };
+      if (!existing.archived_at) return { error: 'not_archived' };
+
+      const patient = await tx.patient.update({
         where: { id },
         data: {
           archived_at: null,
@@ -32,11 +37,18 @@ async function restorePatient(
         },
         select: { id: true, archived_at: true, archived_by: true },
       });
+      return { patient };
     },
     { requestContext: ctx },
   );
 
-  return success({ data: updated });
+  if ('error' in result) {
+    return result.error === 'not_archived'
+      ? conflict('患者はアーカイブされていません')
+      : notFound('患者が見つかりません');
+  }
+
+  return success({ data: result.patient });
 }
 
 export const PATCH = withAuthContext(restorePatient, {

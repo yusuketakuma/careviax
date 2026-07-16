@@ -8,6 +8,8 @@ const {
   runWithRequestAuthContextMock,
   withRoutePerformanceMock,
   careCaseFindFirstMock,
+  patientFindFirstMock,
+  patientLockExecuteRawMock,
   firstVisitDocumentFindManyMock,
   firstVisitDocumentUpdateManyMock,
   auditLogFindManyMock,
@@ -20,6 +22,8 @@ const {
   runWithRequestAuthContextMock: vi.fn((_ctx, callback: () => unknown) => callback()),
   withRoutePerformanceMock: vi.fn((_req, callback: () => unknown) => callback()),
   careCaseFindFirstMock: vi.fn(),
+  patientFindFirstMock: vi.fn(),
+  patientLockExecuteRawMock: vi.fn(),
   firstVisitDocumentFindManyMock: vi.fn(),
   firstVisitDocumentUpdateManyMock: vi.fn(),
   auditLogFindManyMock: vi.fn(),
@@ -30,6 +34,47 @@ const {
 
 vi.mock('@/lib/auth/context', () => ({
   requireAuthContext: requireAuthContextMock,
+  withAuthContext: (
+    handler: (
+      req: NextRequest,
+      ctx: { orgId: string; userId: string; role: string },
+      routeContext: { params: Promise<Record<string, string>> },
+    ) => Promise<Response>,
+    options: unknown,
+  ) => {
+    return async (req: NextRequest, routeContext: { params: Promise<Record<string, string>> }) =>
+      withRoutePerformanceMock(req, async () => {
+        let response: Response;
+        try {
+          const authResult = await requireAuthContextMock(req, options);
+          response =
+            authResult && typeof authResult === 'object' && 'response' in authResult
+              ? authResult.response
+              : await runWithRequestAuthContextMock(authResult.ctx, () =>
+                  handler(req, authResult.ctx, routeContext),
+                );
+        } catch (error) {
+          loggerErrorMock(
+            {
+              event: 'route_handler_unhandled_error',
+              route: req.nextUrl.pathname,
+              method: req.method,
+            },
+            error,
+          );
+          response = new Response(
+            JSON.stringify({
+              code: 'INTERNAL_ERROR',
+              message: 'サーバー内部でエラーが発生しました',
+            }),
+            { status: 500, headers: { 'Content-Type': 'application/json' } },
+          );
+        }
+        response.headers.set('Cache-Control', 'private, no-store, max-age=0');
+        response.headers.set('Pragma', 'no-cache');
+        return response;
+      });
+  },
 }));
 
 vi.mock('@/lib/auth/request-context', () => ({
@@ -60,7 +105,8 @@ vi.mock('@/server/services/patient-detail-documents', () => ({
 
 import { POST as rawPOST } from './route';
 
-const POST = (req: NextRequest) => rawPOST(req);
+const emptyRouteContext = { params: Promise.resolve({}) };
+const POST = (req: NextRequest) => rawPOST(req, emptyRouteContext);
 
 function createPostRequest(body: unknown) {
   return new NextRequest('http://localhost/api/first-visit-documents/print-batch', {
@@ -93,6 +139,8 @@ describe('/api/first-visit-documents/print-batch', () => {
     runWithRequestAuthContextMock.mockImplementation((_ctx, callback) => callback());
     withRoutePerformanceMock.mockImplementation((_req, callback) => callback());
     careCaseFindFirstMock.mockResolvedValue({ id: 'case_1' });
+    patientFindFirstMock.mockResolvedValue({ id: 'patient_1', archived_at: null });
+    patientLockExecuteRawMock.mockResolvedValue(1);
     firstVisitDocumentFindManyMock.mockResolvedValue([
       {
         id: 'doc_1',
@@ -152,8 +200,12 @@ describe('/api/first-visit-documents/print-batch', () => {
     });
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
+        $executeRaw: patientLockExecuteRawMock,
         careCase: {
           findFirst: careCaseFindFirstMock,
+        },
+        patient: {
+          findFirst: patientFindFirstMock,
         },
         firstVisitDocument: {
           findMany: firstVisitDocumentFindManyMock,
@@ -307,6 +359,28 @@ describe('/api/first-visit-documents/print-batch', () => {
     expect(auditLogCreateMock).not.toHaveBeenCalled();
   });
 
+  it('rejects archived patients before print readiness, document updates, or audit writes', async () => {
+    patientFindFirstMock.mockResolvedValueOnce({
+      id: 'patient_1',
+      archived_at: new Date('2026-06-01T00:00:00.000Z'),
+    });
+
+    const response = (await POST(
+      createPostRequest({
+        patient_id: 'patient_1',
+        document_ids: ['doc_1', 'doc_2'],
+        save_copy: true,
+      }),
+    ))!;
+
+    expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
+    expect(getPatientDocumentsDataMock).not.toHaveBeenCalled();
+    expect(auditLogFindManyMock).not.toHaveBeenCalled();
+    expect(firstVisitDocumentUpdateManyMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+
   it('does not create audit history when a copy URL update conflicts', async () => {
     firstVisitDocumentUpdateManyMock.mockResolvedValueOnce({ count: 0 });
 
@@ -360,10 +434,9 @@ describe('/api/first-visit-documents/print-batch', () => {
     expect(JSON.stringify(body)).not.toContain('raw first visit');
     expect(loggerErrorMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        event: 'first_visit_documents_print_batch_post_unhandled_error',
+        event: 'route_handler_unhandled_error',
         route: '/api/first-visit-documents/print-batch',
         method: 'POST',
-        status: 500,
       }),
       err,
     );
