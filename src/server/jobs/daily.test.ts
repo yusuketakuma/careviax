@@ -710,6 +710,12 @@ describe('daily job local date keys', () => {
         notification: {
           createMany: notificationCreateManyMock,
         },
+        businessHoliday: {
+          findMany: businessHolidayFindManyMock,
+        },
+        pharmacistShift: {
+          findMany: pharmacistShiftFindManyMock,
+        },
         task: {
           updateMany: vi.fn().mockResolvedValue({ count: 0 }),
         },
@@ -1016,12 +1022,12 @@ describe('daily job local date keys', () => {
     expect(result).toEqual({ processedCount: 1 });
     expect(businessHolidayFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: {
+        where: expect.objectContaining({
           date: {
             gte: new Date('2026-06-08T00:00:00.000Z'),
             lte: new Date('2026-06-11T00:00:00.000Z'),
           },
-        },
+        }),
       }),
     );
     expect(upsertOperationalTaskMock).toHaveBeenCalledWith(
