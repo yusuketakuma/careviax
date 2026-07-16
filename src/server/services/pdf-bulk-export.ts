@@ -3,6 +3,8 @@ import { Prisma } from '@prisma/client';
 import { zipSync } from 'fflate';
 import { z } from 'zod';
 import { prisma } from '@/lib/db/client';
+import { withOrgContext } from '@/lib/db/rls';
+import type { RequestAuthContext } from '@/lib/auth/request-context';
 import { hasPermission } from '@/lib/auth/permissions';
 import { buildFileDownloadHref } from '@/lib/files/navigation';
 import { mapWithConcurrency } from '@/lib/utils/concurrency';
@@ -272,6 +274,30 @@ async function withSerializableRetry<TValue>(
   }
 
   throw new Error('bulk export transaction could not be completed');
+}
+
+async function withOrgSerializableRetry<TValue>(args: {
+  orgId: string;
+  requestContext: RequestAuthContext;
+  work: (tx: Prisma.TransactionClient) => Promise<TValue>;
+}): Promise<TValue> {
+  for (let attempt = 0; attempt < SERIALIZABLE_RETRY_LIMIT; attempt += 1) {
+    try {
+      return await withOrgContext(args.orgId, args.work, {
+        requestContext: args.requestContext,
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+      });
+    } catch (cause) {
+      const isRetryableConflict =
+        cause instanceof Prisma.PrismaClientKnownRequestError && cause.code === 'P2034';
+
+      if (!isRetryableConflict || attempt === SERIALIZABLE_RETRY_LIMIT - 1) {
+        throw cause;
+      }
+    }
+  }
+
+  throw new Error('org-scoped bulk export transaction could not be completed');
 }
 
 type BulkExportAccessDb = Pick<Prisma.TransactionClient, 'careCase' | 'patient' | 'visitSchedule'>;
@@ -649,88 +675,103 @@ export async function queueMedicationHistoryBulkExport(args: QueueMedicationHist
     );
   }
 
-  return withSerializableRetry(async (tx) => {
-    await recoverStaleBulkExportRunningJobs({
-      db: tx,
-      orgId: args.orgId,
-    });
+  const requestContext: RequestAuthContext = {
+    userId: args.requestedBy,
+    orgId: args.orgId,
+    role: args.accessContext.role,
+    ...(args.auditContext?.ipAddress ? { ipAddress: args.auditContext.ipAddress } : {}),
+    ...(args.auditContext?.userAgent ? { userAgent: args.auditContext.userAgent } : {}),
+    ...(requestTrace
+      ? { requestId: requestTrace.requestId, correlationId: requestTrace.correlationId }
+      : {}),
+  };
 
-    const queuedCount = await tx.integrationJob.count({
-      where: {
-        org_id: args.orgId,
-        job_type: BULK_EXPORT_JOB_TYPE,
-        status: {
-          in: ['pending', 'running'],
+  return withOrgSerializableRetry({
+    orgId: args.orgId,
+    requestContext,
+    work: async (tx) => {
+      await recoverStaleBulkExportRunningJobs({
+        db: tx,
+        orgId: args.orgId,
+      });
+
+      const queuedCount = await tx.integrationJob.count({
+        where: {
+          org_id: args.orgId,
+          job_type: BULK_EXPORT_JOB_TYPE,
+          status: {
+            in: ['pending', 'running'],
+          },
         },
-      },
-    });
+      });
 
-    if (queuedCount >= MAX_QUEUED_JOBS_PER_ORG) {
-      throw new MedicationHistoryBulkExportError(
-        'WORKFLOW_CONFLICT',
-        '同時に処理できる一括出力ジョブの上限に達しています。完了後に再実行してください。',
-        409,
-      );
-    }
+      if (queuedCount >= MAX_QUEUED_JOBS_PER_ORG) {
+        throw new MedicationHistoryBulkExportError(
+          'WORKFLOW_CONFLICT',
+          '同時に処理できる一括出力ジョブの上限に達しています。完了後に再実行してください。',
+          409,
+        );
+      }
 
-    await assertPatientsExist({
-      db: tx,
-      orgId: args.orgId,
-      patientIds: normalizedPatientIds,
-    });
-    await assertBulkExportPatientAccess({
-      db: tx,
-      orgId: args.orgId,
-      patientIds: normalizedPatientIds,
-      accessContext: args.accessContext,
-    });
+      await assertPatientsExist({
+        db: tx,
+        orgId: args.orgId,
+        patientIds: normalizedPatientIds,
+      });
+      await assertBulkExportPatientAccess({
+        db: tx,
+        orgId: args.orgId,
+        patientIds: normalizedPatientIds,
+        accessContext: args.accessContext,
+      });
 
-    const job = await tx.integrationJob.create({
-      data: {
-        org_id: args.orgId,
-        job_type: BULK_EXPORT_JOB_TYPE,
-        status: 'pending',
-        max_retries: 0,
-        retry_count: 0,
-        run_at: new Date(),
-        input: {
-          version: 1,
-          requestedBy: args.requestedBy,
-          patientIds: normalizedPatientIds,
-          ...buildPersistedRequestTrace(requestTrace),
-        } satisfies Prisma.InputJsonValue,
-      },
-      select: {
-        id: true,
-      },
-    });
+      const job = await tx.integrationJob.create({
+        data: {
+          org_id: args.orgId,
+          job_type: BULK_EXPORT_JOB_TYPE,
+          status: 'pending',
+          max_retries: 0,
+          retry_count: 0,
+          run_at: new Date(),
+          input: {
+            version: 1,
+            requestedBy: args.requestedBy,
+            patientIds: normalizedPatientIds,
+            ...buildPersistedRequestTrace(requestTrace),
+          } satisfies Prisma.InputJsonValue,
+        },
+        select: {
+          id: true,
+        },
+      });
 
-    await recordDataExportAudit(tx, {
-      orgId: args.orgId,
-      actorId: args.requestedBy,
-      targetType: 'medication_history',
-      targetId: job.id,
-      format: 'pdf',
-      recordCount: normalizedPatientIds.length,
-      metadata: {
-        job_id: job.id,
-        status: 'queued',
-        patient_count: normalizedPatientIds.length,
-        requested_count: normalizedPatientIds.length,
-        patient_selection_hash: buildPatientSelectionHash(args.orgId, normalizedPatientIds),
-      },
-      ipAddress: args.auditContext?.ipAddress,
-      userAgent: args.auditContext?.userAgent,
-      requestId: requestTrace?.requestId,
-      correlationId: requestTrace?.correlationId,
-    });
+      await recordDataExportAudit(tx, {
+        orgId: args.orgId,
+        actorId: args.requestedBy,
+        targetType: 'medication_history',
+        targetId: job.id,
+        format: 'pdf',
+        recordCount: normalizedPatientIds.length,
+        metadata: {
+          job_id: job.id,
+          status: 'queued',
+          patient_count: normalizedPatientIds.length,
+          requested_count: normalizedPatientIds.length,
+          patient_selection_hash: buildPatientSelectionHash(args.orgId, normalizedPatientIds),
+        },
+        ipAddress: args.auditContext?.ipAddress,
+        userAgent: args.auditContext?.userAgent,
+        requestId: requestTrace?.requestId,
+        correlationId: requestTrace?.correlationId,
+      });
 
-    return {
-      jobId: job.id,
-      queuePosition: queuedCount + 1,
-      patientCount: normalizedPatientIds.length,
-      startedImmediately: queuedCount === 0,
-    };
+      return {
+        jobId: job.id,
+        queuePosition: queuedCount + 1,
+        patientCount: normalizedPatientIds.length,
+        startedImmediately: queuedCount === 0,
+      };
+    },
   });
 }
 

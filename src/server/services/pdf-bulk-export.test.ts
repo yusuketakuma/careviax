@@ -1,4 +1,5 @@
 import { unzipSync, strFromU8 } from 'fflate';
+import { Prisma } from '@prisma/client';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const {
@@ -20,6 +21,7 @@ const {
   storeGeneratedFileMock,
   deleteGeneratedFileMock,
   loggerWarnMock,
+  withOrgContextMock,
 } = vi.hoisted(() => ({
   zipSyncMock: vi.fn(),
   transactionMock: vi.fn(),
@@ -39,6 +41,7 @@ const {
   storeGeneratedFileMock: vi.fn(),
   deleteGeneratedFileMock: vi.fn(),
   loggerWarnMock: vi.fn(),
+  withOrgContextMock: vi.fn(),
 }));
 
 vi.mock('fflate', async (importOriginal) => {
@@ -82,6 +85,10 @@ vi.mock('@/lib/db/client', () => ({
   },
 }));
 
+vi.mock('@/lib/db/rls', () => ({
+  withOrgContext: withOrgContextMock,
+}));
+
 vi.mock('@/server/services/pdf-documents', () => ({
   buildMedicationHistoryPdf: buildMedicationHistoryPdfMock,
 }));
@@ -104,6 +111,30 @@ import {
 } from './pdf-bulk-export';
 
 describe('pdf-bulk-export', () => {
+  function transactionClient() {
+    return {
+      integrationJob: {
+        count: integrationJobCountMock,
+        create: integrationJobCreateMock,
+        updateMany: integrationJobUpdateManyMock,
+        findUnique: integrationJobFindUniqueMock,
+        findFirst: integrationJobFindFirstMock,
+      },
+      patient: {
+        count: patientCountMock,
+      },
+      visitSchedule: {
+        findMany: visitScheduleFindManyMock,
+      },
+      careCase: {
+        findMany: careCaseFindManyMock,
+      },
+      auditLog: {
+        create: auditLogCreateMock,
+      },
+    };
+  }
+
   beforeEach(() => {
     vi.clearAllMocks();
     delete process.env.MEDICATION_HISTORY_BULK_EXPORT_MAX_TOTAL_PDF_BYTES;
@@ -156,27 +187,11 @@ describe('pdf-bulk-export', () => {
     auditLogCreateMock.mockResolvedValue({});
     notificationUpsertMock.mockResolvedValue({});
     transactionMock.mockImplementation(async (callback: (tx: unknown) => Promise<unknown>) =>
-      callback({
-        integrationJob: {
-          count: integrationJobCountMock,
-          create: integrationJobCreateMock,
-          updateMany: integrationJobUpdateManyMock,
-          findUnique: integrationJobFindUniqueMock,
-          findFirst: integrationJobFindFirstMock,
-        },
-        patient: {
-          count: patientCountMock,
-        },
-        visitSchedule: {
-          findMany: visitScheduleFindManyMock,
-        },
-        careCase: {
-          findMany: careCaseFindManyMock,
-        },
-        auditLog: {
-          create: auditLogCreateMock,
-        },
-      }),
+      callback(transactionClient()),
+    );
+    withOrgContextMock.mockImplementation(
+      async (_orgId: string, callback: (tx: unknown) => Promise<unknown>) =>
+        callback(transactionClient()),
     );
   });
 
@@ -201,6 +216,17 @@ describe('pdf-bulk-export', () => {
       patientCount: 2,
       startedImmediately: true,
     });
+    expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
+      requestContext: {
+        userId: 'user_1',
+        orgId: 'org_1',
+        role: 'admin',
+        requestId: 'request_bulk_1',
+        correlationId: 'correlation_bulk_1',
+      },
+      isolationLevel: 'Serializable',
+    });
+    expect(transactionMock).not.toHaveBeenCalled();
     expect(integrationJobCreateMock).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
@@ -291,8 +317,54 @@ describe('pdf-bulk-export', () => {
       code: 'VALIDATION_ERROR',
       status: 400,
     });
-    expect(transactionMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(integrationJobCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('reapplies the same org and actor RLS context when a serializable enqueue retries', async () => {
+    withOrgContextMock
+      .mockRejectedValueOnce(
+        new Prisma.PrismaClientKnownRequestError('write conflict', {
+          code: 'P2034',
+          clientVersion: 'test',
+        }),
+      )
+      .mockImplementationOnce(async (_orgId: string, callback: (tx: unknown) => Promise<unknown>) =>
+        callback(transactionClient()),
+      );
+
+    await expect(
+      queueMedicationHistoryBulkExport({
+        orgId: 'org_1',
+        requestedBy: 'user_1',
+        patientIds: ['patient_1', 'patient_2'],
+        accessContext: { userId: 'user_1', role: 'admin' },
+        auditContext: { ipAddress: '203.0.113.10', userAgent: 'vitest' },
+        requestTrace: {
+          requestId: 'request_bulk_1',
+          correlationId: 'correlation_bulk_1',
+        },
+      }),
+    ).resolves.toMatchObject({ jobId: 'job_1' });
+
+    expect(withOrgContextMock).toHaveBeenCalledTimes(2);
+    expect(withOrgContextMock.mock.calls[0]?.[0]).toBe('org_1');
+    expect(withOrgContextMock.mock.calls[1]?.[0]).toBe('org_1');
+    expect(withOrgContextMock.mock.calls[0]?.[2]).toEqual(withOrgContextMock.mock.calls[1]?.[2]);
+    expect(withOrgContextMock.mock.calls[1]?.[2]).toMatchObject({
+      requestContext: {
+        userId: 'user_1',
+        orgId: 'org_1',
+        role: 'admin',
+        ipAddress: '203.0.113.10',
+        userAgent: 'vitest',
+        requestId: 'request_bulk_1',
+        correlationId: 'correlation_bulk_1',
+      },
+      isolationLevel: 'Serializable',
+    });
+    expect(integrationJobCreateMock).toHaveBeenCalledOnce();
+    expect(auditLogCreateMock).toHaveBeenCalledOnce();
   });
 
   it('propagates audit write failures so the queue transaction can roll back', async () => {
