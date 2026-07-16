@@ -33,6 +33,7 @@ import { PHARMACY_INVOICE_PDF_EXPORT_PURPOSE } from '@/lib/audit/export-purpose-
 import { formatDateDisplay as formatDate } from '@/lib/datetime/date-display';
 import { formatYen } from '@/lib/format/currency';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { createClientIdempotencyKey } from '@/lib/idempotency/client-key';
 import {
   pharmacyContractRowSchema as pharmacyCooperationContractRowSchema,
   type PharmacyContractRowContract,
@@ -93,6 +94,7 @@ type PharmacyInvoiceRow = {
   received_at: string | null;
   payment_scheduled_for: string | null;
   paid_at: string | null;
+  version: number;
   item_count: number;
   partnership: {
     base_site: { id: string; name: string };
@@ -139,6 +141,7 @@ type InvoiceTransitionAction =
 type PendingInvoiceTransition = {
   invoice: PharmacyInvoiceRow;
   action: InvoiceTransitionAction;
+  idempotencyKey: string;
 };
 
 const partnerCooperationSummarySchema = z.object({
@@ -200,6 +203,7 @@ const pharmacyInvoiceRowSchema = z.object({
   received_at: z.string().nullable(),
   payment_scheduled_for: z.string().nullable(),
   paid_at: z.string().nullable(),
+  version: z.number().int().positive(),
   item_count: z.number(),
   partnership: z.object({
     base_site: z.object({ id: z.string(), name: z.string() }),
@@ -375,11 +379,15 @@ async function fetchInvoices(orgId: string, billingMonth: string) {
 async function patchInvoiceStatus(
   orgId: string,
   invoiceId: string,
+  idempotencyKey: string,
   body: Record<string, unknown>,
 ): Promise<PharmacyInvoiceTransitionResult> {
   const response = await fetch(`/api/pharmacy-invoices/${invoiceId}`, {
     method: 'PATCH',
-    headers: buildOrgHeaders(orgId, { 'content-type': 'application/json' }),
+    headers: buildOrgHeaders(orgId, {
+      'content-type': 'application/json',
+      'Idempotency-Key': idempotencyKey,
+    }),
     body: JSON.stringify(body),
   });
   const json = await readApiJson(response, {
@@ -702,14 +710,16 @@ function invoiceActionVariant(action: InvoiceTransitionAction) {
 
 function buildInvoiceTransitionBody({
   action,
+  version,
   scheduledFor,
   reason,
 }: {
   action: InvoiceTransitionAction;
+  version: number;
   scheduledFor: string;
   reason: string;
 }) {
-  const body: Record<string, unknown> = { action };
+  const body: Record<string, unknown> = { action, version };
   const today = todayDateInputValue();
   if (
     action === 'issue' ||
@@ -1066,15 +1076,20 @@ export function PartnerCooperationBillingContent() {
   const transitionInvoiceMutation = useMutation({
     mutationFn: async ({
       invoice,
+      idempotencyKey,
       body,
     }: {
       invoice: PharmacyInvoiceRow;
+      idempotencyKey: string;
       body: Record<string, unknown>;
     }) => {
-      return patchInvoiceStatus(orgId, invoice.id, body);
+      return patchInvoiceStatus(orgId, invoice.id, idempotencyKey, body);
     },
+    retry: (failureCount, error) => failureCount < 1 && error instanceof TypeError,
+    retryDelay: 0,
     onSuccess: async (invoice) => {
       toast.success(`${documentKindLabel(invoice.document_kind)}を更新しました`);
+      closeInvoiceTransitionDialog();
       setLastDraft(null);
       await invalidateMonth();
     },
@@ -1106,8 +1121,10 @@ export function PartnerCooperationBillingContent() {
     if (transitionReasonRequired && !trimmedTransitionReason) return;
     transitionInvoiceMutation.mutate({
       invoice: pendingInvoiceTransition.invoice,
+      idempotencyKey: pendingInvoiceTransition.idempotencyKey,
       body: buildInvoiceTransitionBody({
         action: pendingInvoiceTransition.action,
+        version: pendingInvoiceTransition.invoice.version,
         scheduledFor: pendingScheduledFor,
         reason: trimmedTransitionReason,
       }),
@@ -1328,7 +1345,17 @@ export function PartnerCooperationBillingContent() {
             onScheduledDateChange={(invoiceId, value) =>
               setScheduledDates((current) => ({ ...current, [invoiceId]: value }))
             }
-            onTransition={(invoice, action) => setPendingInvoiceTransition({ invoice, action })}
+            onTransition={(invoice, action) =>
+              setPendingInvoiceTransition({
+                invoice,
+                action,
+                idempotencyKey: createClientIdempotencyKey(
+                  'pharmacy-invoice-transition',
+                  invoice.id,
+                  action,
+                ),
+              })
+            }
             pendingInvoiceId={
               transitionInvoiceMutation.isPending
                 ? (transitionInvoiceMutation.variables?.invoice.id ?? null)
@@ -1373,6 +1400,7 @@ export function PartnerCooperationBillingContent() {
           transitionInvoiceMutation.isPending ||
           (transitionReasonRequired && !trimmedTransitionReason)
         }
+        closeOnConfirm={false}
         onConfirm={confirmInvoiceTransition}
       >
         {pendingInvoiceTransition && transitionReasonRequired ? (

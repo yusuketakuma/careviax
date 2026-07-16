@@ -644,12 +644,14 @@ model PharmacyInvoice {
   received_at           DateTime?
   payment_scheduled_for DateTime?                   @db.Date
   paid_at               DateTime?
+  version               Int                         @default(1)
   snapshot              Json                        @default("{}")
   created_by            String
   created_at            DateTime                    @default(now())
   updated_at            DateTime                    @updatedAt
 
-  items PharmacyInvoiceItem[]
+  items              PharmacyInvoiceItem[]
+  transition_intents PharmacyInvoiceTransitionIntent[]
 
   @@unique([org_id, display_id])
   @@unique([id, org_id])
@@ -659,6 +661,27 @@ model PharmacyInvoice {
   @@index([org_id, billing_month])
   @@index([org_id, payment_scheduled_for])
   @@index([status])
+}
+
+model PharmacyInvoiceTransitionIntent {
+  id                       String          @id @default(cuid())
+  org_id                   String
+  route_key                String
+  invoice_id               String
+  invoice                  PharmacyInvoice @relation(fields: [invoice_id, org_id], references: [id, org_id], onDelete: Cascade)
+  idempotency_key_hash     String
+  request_fingerprint_hash String
+  action                   String
+  expected_version         Int
+  result_snapshot          Json?
+  completed_at             DateTime?
+  created_by               String
+  created_at               DateTime        @default(now())
+  updated_at               DateTime        @updatedAt
+
+  @@unique([org_id, route_key, invoice_id, idempotency_key_hash], name: "org_route_invoice_transition_idempotency_key", map: "PharmacyInvoiceTransitionIntent_org_route_invoice_idem_key")
+  @@index([org_id, invoice_id])
+  @@index([org_id, created_at])
 }
 
 model PharmacyInvoiceItem {

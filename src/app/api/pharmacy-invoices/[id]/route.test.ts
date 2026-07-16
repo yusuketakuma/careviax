@@ -51,10 +51,13 @@ import { PATCH as rawPATCH } from './route';
 const PATCH = (req: NextRequest, id = 'invoice_1') =>
   rawPATCH(req, { params: Promise.resolve({ id }) });
 
-function createRequest(body: unknown) {
+function createRequest(body: unknown, idempotencyKey: string | null = 'invoice-transition-1') {
   return new NextRequest('http://localhost/api/pharmacy-invoices/invoice_1', {
     method: 'PATCH',
-    headers: { 'content-type': 'application/json' },
+    headers: {
+      'content-type': 'application/json',
+      ...(idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {}),
+    },
     body: JSON.stringify(body),
   });
 }
@@ -77,13 +80,16 @@ describe('/api/pharmacy-invoices/[id] PATCH', () => {
       received_at: null,
       payment_scheduled_for: null,
       paid_at: null,
+      version: 2,
       item_count: 1,
     });
     withOrgContextMock.mockImplementation(async (_orgId, callback) => callback({ tx: true }));
   });
 
   it('updates invoice lifecycle state through the service with no-store response headers', async () => {
-    const response = await PATCH(createRequest({ action: 'issue', occurred_at: '2026-06-19' }));
+    const response = await PATCH(
+      createRequest({ action: 'issue', version: 1, occurred_at: '2026-06-19' }),
+    );
 
     expect(response.status).toBe(200);
     expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
@@ -98,6 +104,9 @@ describe('/api/pharmacy-invoices/[id] PATCH', () => {
       'invoice_1',
       expect.objectContaining({
         action: 'issue',
+        expectedVersion: 1,
+        idempotencyKeyHash: expect.stringMatching(/^sha256:/),
+        requestFingerprintHash: expect.stringMatching(/^sha256:/),
         occurredAt: new Date('2026-06-19T00:00:00.000Z'),
       }),
     );
@@ -113,7 +122,7 @@ describe('/api/pharmacy-invoices/[id] PATCH', () => {
   });
 
   it('requires a scheduled payment date before transaction side effects', async () => {
-    const response = await PATCH(createRequest({ action: 'schedule_payment' }));
+    const response = await PATCH(createRequest({ action: 'schedule_payment', version: 1 }));
 
     expect(response.status).toBe(400);
     expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
@@ -125,7 +134,7 @@ describe('/api/pharmacy-invoices/[id] PATCH', () => {
     transitionPharmacyInvoiceMock.mockRejectedValueOnce(
       new MockPharmacyInvoiceTransitionError('NOT_FOUND', '薬局間請求書が見つかりません'),
     );
-    const missingResponse = await PATCH(createRequest({ action: 'issue' }));
+    const missingResponse = await PATCH(createRequest({ action: 'issue', version: 1 }));
     expect(missingResponse.status).toBe(404);
 
     transitionPharmacyInvoiceMock.mockRejectedValueOnce(
@@ -135,11 +144,41 @@ describe('/api/pharmacy-invoices/[id] PATCH', () => {
         { current_status: 'paid' },
       ),
     );
-    const conflictResponse = await PATCH(createRequest({ action: 'cancel' }));
+    const conflictResponse = await PATCH(createRequest({ action: 'cancel', version: 1 }));
     expect(conflictResponse.status).toBe(409);
     await expect(conflictResponse.json()).resolves.toMatchObject({
       code: 'WORKFLOW_CONFLICT',
       details: { current_status: 'paid' },
     });
+  });
+
+  it('requires an idempotency key before transaction side effects', async () => {
+    const response = await PATCH(createRequest({ action: 'issue', version: 1 }, null));
+
+    expect(response.status).toBe(400);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(transitionPharmacyInvoiceMock).not.toHaveBeenCalled();
+  });
+
+  it('retries bounded serialization conflicts with the same transition input', async () => {
+    withOrgContextMock
+      .mockRejectedValueOnce({ code: 'P2034' })
+      .mockImplementationOnce(async (_orgId, callback) => callback({ tx: true }));
+
+    const response = await PATCH(createRequest({ action: 'reissue', version: 3, reason: '訂正' }));
+
+    expect(response.status).toBe(200);
+    expect(withOrgContextMock).toHaveBeenCalledTimes(2);
+    expect(transitionPharmacyInvoiceMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns a visible conflict after the bounded serialization retry limit', async () => {
+    withOrgContextMock.mockRejectedValue({ code: 'P2034' });
+
+    const response = await PATCH(createRequest({ action: 'reissue', version: 3 }));
+
+    expect(response.status).toBe(409);
+    expect(withOrgContextMock).toHaveBeenCalledTimes(3);
+    await expect(response.json()).resolves.toMatchObject({ code: 'WORKFLOW_CONFLICT' });
   });
 });

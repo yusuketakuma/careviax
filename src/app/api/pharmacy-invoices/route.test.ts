@@ -86,6 +86,7 @@ describe('/api/pharmacy-invoices GET', () => {
         received_at: null,
         payment_scheduled_for: null,
         paid_at: null,
+        version: 1,
         created_at: new Date('2026-06-20T00:00:00.000Z'),
         updated_at: new Date('2026-06-20T00:00:00.000Z'),
         _count: { items: 1 },
@@ -140,6 +141,7 @@ describe('/api/pharmacy-invoices GET', () => {
           id: 'invoice_1',
           billing_month: '2026-06-01',
           total: 6050,
+          version: 1,
           item_count: 1,
           partnership: {
             partner_pharmacy: { name: '協力薬局' },

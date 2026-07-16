@@ -40,6 +40,7 @@ type InvoiceFixture = {
   received_at: string | null;
   payment_scheduled_for: string | null;
   paid_at: string | null;
+  version: number;
   item_count: number;
   partnership: {
     base_site: { id: string; name: string };
@@ -63,6 +64,7 @@ function createInvoiceFixture(overrides: Partial<InvoiceFixture> = {}): InvoiceF
     received_at: null,
     payment_scheduled_for: null,
     paid_at: null,
+    version: 1,
     item_count: 1,
     partnership: {
       base_site: { id: 'site_1', name: '基幹薬局' },
@@ -254,6 +256,7 @@ describe('PartnerCooperationBillingContent', () => {
                 payment_scheduled_for: null,
                 paid_at: null,
                 updated_at: '2026-06-19T00:00:00.000Z',
+                version: invoice.version + 1,
                 item_count: invoice.item_count,
               },
             }),
@@ -674,9 +677,43 @@ describe('PartnerCooperationBillingContent', () => {
       expect(JSON.parse(String(patchCall?.[1]?.body))).toEqual({
         action: 'issue',
         occurred_at: '2026-06-19',
+        version: 1,
       });
+      expect(new Headers(patchCall?.[1]?.headers).get('Idempotency-Key')).toMatch(
+        /^pharmacy-invoice-transition:invoice_existing:issue:/,
+      );
     });
     expect(toast.success).toHaveBeenCalledWith('請求書を更新しました');
+  });
+
+  it('reuses the same transition intent when retrying after a lost response', async () => {
+    const originalFetch = vi.mocked(fetch).getMockImplementation();
+    expect(originalFetch).toBeTruthy();
+    const patchCalls: RequestInit[] = [];
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input) === '/api/pharmacy-invoices/invoice_existing' && init?.method === 'PATCH') {
+        patchCalls.push(init);
+        if (patchCalls.length === 1) throw new TypeError('response lost');
+      }
+      return originalFetch!(input, init);
+    });
+
+    renderContent();
+    const invoicesTable = await screen.findByRole('table', {
+      name: '薬局間月次ドキュメント一覧',
+    });
+    fireEvent.click(within(invoicesTable).getByRole('button', { name: /INV-001 発行/ }));
+    fireEvent.click(screen.getByRole('button', { name: '発行する' }));
+
+    await waitFor(() => expect(patchCalls).toHaveLength(2));
+    const firstKey = new Headers(patchCalls[0]?.headers).get('Idempotency-Key');
+    const secondKey = new Headers(patchCalls[1]?.headers).get('Idempotency-Key');
+    expect(firstKey).toMatch(/^pharmacy-invoice-transition:invoice_existing:issue:/);
+    expect(secondKey).toBe(firstKey);
+    expect(patchCalls[1]?.body).toBe(patchCalls[0]?.body);
+    await waitFor(() => {
+      expect(toast.success).toHaveBeenCalledWith('請求書を更新しました');
+    });
   });
 
   it('requires a reason before cancelling an issued invoice lifecycle state', async () => {
@@ -720,6 +757,7 @@ describe('PartnerCooperationBillingContent', () => {
       expect(JSON.parse(String(patchCall?.[1]?.body))).toEqual({
         action: 'cancel',
         reason: '重複して発行したため',
+        version: 1,
       });
     });
   });

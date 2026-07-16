@@ -4,6 +4,7 @@ import {
   type PharmacyInvoiceStatus,
   type PharmacyTaxCategory,
 } from '@prisma/client';
+import { z } from 'zod';
 import type { AuthContext } from '@/lib/auth/context';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { formatNullableUtcDateKey } from '@/lib/date-key';
@@ -17,6 +18,7 @@ const ACTIVE_INVOICE_STATUSES = [
   'payment_scheduled',
   'paid',
 ] as const;
+const PHARMACY_INVOICE_TRANSITION_ROUTE_KEY = 'PATCH /api/pharmacy-invoices/:id';
 
 const TAX_CATEGORIES = new Set<PharmacyTaxCategory>([
   'taxable',
@@ -98,16 +100,25 @@ export type PharmacyInvoiceTransitionAction =
   | 'cancel'
   | 'reissue';
 
-export type PharmacyInvoiceTransitionInput =
+export type PharmacyInvoiceTransitionInput = {
+  expectedVersion: number;
+  idempotencyKeyHash: string;
+  requestFingerprintHash: string;
+} & (
   | { action: 'issue'; occurredAt: Date }
   | { action: 'mark_sent'; occurredAt: Date }
   | { action: 'mark_received'; occurredAt: Date }
   | { action: 'schedule_payment'; paymentScheduledFor: Date }
   | { action: 'record_payment'; occurredAt: Date }
   | { action: 'cancel'; reason?: string }
-  | { action: 'reissue'; reason?: string };
+  | { action: 'reissue'; reason?: string }
+);
 
-export type PharmacyInvoiceTransitionErrorCode = 'NOT_FOUND' | 'INVALID_TRANSITION' | 'STALE';
+export type PharmacyInvoiceTransitionErrorCode =
+  | 'NOT_FOUND'
+  | 'INVALID_TRANSITION'
+  | 'IDEMPOTENCY_CONFLICT'
+  | 'STALE';
 
 export class PharmacyInvoiceDraftError extends Error {
   constructor(
@@ -301,6 +312,7 @@ function buildTransitionData(
 ): Prisma.PharmacyInvoiceUpdateManyMutationInput {
   const data: Prisma.PharmacyInvoiceUpdateManyMutationInput = {
     status: nextStatus,
+    version: { increment: 1 },
     snapshot: buildLifecycleSnapshotPatch(invoice, input, nextStatus, actorId),
   };
 
@@ -320,6 +332,39 @@ function buildTransitionData(
   return data;
 }
 
+const pharmacyInvoiceTransitionResultSchema = z.object({
+  id: z.string(),
+  contract_id: z.string(),
+  document_kind: z.enum(['invoice', 'free_cooperation_report']),
+  invoice_no: z.string().nullable(),
+  billing_month: z.string(),
+  subtotal: z.number().int(),
+  tax_amount: z.number().int(),
+  total: z.number().int(),
+  status: z.enum([
+    'draft',
+    'issued',
+    'sent',
+    'received',
+    'payment_scheduled',
+    'paid',
+    'voided',
+    'cancelled',
+  ]),
+  issued_at: z.string().nullable(),
+  sent_at: z.string().nullable(),
+  received_at: z.string().nullable(),
+  payment_scheduled_for: z.string().nullable(),
+  paid_at: z.string().nullable(),
+  updated_at: z.string(),
+  item_count: z.number().int().nonnegative(),
+  version: z.number().int().positive(),
+});
+
+function toIsoString(value: Date | null) {
+  return value?.toISOString() ?? null;
+}
+
 function toSafeInvoiceTransitionResult(invoice: {
   id: string;
   contract_id: string;
@@ -336,6 +381,7 @@ function toSafeInvoiceTransitionResult(invoice: {
   payment_scheduled_for: Date | null;
   paid_at: Date | null;
   updated_at: Date;
+  version: number;
   _count: { items: number };
 }) {
   return {
@@ -348,13 +394,14 @@ function toSafeInvoiceTransitionResult(invoice: {
     tax_amount: invoice.tax_amount,
     total: invoice.total,
     status: invoice.status,
-    issued_at: invoice.issued_at,
-    sent_at: invoice.sent_at,
-    received_at: invoice.received_at,
+    issued_at: toIsoString(invoice.issued_at),
+    sent_at: toIsoString(invoice.sent_at),
+    received_at: toIsoString(invoice.received_at),
     payment_scheduled_for: toDateKey(invoice.payment_scheduled_for),
-    paid_at: invoice.paid_at,
-    updated_at: invoice.updated_at,
+    paid_at: toIsoString(invoice.paid_at),
+    updated_at: invoice.updated_at.toISOString(),
     item_count: invoice._count.items,
+    version: invoice.version,
   };
 }
 
@@ -694,6 +741,39 @@ export async function transitionPharmacyInvoice(
   invoiceId: string,
   input: PharmacyInvoiceTransitionInput,
 ) {
+  const existingIntent = await tx.pharmacyInvoiceTransitionIntent.findUnique({
+    where: {
+      org_route_invoice_transition_idempotency_key: {
+        org_id: ctx.orgId,
+        route_key: PHARMACY_INVOICE_TRANSITION_ROUTE_KEY,
+        invoice_id: invoiceId,
+        idempotency_key_hash: input.idempotencyKeyHash,
+      },
+    },
+    select: {
+      request_fingerprint_hash: true,
+      result_snapshot: true,
+      completed_at: true,
+    },
+  });
+
+  if (existingIntent) {
+    if (existingIntent.request_fingerprint_hash !== input.requestFingerprintHash) {
+      throw new PharmacyInvoiceTransitionError(
+        'IDEMPOTENCY_CONFLICT',
+        '同じIdempotency-Keyが異なる請求書操作に使用されています',
+      );
+    }
+    const replay = pharmacyInvoiceTransitionResultSchema.safeParse(existingIntent.result_snapshot);
+    if (!existingIntent.completed_at || !replay.success) {
+      throw new PharmacyInvoiceTransitionError(
+        'STALE',
+        '請求書操作の完了状態を確認できないため再読み込みしてください',
+      );
+    }
+    return replay.data;
+  }
+
   const invoice = await tx.pharmacyInvoice.findFirst({
     where: { id: invoiceId, org_id: ctx.orgId },
     select: {
@@ -711,6 +791,7 @@ export async function transitionPharmacyInvoice(
       received_at: true,
       payment_scheduled_for: true,
       paid_at: true,
+      version: true,
       snapshot: true,
       updated_at: true,
       _count: { select: { items: true } },
@@ -719,6 +800,14 @@ export async function transitionPharmacyInvoice(
 
   if (!invoice) {
     throw new PharmacyInvoiceTransitionError('NOT_FOUND', '薬局間請求書が見つかりません');
+  }
+
+  if (invoice.version !== input.expectedVersion) {
+    throw new PharmacyInvoiceTransitionError(
+      'STALE',
+      '請求書が更新されているため再読み込みしてください',
+      { expected_version: input.expectedVersion, current_version: invoice.version },
+    );
   }
 
   const rule = INVOICE_TRANSITION_RULES[input.action];
@@ -734,12 +823,27 @@ export async function transitionPharmacyInvoice(
     );
   }
 
+  const intent = await tx.pharmacyInvoiceTransitionIntent.create({
+    data: {
+      org_id: ctx.orgId,
+      route_key: PHARMACY_INVOICE_TRANSITION_ROUTE_KEY,
+      invoice_id: invoiceId,
+      idempotency_key_hash: input.idempotencyKeyHash,
+      request_fingerprint_hash: input.requestFingerprintHash,
+      action: input.action,
+      expected_version: input.expectedVersion,
+      created_by: ctx.userId,
+    },
+    select: { id: true },
+  });
+
   const nextStatus = rule.to ?? invoice.status;
   const updateResult = await tx.pharmacyInvoice.updateMany({
     where: {
       id: invoice.id,
       org_id: ctx.orgId,
       status: invoice.status,
+      version: input.expectedVersion,
     },
     data: buildTransitionData(invoice, input, nextStatus, ctx.userId),
   });
@@ -773,6 +877,7 @@ export async function transitionPharmacyInvoice(
       payment_scheduled_for: true,
       paid_at: true,
       updated_at: true,
+      version: true,
       _count: { select: { items: true } },
     },
   });
@@ -781,6 +886,8 @@ export async function transitionPharmacyInvoice(
     action: input.action,
     previous_status: invoice.status,
     status: updated.status,
+    previous_version: invoice.version,
+    version: updated.version,
     document_kind: updated.document_kind,
     billing_month: toDateKey(updated.billing_month),
     contract_id: updated.contract_id,
@@ -805,5 +912,16 @@ export async function transitionPharmacyInvoice(
     changes: auditChanges,
   });
 
-  return toSafeInvoiceTransitionResult(updated);
+  const result = pharmacyInvoiceTransitionResultSchema.parse(
+    toSafeInvoiceTransitionResult(updated),
+  );
+  await tx.pharmacyInvoiceTransitionIntent.update({
+    where: { id: intent.id },
+    data: {
+      result_snapshot: toPrismaJsonInput(result),
+      completed_at: new Date(),
+    },
+  });
+
+  return result;
 }

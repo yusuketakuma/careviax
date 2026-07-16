@@ -991,6 +991,13 @@ CREATE POLICY tenant_isolation ON "PharmacyInvoice"
   WITH CHECK ("org_id" = public.app_enforced_org_id());
 ALTER TABLE "PharmacyInvoice" FORCE ROW LEVEL SECURITY;
 
+ALTER TABLE "PharmacyInvoiceTransitionIntent" ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON "PharmacyInvoiceTransitionIntent";
+CREATE POLICY tenant_isolation ON "PharmacyInvoiceTransitionIntent"
+  USING ("org_id" = public.app_enforced_org_id())
+  WITH CHECK ("org_id" = public.app_enforced_org_id());
+ALTER TABLE "PharmacyInvoiceTransitionIntent" FORCE ROW LEVEL SECURITY;
+
 ALTER TABLE "PharmacyInvoiceItem" ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS tenant_isolation ON "PharmacyInvoiceItem";
 CREATE POLICY tenant_isolation ON "PharmacyInvoiceItem"

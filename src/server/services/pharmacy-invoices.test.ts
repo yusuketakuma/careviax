@@ -21,6 +21,11 @@ const billingMonth = (() => {
 })();
 
 const now = new Date('2026-06-19T00:00:00.000Z');
+const transitionRequest = {
+  expectedVersion: 1,
+  idempotencyKeyHash: 'sha256:idempotency',
+  requestFingerprintHash: 'sha256:fingerprint',
+};
 
 function candidate(overrides: Record<string, unknown> = {}) {
   return {
@@ -339,6 +344,9 @@ describe('transitionPharmacyInvoice', () => {
   const pharmacyInvoiceFindFirstMock = vi.fn();
   const pharmacyInvoiceUpdateManyMock = vi.fn();
   const pharmacyInvoiceFindFirstOrThrowMock = vi.fn();
+  const transitionIntentFindUniqueMock = vi.fn();
+  const transitionIntentCreateMock = vi.fn();
+  const transitionIntentUpdateMock = vi.fn();
   const auditLogCreateMock = vi.fn();
 
   function tx() {
@@ -347,6 +355,11 @@ describe('transitionPharmacyInvoice', () => {
         findFirst: pharmacyInvoiceFindFirstMock,
         updateMany: pharmacyInvoiceUpdateManyMock,
         findFirstOrThrow: pharmacyInvoiceFindFirstOrThrowMock,
+      },
+      pharmacyInvoiceTransitionIntent: {
+        findUnique: transitionIntentFindUniqueMock,
+        create: transitionIntentCreateMock,
+        update: transitionIntentUpdateMock,
       },
       auditLog: {
         create: auditLogCreateMock,
@@ -370,6 +383,7 @@ describe('transitionPharmacyInvoice', () => {
       received_at: null,
       payment_scheduled_for: null,
       paid_at: null,
+      version: 1,
       snapshot: { snapshot_version: 'pharmacy_invoice_draft_v1' },
       updated_at: now,
       _count: { items: 1 },
@@ -379,6 +393,9 @@ describe('transitionPharmacyInvoice', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    transitionIntentFindUniqueMock.mockResolvedValue(null);
+    transitionIntentCreateMock.mockResolvedValue({ id: 'intent_1' });
+    transitionIntentUpdateMock.mockResolvedValue({ id: 'intent_1' });
     pharmacyInvoiceFindFirstMock.mockResolvedValue(invoiceRow());
     pharmacyInvoiceUpdateManyMock.mockResolvedValue({ count: 1 });
     pharmacyInvoiceFindFirstOrThrowMock.mockResolvedValue(
@@ -386,6 +403,7 @@ describe('transitionPharmacyInvoice', () => {
         invoice_no: 'INV-202606-INVOICE1',
         status: 'issued',
         issued_at: now,
+        version: 2,
       }),
     );
     auditLogCreateMock.mockResolvedValue({ id: 'audit_1' });
@@ -393,6 +411,7 @@ describe('transitionPharmacyInvoice', () => {
 
   it('issues a draft invoice with a stable number and minimized audit metadata', async () => {
     const result = await transitionPharmacyInvoice(tx(), ctx, 'invoice_1', {
+      ...transitionRequest,
       action: 'issue',
       occurredAt: now,
     });
@@ -402,12 +421,14 @@ describe('transitionPharmacyInvoice', () => {
       status: 'issued',
       invoice_no: 'INV-202606-INVOICE1',
       item_count: 1,
+      version: 2,
     });
     expect(pharmacyInvoiceUpdateManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: 'invoice_1', org_id: 'org_1', status: 'draft' },
+        where: { id: 'invoice_1', org_id: 'org_1', status: 'draft', version: 1 },
         data: expect.objectContaining({
           status: 'issued',
+          version: { increment: 1 },
           issued_at: now,
           invoice_no: expect.stringMatching(/^INV-202606-/),
           snapshot: expect.objectContaining({
@@ -447,10 +468,12 @@ describe('transitionPharmacyInvoice', () => {
       invoiceRow({
         status: 'payment_scheduled',
         invoice_no: 'INV-202606-0001',
+        version: 2,
       }),
     );
 
     await transitionPharmacyInvoice(tx(), ctx, 'invoice_1', {
+      ...transitionRequest,
       action: 'schedule_payment',
       paymentScheduledFor: scheduledFor,
     });
@@ -480,6 +503,149 @@ describe('transitionPharmacyInvoice', () => {
         }),
       }),
     );
+    expect(transitionIntentUpdateMock).toHaveBeenCalledWith({
+      where: { id: 'intent_1' },
+      data: expect.objectContaining({
+        result_snapshot: expect.objectContaining({ version: 2 }),
+        completed_at: expect.any(Date),
+      }),
+    });
+  });
+
+  it('replays the original completed result without a second update or audit', async () => {
+    const replay = {
+      id: 'invoice_1',
+      contract_id: 'contract_1',
+      document_kind: 'invoice',
+      invoice_no: 'INV-202606-0001',
+      billing_month: '2026-06-01',
+      subtotal: 5500,
+      tax_amount: 550,
+      total: 6050,
+      status: 'issued',
+      issued_at: '2026-06-19T00:00:00.000Z',
+      sent_at: null,
+      received_at: null,
+      payment_scheduled_for: null,
+      paid_at: null,
+      updated_at: '2026-06-19T00:00:00.000Z',
+      item_count: 1,
+      version: 2,
+    };
+    transitionIntentFindUniqueMock.mockResolvedValue({
+      request_fingerprint_hash: transitionRequest.requestFingerprintHash,
+      result_snapshot: replay,
+      completed_at: now,
+    });
+
+    await expect(
+      transitionPharmacyInvoice(tx(), ctx, 'invoice_1', {
+        ...transitionRequest,
+        action: 'reissue',
+        reason: '再送',
+      }),
+    ).resolves.toEqual(replay);
+    expect(transitionIntentCreateMock).not.toHaveBeenCalled();
+    expect(pharmacyInvoiceFindFirstMock).not.toHaveBeenCalled();
+    expect(pharmacyInvoiceUpdateManyMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects reuse of an idempotency key with a different request fingerprint', async () => {
+    transitionIntentFindUniqueMock.mockResolvedValue({
+      request_fingerprint_hash: 'sha256:other-fingerprint',
+      result_snapshot: {},
+      completed_at: now,
+    });
+
+    await expect(
+      transitionPharmacyInvoice(tx(), ctx, 'invoice_1', {
+        ...transitionRequest,
+        action: 'issue',
+        occurredAt: now,
+      }),
+    ).rejects.toMatchObject({ code: 'IDEMPOTENCY_CONFLICT' });
+    expect(transitionIntentCreateMock).not.toHaveBeenCalled();
+    expect(pharmacyInvoiceUpdateManyMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects a stale expected version before invoice or audit mutation', async () => {
+    pharmacyInvoiceFindFirstMock.mockResolvedValue(invoiceRow({ version: 4 }));
+
+    await expect(
+      transitionPharmacyInvoice(tx(), ctx, 'invoice_1', {
+        ...transitionRequest,
+        action: 'issue',
+        occurredAt: now,
+      }),
+    ).rejects.toMatchObject({
+      code: 'STALE',
+      details: { expected_version: 1, current_version: 4 },
+    });
+    expect(pharmacyInvoiceUpdateManyMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('serializes same-status reissue with the invoice version CAS', async () => {
+    pharmacyInvoiceFindFirstMock.mockResolvedValue(
+      invoiceRow({ status: 'paid', invoice_no: 'INV-202606-0001' }),
+    );
+    pharmacyInvoiceFindFirstOrThrowMock.mockResolvedValue(
+      invoiceRow({
+        status: 'paid',
+        invoice_no: 'INV-202606-0001',
+        version: 2,
+        snapshot: {
+          lifecycle: { reissue_count: 1, last_action: 'reissue' },
+        },
+      }),
+    );
+
+    await transitionPharmacyInvoice(tx(), ctx, 'invoice_1', {
+      ...transitionRequest,
+      action: 'reissue',
+      reason: '送付先訂正',
+    });
+
+    expect(pharmacyInvoiceUpdateManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          id: 'invoice_1',
+          org_id: 'org_1',
+          status: 'paid',
+          version: 1,
+        },
+        data: expect.objectContaining({
+          status: 'paid',
+          version: { increment: 1 },
+          snapshot: expect.objectContaining({
+            lifecycle: expect.objectContaining({ reissue_count: 1, last_action: 'reissue' }),
+          }),
+        }),
+      }),
+    );
+    expect(auditLogCreateMock).toHaveBeenCalledTimes(1);
+
+    vi.clearAllMocks();
+    transitionIntentFindUniqueMock.mockResolvedValue(null);
+    transitionIntentCreateMock.mockResolvedValue({ id: 'intent_2' });
+    pharmacyInvoiceFindFirstMock.mockResolvedValue(
+      invoiceRow({ status: 'paid', invoice_no: 'INV-202606-0001' }),
+    );
+    pharmacyInvoiceUpdateManyMock.mockResolvedValue({ count: 0 });
+
+    await expect(
+      transitionPharmacyInvoice(tx(), ctx, 'invoice_1', {
+        ...transitionRequest,
+        idempotencyKeyHash: 'sha256:concurrent-request',
+        requestFingerprintHash: 'sha256:concurrent-fingerprint',
+        action: 'reissue',
+        reason: '別の再発行',
+      }),
+    ).rejects.toMatchObject({ code: 'STALE' });
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(transitionIntentUpdateMock).not.toHaveBeenCalled();
   });
 
   it('rejects invalid lifecycle transitions before update or audit writes', async () => {
@@ -487,6 +653,7 @@ describe('transitionPharmacyInvoice', () => {
 
     await expect(
       transitionPharmacyInvoice(tx(), ctx, 'invoice_1', {
+        ...transitionRequest,
         action: 'cancel',
         reason: '誤発行',
       }),
