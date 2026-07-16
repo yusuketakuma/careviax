@@ -222,6 +222,46 @@
       }
     },
     {
+      "name": "ph-os-job-execution-partial",
+      "metric": "JobExecutionPartialCount",
+      "namespace": "PH-OS/Application",
+      "comparisonOperator": "GreaterThanOrEqualToThreshold",
+      "threshold": 1,
+      "evaluationPeriods": 1,
+      "periodSeconds": 300,
+      "statistic": "Sum",
+      "alarmDescription": "A background job completed with one or more bounded partial failures. Derived from the job.execution_partial structured log via the CloudWatch Logs metric filter below (declaration only; apply as an operational step).",
+      "metricFilter": {
+        "logGroupName": "/ph-os/application",
+        "filterName": "ph-os-job-execution-partial",
+        "filterPattern": "{ $.event = \"job.execution_partial\" }",
+        "metricNamespace": "PH-OS/Application",
+        "metricName": "JobExecutionPartialCount",
+        "metricValue": "1",
+        "defaultValue": 0
+      }
+    },
+    {
+      "name": "ph-os-job-execution-skipped",
+      "metric": "JobExecutionSkippedCount",
+      "namespace": "PH-OS/Application",
+      "comparisonOperator": "GreaterThanOrEqualToThreshold",
+      "threshold": 5,
+      "evaluationPeriods": 1,
+      "periodSeconds": 300,
+      "statistic": "Sum",
+      "alarmDescription": "Five or more duplicate background job starts were skipped within five minutes. Derived from the job.execution_skipped structured log via the CloudWatch Logs metric filter below (declaration only; apply as an operational step).",
+      "metricFilter": {
+        "logGroupName": "/ph-os/application",
+        "filterName": "ph-os-job-execution-skipped",
+        "filterPattern": "{ $.event = \"job.execution_skipped\" }",
+        "metricNamespace": "PH-OS/Application",
+        "metricName": "JobExecutionSkippedCount",
+        "metricValue": "1",
+        "defaultValue": 0
+      }
+    },
+    {
       "name": "ph-os-phi-read-audit-failure",
       "metric": "PhiReadAuditFailureCount",
       "namespace": "PH-OS/Application",

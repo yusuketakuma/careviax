@@ -151,6 +151,17 @@ describe('runJob', () => {
     });
     expect(JSON.stringify(integrationJobUpdateMock.mock.calls)).not.toContain(rawError);
     expect(JSON.stringify(integrationJobUpdateMock.mock.calls)).not.toContain('hunter2');
+    expect(loggerWarnMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: 'job.execution_partial',
+        jobType: 'test_job',
+        operation: 'run_job',
+        code: 'JOB_PARTIAL_RESULT',
+        errorCount: 2,
+      }),
+    );
+    expect(JSON.stringify(loggerWarnMock.mock.calls)).not.toContain(rawError);
+    expect(JSON.stringify(loggerWarnMock.mock.calls)).not.toContain('hunter2');
   });
 
   it('keeps an empty errors array completed', async () => {
@@ -290,7 +301,7 @@ describe('runJob', () => {
     });
     expect(loggerWarnMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        event: 'job.duplicate_running_skipped',
+        event: 'job.execution_skipped',
         jobType: 'test_job',
         operation: 'run_job',
         code: 'JOB_ALREADY_RUNNING',
@@ -326,7 +337,7 @@ describe('runJob', () => {
     });
     expect(loggerWarnMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        event: 'job.duplicate_in_process_skipped',
+        event: 'job.execution_skipped',
         jobType: 'test_job',
         operation: 'run_job',
         code: 'JOB_IN_PROCESS_ALREADY_RUNNING',

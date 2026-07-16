@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const { cloudWatchClientMock, cloudWatchSendMock, snsClientMock, snsSendMock, commandMocks } =
@@ -230,6 +232,54 @@ describe('cloudwatch alarms infra script', () => {
           Dimensions: [{ Name: 'OrgScope', Value: 'aggregate' }],
           EvaluationPeriods: 1,
           Threshold: 0,
+        }),
+      ]),
+    );
+  });
+
+  it('declares metric filters for every terminal job outcome that needs attention', () => {
+    const config = JSON.parse(
+      readFileSync(join(process.cwd(), 'tools/infra/cloudwatch-alarms.json'), 'utf8'),
+    ) as {
+      alarms: Array<{
+        name: string;
+        metric: string;
+        threshold: number;
+        metricFilter?: { filterPattern: string; metricName: string; defaultValue: number };
+      }>;
+    };
+
+    expect(config.alarms).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: 'ph-os-job-execution-failed',
+          metric: 'JobExecutionFailedCount',
+          threshold: 1,
+          metricFilter: expect.objectContaining({
+            filterPattern: '{ $.event = "job.execution_failed" }',
+            metricName: 'JobExecutionFailedCount',
+            defaultValue: 0,
+          }),
+        }),
+        expect.objectContaining({
+          name: 'ph-os-job-execution-partial',
+          metric: 'JobExecutionPartialCount',
+          threshold: 1,
+          metricFilter: expect.objectContaining({
+            filterPattern: '{ $.event = "job.execution_partial" }',
+            metricName: 'JobExecutionPartialCount',
+            defaultValue: 0,
+          }),
+        }),
+        expect.objectContaining({
+          name: 'ph-os-job-execution-skipped',
+          metric: 'JobExecutionSkippedCount',
+          threshold: 5,
+          metricFilter: expect.objectContaining({
+            filterPattern: '{ $.event = "job.execution_skipped" }',
+            metricName: 'JobExecutionSkippedCount',
+            defaultValue: 0,
+          }),
         }),
       ]),
     );

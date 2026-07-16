@@ -17,9 +17,11 @@ const JOB_PARTIAL_ERROR_LOG = 'Job completed with partial errors';
 const JOB_DUPLICATE_RUNNING_CODE = 'job_duplicate_running';
 const JOB_DUPLICATE_IN_PROCESS_CODE = 'job_duplicate_in_process';
 const JOB_EXECUTION_FAILED_NOTIFICATION_MESSAGE = 'ジョブの実行に失敗しました';
-// Structured-log event name for permanent job failures. Kept stable because the
-// CloudWatch Logs metric filter in tools/infra/cloudwatch-alarms.json keys off it.
+// Structured-log event names kept stable because CloudWatch Logs metric filters
+// in tools/infra/cloudwatch-alarms.json key off them.
 const JOB_EXECUTION_FAILED_LOG_EVENT = 'job.execution_failed';
+const JOB_EXECUTION_PARTIAL_LOG_EVENT = 'job.execution_partial';
+const JOB_EXECUTION_SKIPPED_LOG_EVENT = 'job.execution_skipped';
 // Notification event type used to route admin-facing job-failure alerts through the
 // shared delivery pipeline (in-app + web-push). No notificationRule config is
 // required: recipients are supplied explicitly as admin/owner user ids per org.
@@ -160,15 +162,15 @@ async function runJobOnce(
 ): Promise<RunJobResult> {
   // Skip if the same job type is already in progress
   if (await isJobAlreadyRunning(jobType, orgId)) {
+    await recordSkippedJob(jobType, JOB_DUPLICATE_RUNNING_CODE, orgId);
     logger.warn({
-      event: 'job.duplicate_running_skipped',
+      event: JOB_EXECUTION_SKIPPED_LOG_EVENT,
       jobType,
       operation: 'run_job',
       code: 'JOB_ALREADY_RUNNING',
       ...(orgId ? { orgId } : {}),
       ...jobTraceLogContext(requestTrace),
     });
-    await recordSkippedJob(jobType, JOB_DUPLICATE_RUNNING_CODE, orgId);
     return { processedCount: 0, skipped: true };
   }
 
@@ -211,6 +213,17 @@ async function runJobOnce(
         },
         orgId,
       );
+      if (outcome.status === 'partial') {
+        logger.warn({
+          event: JOB_EXECUTION_PARTIAL_LOG_EVENT,
+          jobType,
+          operation: 'run_job',
+          code: 'JOB_PARTIAL_RESULT',
+          errorCount: result.errors?.length ?? 0,
+          ...(orgId ? { orgId } : {}),
+          ...jobTraceLogContext(requestTrace),
+        });
+      }
       return result;
     } catch (error) {
       lastError = error;
@@ -295,15 +308,15 @@ export async function runJob(
   const requestTrace = getValidatedJobRequestTrace();
   const activeKey = jobRunKey(jobType, orgId, dedupeKey);
   if (activeJobRuns.has(activeKey)) {
+    await recordSkippedJob(jobType, JOB_DUPLICATE_IN_PROCESS_CODE, orgId);
     logger.warn({
-      event: 'job.duplicate_in_process_skipped',
+      event: JOB_EXECUTION_SKIPPED_LOG_EVENT,
       jobType,
       operation: 'run_job',
       code: 'JOB_IN_PROCESS_ALREADY_RUNNING',
       ...(orgId ? { orgId } : {}),
       ...jobTraceLogContext(requestTrace),
     });
-    await recordSkippedJob(jobType, JOB_DUPLICATE_IN_PROCESS_CODE, orgId);
     return { processedCount: 0, skipped: true };
   }
 
