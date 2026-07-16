@@ -483,6 +483,78 @@ describe('applyPrescriptionSupplyForIntake', () => {
     expect(db.medicationStockEvent.create).not.toHaveBeenCalled();
   });
 
+  it('constrains an explicit review selection to one prescription line and stock item', async () => {
+    const db = createDb();
+    setupExactIdentity(db);
+    setupSingleStockItem(db);
+    db.medicationStockEvent.findFirst.mockResolvedValue({
+      id: 'stock_event_1',
+      stock_item_id: 'stock_item_1',
+      request_fingerprint_hash: buildRequestFingerprint({
+        prescriptionLineId: 'line_1',
+        stockItemId: 'stock_item_1',
+        drugMasterId: 'drug_master_1',
+        drugCode: '2649735S1010',
+        quantity: 10,
+        unit: 'sheet',
+      }),
+    });
+    db.medicationStockSnapshot.findFirst.mockResolvedValue({
+      current_quantity: '14',
+      stock_risk_level: 'ok',
+      calculated_at: new Date('2026-07-07T09:00:00.000Z'),
+    });
+
+    const result = await applyPrescriptionSupplyForIntake(
+      db as unknown as ApplyPrescriptionSupplyDb,
+      {
+        orgId: 'org_1',
+        userId: 'user_1',
+        intakeId: 'intake_1',
+        reviewSelection: {
+          prescriptionLineId: 'line_1',
+          stockItemId: 'stock_item_1',
+        },
+      },
+    );
+
+    expect(result.results[0]).toMatchObject({ kind: 'applied', idempotent_replay: true });
+    expect(db.patientMedicationStockItem.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ id: 'stock_item_1' }),
+      }),
+    );
+  });
+
+  it('returns not found without stock queries when a selected prescription line is absent', async () => {
+    const db = createDb();
+    setupExactIdentity(db);
+
+    const result = await applyPrescriptionSupplyForIntake(
+      db as unknown as ApplyPrescriptionSupplyDb,
+      {
+        orgId: 'org_1',
+        userId: 'user_1',
+        intakeId: 'intake_1',
+        reviewSelection: {
+          prescriptionLineId: 'line_missing',
+          stockItemId: 'stock_item_1',
+        },
+      },
+    );
+
+    expect(result.results).toEqual([
+      {
+        kind: 'not_found',
+        prescription_line_id: 'line_missing',
+        reason_code: 'prescription_line_not_found',
+      },
+    ]);
+    expect(db.drugMaster.findMany).not.toHaveBeenCalled();
+    expect(db.drugPackage.findMany).not.toHaveBeenCalled();
+    expect(db.patientMedicationStockItem.findMany).not.toHaveBeenCalled();
+  });
+
   it('requires review when exact stock item candidates are ambiguous', async () => {
     const db = createDb();
     setupExactIdentity(db);

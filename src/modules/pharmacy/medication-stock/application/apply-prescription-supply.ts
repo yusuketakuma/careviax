@@ -64,7 +64,7 @@ export type ApplyPrescriptionSupplyLineResult =
   | {
       kind: 'not_found';
       prescription_line_id: string;
-      reason_code: 'intake_not_found';
+      reason_code: 'intake_not_found' | 'prescription_line_not_found';
     };
 
 export type ApplyPrescriptionSupplyForIntakeResult = {
@@ -614,12 +614,14 @@ async function findExactStockItemCandidates(args: {
   caseId: string | null;
   drugMasterId: string;
   drugPackageId?: string;
+  stockItemId?: string;
 }) {
   return (await args.db.patientMedicationStockItem.findMany({
     where: {
       org_id: args.orgId,
       patient_id: args.patientId,
       active: true,
+      ...(args.stockItemId ? { id: args.stockItemId } : {}),
       drug_master_id: args.drugMasterId,
       ...(args.drugPackageId ? { drug_package_id: args.drugPackageId } : {}),
       ...(args.caseId ? { OR: [{ case_id: args.caseId }, { case_id: null }] } : { case_id: null }),
@@ -707,6 +709,7 @@ async function applyPrescriptionSupplyLine(args: {
   line: PrescriptionSupplyLineRow;
   drugMasters: DrugMasterIndexes;
   drugPackages: DrugPackageIndexes;
+  selectedStockItemId?: string;
   now: Date;
 }): Promise<ApplyPrescriptionSupplyLineResult> {
   if (!args.intake.cycle.patient_id) {
@@ -813,6 +816,7 @@ async function applyPrescriptionSupplyLine(args: {
     caseId: args.intake.cycle.case_id,
     drugMasterId,
     ...(drugPackage ? { drugPackageId: drugPackage.id } : {}),
+    ...(args.selectedStockItemId ? { stockItemId: args.selectedStockItemId } : {}),
   });
   if (candidates.length === 0) {
     return createReviewTask({
@@ -966,6 +970,10 @@ export async function applyPrescriptionSupplyForIntake(
     userId: string;
     intakeId: string;
     patientId?: string | null;
+    reviewSelection?: {
+      prescriptionLineId: string;
+      stockItemId: string;
+    };
   },
 ): Promise<ApplyPrescriptionSupplyForIntakeResult> {
   const intake = await loadPrescriptionSupplyIntake(db, args);
@@ -985,11 +993,30 @@ export async function applyPrescriptionSupplyForIntake(
     };
   }
 
-  const drugMasters = await loadDrugMasterIndexes(db, intake.lines);
-  const drugPackages = await loadDrugPackageIndexes(db, intake.lines, intake.prescribed_date);
+  const targetLines = args.reviewSelection
+    ? intake.lines.filter((line) => line.id === args.reviewSelection?.prescriptionLineId)
+    : intake.lines;
+  if (args.reviewSelection && targetLines.length !== 1) {
+    return {
+      intake_id: intake.id,
+      applied_count: 0,
+      review_required_count: 0,
+      skipped_count: 0,
+      results: [
+        {
+          kind: 'not_found',
+          prescription_line_id: args.reviewSelection.prescriptionLineId,
+          reason_code: 'prescription_line_not_found',
+        },
+      ],
+    };
+  }
+
+  const drugMasters = await loadDrugMasterIndexes(db, targetLines);
+  const drugPackages = await loadDrugPackageIndexes(db, targetLines, intake.prescribed_date);
   const now = new Date();
   const results: ApplyPrescriptionSupplyLineResult[] = [];
-  for (const line of intake.lines) {
+  for (const line of targetLines) {
     results.push(
       await applyPrescriptionSupplyLine({
         db,
@@ -999,6 +1026,7 @@ export async function applyPrescriptionSupplyForIntake(
         line,
         drugMasters,
         drugPackages,
+        ...(args.reviewSelection ? { selectedStockItemId: args.reviewSelection.stockItemId } : {}),
         now,
       }),
     );
