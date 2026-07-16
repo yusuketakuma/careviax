@@ -298,6 +298,8 @@ S12 evidence: `e49ce33f6`でassignment-aware、再帰sanitize、success-only PHI
 
 S13 evidence: `1df162430`でassignment-aware、tenant RLS、bounded message query、success-only PHI audit済みのpatient MCS overview GETだけを`canViewDashboard`へ移した。profile PATCH、MCS sync、MCS logsは`canVisit`を維持し、shared auth helperをmethod直下のexplicit direct authへ分解してcatalog/direct-auth inventoryをGET/PATCHで同期した。clerkのassigned overview成功を追加固定。focused route/catalog 3 files / 25 tests、protected GET 384 tests、route-auth `147 / 212 / 0 new`、API authz/response、client schema `364 / 0`、DTO `30 / 0 new`、scoped lint/format/diff、full typecheckをPASS。mixed GET/PATCH fileのため`canVisit` route file数は107のまま。
 
+S14 evidence: `c3f09c84e`でorg-scoped visit schedule detail GETを`canViewDashboard`へ移し、canonical case patient解決とsuccess response生成後だけ`visit_schedule_detail` PHI read auditを1回追加した。PATCH/DELETEは`canVisit`を維持し、catalog/direct-auth inventoryをmethod splitした。clerk successはaudit 1、invalid ID、missing schedule、missing case、例外はaudit 0を固定。focused route/catalog 3 files / 99 tests、protected GET 384 tests、route-auth `147 / 212 / 0 new`、API authz/response、client schema `364 / 0`、DTO `30 / 0 new`、scoped lint/format/diff、full typecheckをPASS。mixed GET/PATCH/DELETE fileのため`canVisit` route file数は107のまま。
+
 **Account model v1 — authoritative role SSOT（2026-07-15）**:
 
 - 公開ロールは固定5種: global `owner`、global `supporter`、tenant `admin`、tenant `pharmacist`、tenant `clerk`。tenant内の管理責任上の序列は `admin > pharmacist > clerk` だが、これは全actionの包含関係ではない。専門actionはrole順位で自動許可せず、action classificationと資格を別々に評価する。legacy enum名を公開ロールとして延命しない。
