@@ -1,10 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { addDays, format, subDays } from 'date-fns';
+import { addDays, subDays } from 'date-fns';
 import { NextRequest } from 'next/server';
+import { japanDateKey } from '@/lib/utils/date-boundary';
 
-const TODAY = format(new Date(), 'yyyy-MM-dd');
-const FUTURE_DATE = format(addDays(new Date(), 1), 'yyyy-MM-dd');
-const EXPIRED_DATE = format(subDays(new Date(), 5), 'yyyy-MM-dd');
+const TODAY = japanDateKey();
+const FUTURE_DATE = japanDateKey(addDays(new Date(), 1));
+const EXPIRED_DATE = japanDateKey(subDays(new Date(), 5));
 
 const {
   requireAuthContextMock,

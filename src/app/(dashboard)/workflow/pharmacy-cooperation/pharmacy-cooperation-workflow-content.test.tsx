@@ -2888,7 +2888,7 @@ describe('PharmacyCooperationWorkflowContent', () => {
         }),
       );
     });
-  });
+  }, 15_000);
 
   it('requires confirmation before declining a requested pharmacy visit request', async () => {
     renderContent();

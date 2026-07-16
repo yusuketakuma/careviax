@@ -1,13 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
-import { addDays, format } from 'date-fns';
+import { addDays } from 'date-fns';
 import { expectSensitiveNoStore } from '@/test/api-response-assertions';
+import { japanDateKey } from '@/lib/utils/date-boundary';
 
 type TestAuthContext = { orgId: string; userId: string; role: 'pharmacist' };
 type DraftRouteContext = { params: Promise<{ id: string }> };
 type NextRequestInit = NonNullable<ConstructorParameters<typeof NextRequest>[1]>;
 type NextRequestInitWithDuplex = NextRequestInit & { duplex: 'half' };
-const VALID_PRESCRIBED_DATE = format(new Date(), 'yyyy-MM-dd');
+const VALID_PRESCRIBED_DATE = japanDateKey();
 
 const {
   withAuthContextMock,
@@ -1491,7 +1492,7 @@ describe('/api/qr-scan-drafts/[id]/confirm POST', () => {
       createRequest({
         patient_id: 'patient_1',
         case_id: 'case_1',
-        prescribed_date: format(addDays(new Date(), 1), 'yyyy-MM-dd'),
+        prescribed_date: japanDateKey(addDays(new Date(), 1)),
         lines: [
           {
             drug_name: 'アムロジピン錠5mg',

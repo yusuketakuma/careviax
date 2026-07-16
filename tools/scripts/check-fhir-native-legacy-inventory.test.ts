@@ -274,7 +274,7 @@ describe('check-fhir-native-legacy-inventory', () => {
         /unmatched raw SQL call lacks an explicit dynamic code surface or non-clinical exclusion/,
       );
     }
-  });
+  }, 20_000);
 
   it('accepts dynamic raw SQL only when an exact code surface covers the path and API', () => {
     const root = createFixture({

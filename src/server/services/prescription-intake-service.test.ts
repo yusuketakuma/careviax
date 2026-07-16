@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { addDays, format } from 'date-fns';
+import { addDays } from 'date-fns';
+import { japanDateKey } from '@/lib/utils/date-boundary';
 
 const {
   withOrgContextMock,
@@ -1033,7 +1034,7 @@ describe('createPrescriptionIntake', () => {
       {
         cycle_id: 'cycle_1',
         source_type: 'qr_scan',
-        prescribed_date: format(addDays(new Date(), 1), 'yyyy-MM-dd'),
+        prescribed_date: japanDateKey(addDays(new Date(), 1)),
         lines: [validLine()],
       },
       'org_1',

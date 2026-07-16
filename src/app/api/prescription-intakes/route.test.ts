@@ -1,9 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { addDays, format } from 'date-fns';
+import { addDays } from 'date-fns';
 import { NextRequest } from 'next/server';
+import { japanDateKey } from '@/lib/utils/date-boundary';
 
 /** 今日の日付文字列（有効期限チェックを通過させるため動的に生成） */
-const TODAY = format(new Date(), 'yyyy-MM-dd');
+const TODAY = japanDateKey();
 
 type AuthenticatedTestRequest = NextRequest & {
   orgId: string;
@@ -591,7 +592,7 @@ describe('/api/prescription-intakes POST', () => {
       createRequest({
         cycle_id: 'cycle_1',
         source_type: 'paper',
-        prescribed_date: format(addDays(new Date(), 1), 'yyyy-MM-dd'),
+        prescribed_date: japanDateKey(addDays(new Date(), 1)),
         lines: [
           {
             line_number: 1,
