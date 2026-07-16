@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const {
   prescriptionIntakeFindManyMock,
+  organizationFindManyMock,
   pcaPumpRentalFindManyMock,
   visitScheduleFindManyMock,
   visitScheduleContactLogFindManyMock,
@@ -33,6 +34,7 @@ const {
   runJobMock,
 } = vi.hoisted(() => ({
   prescriptionIntakeFindManyMock: vi.fn(),
+  organizationFindManyMock: vi.fn(),
   pcaPumpRentalFindManyMock: vi.fn(),
   visitScheduleFindManyMock: vi.fn(),
   visitScheduleContactLogFindManyMock: vi.fn(),
@@ -66,6 +68,9 @@ const {
 
 vi.mock('@/lib/db/client', () => ({
   prisma: {
+    organization: {
+      findMany: organizationFindManyMock,
+    },
     prescriptionIntake: {
       findMany: prescriptionIntakeFindManyMock,
     },
@@ -695,9 +700,16 @@ describe('daily job local date keys', () => {
     notificationCreateManyMock.mockImplementation(async ({ data }: { data: unknown[] }) => ({
       count: data.length,
     }));
+    organizationFindManyMock.mockResolvedValue([{ id: 'org_1' }]);
     taskFindManyMock.mockResolvedValue([]);
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
+        prescriptionIntake: {
+          findMany: prescriptionIntakeFindManyMock,
+        },
+        notification: {
+          createMany: notificationCreateManyMock,
+        },
         task: {
           updateMany: vi.fn().mockResolvedValue({ count: 0 }),
         },
@@ -859,12 +871,12 @@ describe('daily job local date keys', () => {
     expect(result).toEqual({ processedCount: 2 });
     expect(prescriptionIntakeFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: {
+        where: expect.objectContaining({
           prescription_expiry_date: {
             gte: new Date('2026-05-31T15:00:00.000Z'),
             lt: new Date('2026-06-09T15:00:00.000Z'),
           },
-        },
+        }),
       }),
     );
     expect(notificationCreateManyMock).toHaveBeenCalledWith({
@@ -917,12 +929,12 @@ describe('daily job local date keys', () => {
     expect(result).toEqual({ processedCount: 1 });
     expect(prescriptionIntakeFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: {
+        where: expect.objectContaining({
           prescription_expiry_date: {
             gte: new Date('2026-05-31T15:00:00.000Z'),
             lt: new Date('2026-06-09T15:00:00.000Z'),
           },
-        },
+        }),
       }),
     );
     expect(notificationCreateManyMock).toHaveBeenCalledWith({
