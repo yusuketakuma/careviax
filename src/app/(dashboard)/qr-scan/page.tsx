@@ -45,8 +45,9 @@ import {
   isJahisQR,
   parseJahisQRSafe,
   detectMultiQR,
-  mergeJahisQRPages,
-  parseJahisQR,
+  hasJahisQrSplitRecord,
+  mergeJahisQrPageTexts,
+  assessJahisQrPageAddition,
   type JahisQRData,
   type JahisParseResult,
 } from '@/lib/pharmacy/jahis-qr';
@@ -201,14 +202,19 @@ export default function QRScanPage() {
     (texts: string[]) => {
       stopCamera();
 
-      // 全テキストをパース・マージ
-      const pages = texts.map((t) => parseJahisQR(t));
-      const merged = mergeJahisQRPages(pages);
-      setMergedQRData(merged);
-
-      // safe parse でエラー/警告収集（最後のページのみ or 全結合テキスト）
-      const combinedText = texts.join('\n');
+      let combinedText: string;
+      try {
+        combinedText = texts.length === 1 ? texts[0] : mergeJahisQrPageTexts(texts);
+      } catch {
+        setCameraError(
+          '分割QRを再構成できません。同じお薬手帳のQRを重複なく全ページ読み取ってください。',
+        );
+        setPhase('scanned');
+        return;
+      }
       const result = parseJahisQRSafe(combinedText);
+      const merged = result.data as JahisQRData;
+      setMergedQRData(merged);
       setParseResult(result);
 
       setPhase('parsed');
@@ -234,8 +240,26 @@ export default function QRScanPage() {
 
       // レコード911からマルチQR情報を検出（JAHIS ver.2.6 仕様）
       const multiInfo = detectMultiQR(text);
+      if (!multiInfo && hasJahisQrSplitRecord(text)) {
+        setCameraError(
+          '分割QRの識別子、総枚数、ページ番号を確認できません。QRを再発行してください。',
+        );
+        setPhase('camera');
+        return;
+      }
 
       setScannedTexts((prev) => {
+        const addition = assessJahisQrPageAddition(prev, text);
+        if (!addition.success) {
+          setCameraError(
+            addition.reason === 'duplicate_sequence'
+              ? `分割QRの${addition.sequenceNumber ?? ''}枚目は読み取り済みです。未読のページを読み取ってください。`
+              : '異なるお薬手帳のQRまたは通常QRが混在しています。同じ分割QRだけを読み取ってください。',
+          );
+          setPhase('scanned');
+          return prev;
+        }
+
         const next = [...prev, text];
 
         if (multiInfo) {

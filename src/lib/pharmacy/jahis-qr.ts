@@ -201,6 +201,15 @@ export interface JahisQrExportInput {
   dispensingDate: string;
 }
 
+export type JahisQrExportPayload = {
+  text: string;
+  bytes: Uint8Array;
+};
+
+export type JahisQrExportPage = JahisQrExportPayload & {
+  splitInfo?: JahisSplitInfo;
+};
+
 export type JahisQrPatientIdentity = {
   name: string;
   nameKana?: string;
@@ -453,10 +462,7 @@ export function validateJahisQrPatientIdentity(
   };
 }
 
-export function buildJahisQrExport(input: JahisQrExportInput): {
-  text: string;
-  bytes: Uint8Array;
-} {
+export function buildJahisQrExport(input: JahisQrExportInput): JahisQrExportPayload {
   const patientIdentity = validateJahisQrPatientIdentity(input.patient);
   if (!patientIdentity.success) {
     throw new RangeError(`JAHIS_PATIENT_IDENTITY_INVALID:${patientIdentity.reason}`);
@@ -582,6 +588,131 @@ export function buildJahisQRText(input: JahisQrExportInput): string {
 // Multi-QR Utilities
 // ────────────────────────────────────────────────────────────────────────────
 
+function hasEqualBytes(left: Uint8Array, right: Uint8Array): boolean {
+  if (left.length !== right.length) return false;
+  return left.every((value, index) => value === right[index]);
+}
+
+function readCanonicalExportLines(payload: JahisQrExportPayload): string[] {
+  const canonicalBytes = encodeJahisShiftJis(payload.text);
+  if (!hasEqualBytes(canonicalBytes, payload.bytes)) {
+    throw new RangeError('JAHIS_PAYLOAD_BYTES_MISMATCH');
+  }
+  if (!payload.text.endsWith('\r\n') || /(?<!\r)\n|\r(?!\n)/u.test(payload.text)) {
+    throw new RangeError('JAHIS_PAYLOAD_RECORD_BOUNDARY_INVALID');
+  }
+
+  const lines = payload.text.slice(0, -2).split('\r\n');
+  if (
+    lines[0] !== `${JAHIS_EXPORT_CONTRACT_V2_6.header},${JAHIS_EXPORT_CONTRACT_V2_6.outputType}`
+  ) {
+    throw new RangeError('JAHIS_PAYLOAD_HEADER_INVALID');
+  }
+  if (lines.length < 2 || lines.slice(1).some((line) => !line || line.startsWith('911,'))) {
+    throw new RangeError('JAHIS_PAYLOAD_RECORD_INVALID');
+  }
+  return lines;
+}
+
+function buildSplitExportPage(args: {
+  records: readonly string[];
+  dataId: string;
+  splitCount: number;
+  sequenceNumber: number;
+}): JahisQrExportPage {
+  const splitInfo: JahisSplitInfo = {
+    dataId: args.dataId,
+    splitCount: args.splitCount,
+    sequenceNumber: args.sequenceNumber,
+  };
+  const splitRecord = serializeJahisExportRecord(JAHIS_EXPORT_CONTRACT_V2_6.records['911'], [
+    splitInfo.dataId,
+    String(splitInfo.splitCount),
+    String(splitInfo.sequenceNumber),
+  ]);
+  const text = [
+    `${JAHIS_EXPORT_CONTRACT_V2_6.header},${JAHIS_EXPORT_CONTRACT_V2_6.outputType}`,
+    ...args.records,
+    splitRecord,
+    '',
+  ].join('\r\n');
+  return { text, bytes: encodeJahisShiftJis(text), splitInfo };
+}
+
+export function splitJahisQrExport(
+  payload: JahisQrExportPayload,
+  options: { maxBytes: number; dataId: string; maxPages?: number },
+): JahisQrExportPage[] {
+  if (!Number.isSafeInteger(options.maxBytes) || options.maxBytes <= 0) {
+    throw new RangeError('JAHIS_QR_CAPACITY_INVALID');
+  }
+  if (!/^\d{14}$/u.test(options.dataId)) {
+    throw new RangeError('JAHIS_SPLIT_DATA_ID_INVALID');
+  }
+  const maxPages = options.maxPages ?? 999;
+  if (!Number.isSafeInteger(maxPages) || maxPages < 1 || maxPages > 999) {
+    throw new RangeError('JAHIS_QR_PAGE_LIMIT_INVALID');
+  }
+
+  const [, ...records] = readCanonicalExportLines(payload);
+  if (payload.bytes.length <= options.maxBytes) {
+    return [{ text: payload.text, bytes: payload.bytes }];
+  }
+
+  let splitCountEstimate = 2;
+  let groups: string[][] = [];
+  for (let attempt = 0; attempt < 1_000; attempt += 1) {
+    groups = [];
+    let current: string[] = [];
+
+    for (const record of records) {
+      if (groups.length >= maxPages) throw new RangeError('JAHIS_QR_SPLIT_COUNT_EXCEEDED');
+      const candidate = [...current, record];
+      const candidatePage = buildSplitExportPage({
+        records: candidate,
+        dataId: options.dataId,
+        splitCount: splitCountEstimate,
+        sequenceNumber: groups.length + 1,
+      });
+      if (candidatePage.bytes.length <= options.maxBytes) {
+        current = candidate;
+        continue;
+      }
+      if (current.length === 0) {
+        throw new RangeError('JAHIS_QR_RECORD_CAPACITY_EXCEEDED');
+      }
+      groups.push(current);
+      current = [record];
+      const singleRecordPage = buildSplitExportPage({
+        records: current,
+        dataId: options.dataId,
+        splitCount: splitCountEstimate,
+        sequenceNumber: groups.length + 1,
+      });
+      if (singleRecordPage.bytes.length > options.maxBytes) {
+        throw new RangeError('JAHIS_QR_RECORD_CAPACITY_EXCEEDED');
+      }
+    }
+    if (current.length > 0) groups.push(current);
+    if (groups.length > maxPages) throw new RangeError('JAHIS_QR_SPLIT_COUNT_EXCEEDED');
+    if (groups.length === splitCountEstimate) break;
+    splitCountEstimate = groups.length;
+  }
+
+  if (groups.length !== splitCountEstimate) {
+    throw new RangeError('JAHIS_QR_SPLIT_COUNT_UNSTABLE');
+  }
+
+  return groups.map((group, index) =>
+    buildSplitExportPage({
+      records: group,
+      dataId: options.dataId,
+      splitCount: groups.length,
+      sequenceNumber: index + 1,
+    }),
+  );
+}
+
 /**
  * 処方日数/回数文字列を構造化データに変換する。
  */
@@ -623,25 +754,150 @@ export function detectMultiQR(text: string): JahisSplitInfo | null {
   return null;
 }
 
-function parseSplitInfoRecord(parts: string[]): JahisSplitInfo | null {
-  const splitCount = parseInt(parts[2] ?? '', 10);
-  const sequenceNumber = parseInt(parts[3] ?? '', 10);
+export function hasJahisQrSplitRecord(text: string): boolean {
+  return text
+    .split(/\r?\n/u)
+    .map((line) => line.trim())
+    .some((line) => line.startsWith('911,'));
+}
+
+export function assessJahisQrPageAddition(
+  existingPageTexts: readonly string[],
+  nextPageText: string,
+):
+  | { success: true; splitInfo: JahisSplitInfo | null }
+  | { success: false; reason: 'mixed_page_set' | 'duplicate_sequence'; sequenceNumber?: number } {
+  const splitInfo = detectMultiQR(nextPageText);
+  const existingSplitInfos = existingPageTexts.flatMap((pageText) => {
+    const existing = detectMultiQR(pageText);
+    return existing ? [existing] : [];
+  });
+  const isMixedPageSet = splitInfo
+    ? existingSplitInfos.length !== existingPageTexts.length ||
+      existingSplitInfos.some(
+        (existing) =>
+          existing.dataId !== splitInfo.dataId || existing.splitCount !== splitInfo.splitCount,
+      )
+    : existingSplitInfos.length > 0;
+  if (isMixedPageSet) return { success: false, reason: 'mixed_page_set' };
   if (
-    !parts[1] ||
+    splitInfo &&
+    existingSplitInfos.some((existing) => existing.sequenceNumber === splitInfo.sequenceNumber)
+  ) {
+    return {
+      success: false,
+      reason: 'duplicate_sequence',
+      sequenceNumber: splitInfo.sequenceNumber,
+    };
+  }
+  return { success: true, splitInfo };
+}
+
+function parseSplitInfoRecord(parts: string[]): JahisSplitInfo | null {
+  const dataId = parts[1] ?? '';
+  const splitCountText = parts[2] ?? '';
+  const sequenceNumberText = parts[3] ?? '';
+  const splitCount = Number(splitCountText);
+  const sequenceNumber = Number(sequenceNumberText);
+  if (
+    parts.length !== 4 ||
+    !/^\d{14}$/u.test(dataId) ||
+    !/^\d{1,3}$/u.test(splitCountText) ||
+    !/^\d{1,3}$/u.test(sequenceNumberText) ||
     !Number.isInteger(splitCount) ||
     splitCount <= 0 ||
+    splitCount > 999 ||
     !Number.isInteger(sequenceNumber) ||
     sequenceNumber <= 0 ||
+    sequenceNumber > 999 ||
     sequenceNumber > splitCount
   ) {
     return null;
   }
 
   return {
-    dataId: parts[1],
+    dataId,
     splitCount,
     sequenceNumber,
   };
+}
+
+type JahisQrTextPage = {
+  header: string;
+  records: string[];
+  splitInfo: JahisSplitInfo | null;
+};
+
+function readJahisQrTextPage(text: string): JahisQrTextPage {
+  if (/\r(?!\n)/u.test(text)) throw new RangeError('JAHIS_PAGE_RECORD_BOUNDARY_INVALID');
+  const lines = text.split(/\r?\n/u);
+  while (lines.at(-1) === '') lines.pop();
+  const header = lines.shift()?.trim() ?? '';
+  if (!header.startsWith('JAHIS')) throw new RangeError('JAHIS_PAGE_HEADER_INVALID');
+
+  const splitRecordIndexes = lines.flatMap((line, index) =>
+    line.startsWith('911,') ? [index] : [],
+  );
+  if (splitRecordIndexes.length > 1) throw new RangeError('JAHIS_SPLIT_RECORD_DUPLICATE');
+  const splitRecordIndex = splitRecordIndexes[0];
+  if (splitRecordIndex !== undefined && splitRecordIndex !== lines.length - 1) {
+    throw new RangeError('JAHIS_SPLIT_RECORD_ORDER_INVALID');
+  }
+
+  const splitInfo =
+    splitRecordIndex === undefined
+      ? null
+      : parseSplitInfoRecord(lines[splitRecordIndex].split(','));
+  if (splitRecordIndex !== undefined && !splitInfo) {
+    throw new RangeError('JAHIS_SPLIT_RECORD_INVALID');
+  }
+  return {
+    header,
+    records: splitRecordIndex === undefined ? lines : lines.slice(0, splitRecordIndex),
+    splitInfo,
+  };
+}
+
+export function mergeJahisQrPageTexts(pageTexts: readonly string[]): string {
+  if (pageTexts.length === 0) throw new RangeError('JAHIS_QR_PAGE_SET_EMPTY');
+  const pages = pageTexts.map(readJahisQrTextPage);
+  if (new Set(pages.map((page) => page.header)).size !== 1) {
+    throw new RangeError('JAHIS_QR_PAGE_HEADER_MISMATCH');
+  }
+
+  const splitPages = pages.filter((page) => page.splitInfo !== null);
+  if (splitPages.length > 0 && splitPages.length !== pages.length) {
+    throw new RangeError('JAHIS_QR_PAGE_SPLIT_MIXED');
+  }
+
+  let orderedPages = pages;
+  if (splitPages.length > 0) {
+    const expected = splitPages[0].splitInfo;
+    if (!expected || expected.splitCount !== pages.length) {
+      throw new RangeError('JAHIS_QR_PAGE_COUNT_MISMATCH');
+    }
+    const sequences = new Set<number>();
+    for (const page of splitPages) {
+      const splitInfo = page.splitInfo;
+      if (
+        !splitInfo ||
+        splitInfo.dataId !== expected.dataId ||
+        splitInfo.splitCount !== expected.splitCount
+      ) {
+        throw new RangeError('JAHIS_QR_PAGE_ID_MISMATCH');
+      }
+      if (sequences.has(splitInfo.sequenceNumber)) {
+        throw new RangeError('JAHIS_QR_PAGE_SEQUENCE_DUPLICATE');
+      }
+      sequences.add(splitInfo.sequenceNumber);
+    }
+    orderedPages = [...pages].sort(
+      (left, right) =>
+        (left.splitInfo?.sequenceNumber ?? 0) - (right.splitInfo?.sequenceNumber ?? 0),
+    );
+  }
+
+  return [orderedPages[0].header, ...orderedPages.flatMap((page) => page.records), ''].join('\r\n');
 }
 
 /**
@@ -651,6 +907,10 @@ function parseSplitInfoRecord(parts: string[]): JahisSplitInfo | null {
 export function mergeJahisQRPages(pages: JahisQRData[]): JahisQRData {
   if (pages.length === 0) throw new Error('No QR pages to merge');
   if (pages.length === 1) return pages[0];
+
+  if (pages.some((page) => page.splitInfo)) {
+    return parseJahisQR(mergeJahisQrPageTexts(pages.map((page) => page.rawText)));
+  }
 
   // sequenceNumber でソート（splitInfo がない場合は入力順を維持）
   const sorted = [...pages].sort((a, b) => {

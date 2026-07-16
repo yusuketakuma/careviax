@@ -33,6 +33,23 @@ describe('JAHIS_EXPORT_CONTRACT_V2_6', () => {
     ).toBe('201,1,アムロジピン錠5mg,1,錠,1,,1,,,');
   });
 
+  it('serializes the official 14-digit and 1-999 split control fields', () => {
+    expect(
+      serializeJahisExportRecord(JAHIS_EXPORT_CONTRACT_V2_6.records['911'], [
+        '12345678901234',
+        '2',
+        '1',
+      ]),
+    ).toBe('911,12345678901234,2,1');
+    expect(() =>
+      serializeJahisExportRecord(JAHIS_EXPORT_CONTRACT_V2_6.records['911'], [
+        '1234567890123',
+        '2',
+        '1',
+      ]),
+    ).toThrow('JAHIS_FIELD_VALUE_INVALID:911:data_id');
+  });
+
   it.each([
     ['JAHIS_FIELD_REQUIRED:201:dose', ['1', 'アムロジピン', '', '錠', '1', '', '1', '', '', '']],
     [

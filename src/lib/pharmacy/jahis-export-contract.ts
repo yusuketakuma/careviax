@@ -11,7 +11,7 @@ export type JahisExportFieldContract = {
 };
 
 export type JahisExportRecordContract = {
-  recordType: '1' | '5' | '11' | '51' | '55' | '201' | '301';
+  recordType: '1' | '5' | '11' | '51' | '55' | '201' | '301' | '911';
   fields: readonly JahisExportFieldContract[];
 };
 
@@ -139,6 +139,26 @@ export const JAHIS_EXPORT_CONTRACT_V2_6 = {
         { key: 'usage_code_type', type: '9', maxBytes: 1, required: true, pattern: /^[12]$/u },
         { key: 'usage_code', type: 'X', maxBytes: 16, required: false },
         { key: 'creator', type: '9', maxBytes: 1, required: true, pattern: /^[1289]$/u },
+      ],
+    },
+    '911': {
+      recordType: '911',
+      fields: [
+        { key: 'data_id', type: '9', maxBytes: 14, required: true, pattern: /^\d{14}$/u },
+        {
+          key: 'split_count',
+          type: '9',
+          maxBytes: 3,
+          required: true,
+          pattern: POSITIVE_THREE_DIGITS,
+        },
+        {
+          key: 'sequence_number',
+          type: '9',
+          maxBytes: 3,
+          required: true,
+          pattern: POSITIVE_THREE_DIGITS,
+        },
       ],
     },
   } satisfies Record<string, JahisExportRecordContract>,

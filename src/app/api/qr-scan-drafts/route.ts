@@ -14,8 +14,9 @@ import { Prisma } from '@prisma/client';
 import {
   isJahisQR,
   parseJahisQRSafe,
-  mergeJahisQRPages,
+  mergeJahisQrPageTexts,
   detectMultiQR,
+  hasJahisQrSplitRecord,
 } from '@/lib/pharmacy/jahis-qr';
 import {
   assessQrPatientIdentity,
@@ -91,14 +92,19 @@ function validateQrPageSet(pages: JahisQRData[]) {
     return '異なるJAHIS QR形式が混在しています。同じ処方/お薬手帳のQRだけを読み取ってください';
   }
 
-  const firstIdentity = pages[0].patient;
-  const identityMismatch = pages.some((page) => {
-    return (
-      (page.patient.name || '') !== (firstIdentity.name || '') ||
-      (page.patient.birthDate || '') !== (firstIdentity.birthDate || '') ||
-      (page.patient.gender || '') !== (firstIdentity.gender || '')
-    );
-  });
+  const identityPages = pages.filter(
+    (page) => page.patient.name || page.patient.birthDate || page.patient.gender,
+  );
+  const firstIdentity = identityPages[0]?.patient;
+  const identityMismatch = firstIdentity
+    ? identityPages.some((page) => {
+        return (
+          (page.patient.name || '') !== (firstIdentity.name || '') ||
+          (page.patient.birthDate || '') !== (firstIdentity.birthDate || '') ||
+          (page.patient.gender || '') !== (firstIdentity.gender || '')
+        );
+      })
+    : false;
   if (identityMismatch) {
     return '分割QR内の患者情報が一致しません。同じ患者のQRだけを読み取ってください';
   }
@@ -356,15 +362,21 @@ const authenticatedPOST = withAuthContext(
       });
     }
 
+    const malformedSplitIndexes = qr_texts.flatMap((text, index) =>
+      hasJahisQrSplitRecord(text) && !detectMultiQR(text) ? [index] : [],
+    );
+    if (malformedSplitIndexes.length > 0) {
+      return validationError('分割制御レコードが不正です', {
+        invalid_indexes: malformedSplitIndexes,
+        qr_texts: ['分割QRの識別子、総枚数、ページ番号を確認してください'],
+      });
+    }
+
     // Server-generated session_id if not provided by client
     const session_id = clientSessionId ?? crypto.randomUUID();
 
     // Parse each QR text
     const parseResults = qr_texts.map((t) => parseJahisQRSafe(t));
-
-    // Collect all errors and warnings across pages
-    const allErrors = parseResults.flatMap((r) => ('errors' in r ? r.errors : []));
-    const allWarnings = parseResults.flatMap((r) => r.warnings);
 
     // Extract successful data (partial data from failed parses is still usable)
     const successfulPages = parseResults.map((r) => r.data as JahisQRData);
@@ -376,9 +388,19 @@ const authenticatedPOST = withAuthContext(
       });
     }
 
-    // Merge pages if multiple QR texts
-    const mergedData: JahisQRData =
-      successfulPages.length === 1 ? successfulPages[0] : mergeJahisQRPages(successfulPages);
+    let mergedText: string;
+    try {
+      mergedText = qr_texts.length === 1 ? qr_texts[0] : mergeJahisQrPageTexts(qr_texts);
+    } catch {
+      return validationError('分割QRを再構成できません', {
+        qr_texts: ['分割QRの順序、識別子、総枚数を確認してください'],
+      });
+    }
+    const mergedParseResult =
+      qr_texts.length === 1 ? parseResults[0] : parseJahisQRSafe(mergedText);
+    const mergedData = mergedParseResult.data as JahisQRData;
+    const allErrors = 'errors' in mergedParseResult ? mergedParseResult.errors : [];
+    const allWarnings = mergedParseResult.warnings;
 
     const qrPatientIdentity = {
       name: mergedData.patient.name,

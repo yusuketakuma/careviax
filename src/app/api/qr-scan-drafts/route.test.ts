@@ -23,8 +23,9 @@ const {
   broadcastStatusUpdateMock,
   isJahisQRMock,
   parseJahisQRSafeMock,
-  mergeJahisQRPagesMock,
+  mergeJahisQrPageTextsMock,
   detectMultiQRMock,
+  hasJahisQrSplitRecordMock,
   mapJahisToIntakeMock,
   canAccessPrescriptionPatientMock,
 } = vi.hoisted(() => ({
@@ -54,8 +55,9 @@ const {
   broadcastStatusUpdateMock: vi.fn(),
   isJahisQRMock: vi.fn().mockReturnValue(true),
   parseJahisQRSafeMock: vi.fn(),
-  mergeJahisQRPagesMock: vi.fn(),
+  mergeJahisQrPageTextsMock: vi.fn(),
   detectMultiQRMock: vi.fn().mockReturnValue(null),
+  hasJahisQrSplitRecordMock: vi.fn().mockReturnValue(false),
   mapJahisToIntakeMock: vi.fn(),
   canAccessPrescriptionPatientMock: vi.fn().mockResolvedValue(true),
 }));
@@ -95,8 +97,9 @@ vi.mock('@/server/adapters/realtime', () => ({
 vi.mock('@/lib/pharmacy/jahis-qr', () => ({
   isJahisQR: isJahisQRMock,
   parseJahisQRSafe: parseJahisQRSafeMock,
-  mergeJahisQRPages: mergeJahisQRPagesMock,
+  mergeJahisQrPageTexts: mergeJahisQrPageTextsMock,
   detectMultiQR: detectMultiQRMock,
+  hasJahisQrSplitRecord: hasJahisQrSplitRecordMock,
 }));
 
 vi.mock('@/lib/pharmacy/qr-intake-mapper', () => ({
@@ -327,7 +330,8 @@ describe('/api/qr-scan-drafts POST', () => {
     });
     pharmacySiteFindFirstMock.mockResolvedValue({ id: 'site_1' });
     isJahisQRMock.mockReturnValue(true);
-    mergeJahisQRPagesMock.mockImplementation((pages: unknown[]) => pages[0]);
+    hasJahisQrSplitRecordMock.mockReturnValue(false);
+    mergeJahisQrPageTextsMock.mockImplementation((pages: string[]) => pages[0]);
     parseJahisQRSafeMock.mockReturnValue({
       success: true,
       warnings: [],
@@ -795,6 +799,29 @@ describe('/api/qr-scan-drafts POST', () => {
     expect(qrScanDraftCreateMock).not.toHaveBeenCalled();
   });
 
+  it('rejects a malformed Record 911 before parsing or persistence', async () => {
+    hasJahisQrSplitRecordMock.mockReturnValueOnce(true);
+    detectMultiQRMock.mockReturnValueOnce(null);
+
+    const response = await POST(
+      createRequest({
+        qr_texts: ['JAHISTC08,1\n911,short,2,1'],
+        site_id: 'site_1',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '分割制御レコードが不正です',
+      details: { invalid_indexes: [0] },
+    });
+    expect(parseJahisQRSafeMock).not.toHaveBeenCalled();
+    expect(mapJahisToIntakeMock).not.toHaveBeenCalled();
+    expect(qrScanDraftCreateMock).not.toHaveBeenCalled();
+  });
+
   it('rejects patient_id outside the current org before saving the draft', async () => {
     patientFindFirstMock.mockResolvedValue(null);
 
@@ -1081,6 +1108,93 @@ describe('/api/qr-scan-drafts POST', () => {
     });
     expect(qrScanDraftFindFirstMock).not.toHaveBeenCalled();
     expect(qrScanDraftCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('accepts an official split page without a repeated patient record and maps the reassembled data', async () => {
+    const splitBase = {
+      prescribingInstitution: {},
+      dispensingInstitution: {},
+      remarks: [],
+      patientNotes: [],
+      supplementalRecords: [],
+    };
+    parseJahisQRSafeMock
+      .mockReturnValueOnce({
+        success: true,
+        warnings: [],
+        data: {
+          ...splitBase,
+          patient: {
+            name: '山田 太郎',
+            nameKana: 'ヤマダ タロウ',
+            birthDate: '1950-03-15',
+            gender: 'male',
+          },
+          medications: [{ drugName: 'アムロジピン錠5mg', dose: '1', unit: '錠' }],
+          splitInfo: { dataId: '12345678901234', splitCount: 2, sequenceNumber: 1 },
+          rawText: 'JAHISTC08,1\n1,山田 太郎,1,19500315\n911,12345678901234,2,1',
+        },
+      })
+      .mockReturnValueOnce({
+        success: true,
+        warnings: [],
+        data: {
+          ...splitBase,
+          patient: { name: '' },
+          medications: [],
+          splitInfo: { dataId: '12345678901234', splitCount: 2, sequenceNumber: 2 },
+          rawText: 'JAHISTC08,1\n301,1,朝食後,14,日分,1,1,,1\n911,12345678901234,2,2',
+        },
+      })
+      .mockReturnValueOnce({
+        success: true,
+        warnings: [],
+        data: {
+          ...splitBase,
+          patient: {
+            name: '山田 太郎',
+            nameKana: 'ヤマダ タロウ',
+            birthDate: '1950-03-15',
+            gender: 'male',
+          },
+          medications: [
+            {
+              drugName: 'アムロジピン錠5mg',
+              dose: '1',
+              unit: '錠',
+              usage: '朝食後',
+              usageQuantity: '14',
+              usageUnit: '日分',
+            },
+          ],
+          rawText: 'reassembled',
+        },
+      });
+    mergeJahisQrPageTextsMock.mockReturnValueOnce('reassembled');
+
+    const response = await POST(
+      createRequest({
+        qr_texts: [
+          'JAHISTC08,1\n1,山田 太郎,1,19500315\n911,12345678901234,2,1',
+          'JAHISTC08,1\n301,1,朝食後,14,日分,1,1,,1\n911,12345678901234,2,2',
+        ],
+        patient_id: 'patient_1',
+        site_id: 'site_1',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(201);
+    expect(mergeJahisQrPageTextsMock).toHaveBeenCalledOnce();
+    expect(mapJahisToIntakeMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        patient: expect.objectContaining({ name: '山田 太郎' }),
+        medications: [
+          expect.objectContaining({ usage: '朝食後', usageQuantity: '14', usageUnit: '日分' }),
+        ],
+      }),
+      expect.any(Object),
+    );
   });
 
   it('rejects mixed e-okusuri and outpatient prescription QR families', async () => {
