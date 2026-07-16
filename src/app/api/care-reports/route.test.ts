@@ -640,7 +640,6 @@ describe('/api/care-reports GET', () => {
         name: true,
       },
       orderBy: [{ id: 'asc' }],
-      take: 500,
     });
     expect(deliveryRecordCountMock).not.toHaveBeenCalled();
     expect(deliveryRecordGroupByMock).not.toHaveBeenCalled();
@@ -724,7 +723,6 @@ describe('/api/care-reports GET', () => {
           org_id: 'org_1',
           id: { in: ['patient_10'] },
         }),
-        take: 500,
       }),
     );
   });

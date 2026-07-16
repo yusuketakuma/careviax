@@ -740,7 +740,6 @@ async function authenticatedGET(req: NextRequest) {
                         name: true,
                       },
                       orderBy: [{ id: 'asc' }],
-                      take: CARE_REPORT_PALETTE_QUERY_SCAN_LIMIT,
                     });
             }
 

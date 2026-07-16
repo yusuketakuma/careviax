@@ -1,6 +1,7 @@
 import type { BillingEvidenceContext, BillingCandidateSpec } from './types';
 import { ensureHomeCareBillingSsot, type HomeCareBillingSsotTx } from './seeder';
 import { HOME_CARE_BILLING_RULESET_VERSION } from './seeder';
+import { formatUtcDateKey } from '@/lib/date-key';
 import { readJsonObject } from '@/lib/db/json';
 
 export type BillingRuleRow = {
@@ -43,7 +44,7 @@ export function createBillingRuleEvaluationCache(): BillingRuleEvaluationCache {
 
 function billingRuleEvaluationKey(asOfDate?: Date): string {
   const targetDate = asOfDate ?? new Date();
-  return targetDate.toISOString().slice(0, 10);
+  return formatUtcDateKey(targetDate);
 }
 
 async function loadHomeCareBillingSsotSummary(

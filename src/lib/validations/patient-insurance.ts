@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { formatUtcDateKey } from '@/lib/date-key';
 import { dateKeySchema } from '@/lib/validations/date-key';
 
 export const PATIENT_INSURANCE_TYPES = ['medical', 'care', 'public_subsidy'] as const;
@@ -214,7 +215,7 @@ export type PersistedPatientInsuranceInvariantState = {
 
 function toDateKey(value: Date | string | null | undefined): string | null {
   if (!value) return null;
-  return value instanceof Date ? value.toISOString().slice(0, 10) : value;
+  return value instanceof Date ? formatUtcDateKey(value) : value;
 }
 
 function patchedValue<T>(patchValue: T | undefined, existingValue: T): T {

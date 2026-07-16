@@ -451,6 +451,7 @@ describe('/api/conference-notes/[id] PATCH', () => {
     expect(careCaseUpdateMock).toHaveBeenCalledWith({
       where: { id: 'case_1' },
       data: {
+        version: { increment: 1 },
         required_visit_support: expect.objectContaining({
           conference_sync: expect.objectContaining({
             service_manager: expect.objectContaining({

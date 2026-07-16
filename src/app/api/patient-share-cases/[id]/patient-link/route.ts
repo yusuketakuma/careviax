@@ -6,6 +6,7 @@ import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { conflict, internalError, notFound, success, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
+import { formatUtcDateKey } from '@/lib/date-key';
 import { readJsonObject, toPrismaJsonInput } from '@/lib/db/json';
 import { withOrgContext } from '@/lib/db/rls';
 import { dateKeySchema } from '@/lib/validations/date-key';
@@ -240,7 +241,7 @@ const authenticatedPATCH = withAuthContext<{ id: string }>(
               basePatientSnapshot: {
                 name: shareCase.base_patient.name,
                 name_kana: shareCase.base_patient.name_kana,
-                birth_date: shareCase.base_patient.birth_date.toISOString().slice(0, 10),
+                birth_date: formatUtcDateKey(shareCase.base_patient.birth_date),
               },
               partnerPatientSnapshot: parsed.data.partner_patient_snapshot!,
               checkedAt: now,
