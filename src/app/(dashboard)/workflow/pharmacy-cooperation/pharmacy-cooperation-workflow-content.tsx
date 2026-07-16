@@ -3235,6 +3235,11 @@ export function PharmacyCooperationWorkflowContent() {
     ]);
   };
 
+  const handleIrreversibleActionError = async (error: unknown, fallbackMessage: string) => {
+    toast.error(messageFromError(error, fallbackMessage));
+    await invalidateWorkflow();
+  };
+
   const activateShareCaseMutation = useMutation({
     mutationFn: async ({ id, patientUpdatedAt }: { id: string; patientUpdatedAt: string }) => {
       const response = await fetch(`/api/patient-share-cases/${id}/activate`, {
@@ -3251,9 +3256,8 @@ export function PharmacyCooperationWorkflowContent() {
       toast.success('患者共有ケースを共有中にしました');
       await invalidateWorkflow();
     },
-    onError: (error) => {
-      toast.error(messageFromError(error, '患者共有ケースの有効化に失敗しました'));
-    },
+    onError: (error) =>
+      handleIrreversibleActionError(error, '患者共有ケースの有効化に失敗しました'),
   });
 
   const patientLinkMutation = useMutation({
@@ -3304,9 +3308,7 @@ export function PharmacyCooperationWorkflowContent() {
       toast.success('患者リンクを更新しました');
       await invalidateWorkflow();
     },
-    onError: (error) => {
-      toast.error(messageFromError(error, '患者リンクの更新に失敗しました'));
-    },
+    onError: (error) => handleIrreversibleActionError(error, '患者リンクの更新に失敗しました'),
   });
 
   const createPatientShareConsentMutation = useMutation({
@@ -3387,9 +3389,7 @@ export function PharmacyCooperationWorkflowContent() {
       toast.success('患者共有同意を撤回しました');
       await invalidateWorkflow();
     },
-    onError: (error) => {
-      toast.error(messageFromError(error, '患者共有同意の撤回に失敗しました'));
-    },
+    onError: (error) => handleIrreversibleActionError(error, '患者共有同意の撤回に失敗しました'),
   });
 
   const createCorrectionRequestMutation = useMutation({
@@ -3568,9 +3568,7 @@ export function PharmacyCooperationWorkflowContent() {
       toast.success('訪問依頼を更新しました');
       await invalidateWorkflow();
     },
-    onError: (error) => {
-      toast.error(messageFromError(error, '訪問依頼の更新に失敗しました'));
-    },
+    onError: (error) => handleIrreversibleActionError(error, '訪問依頼の更新に失敗しました'),
   });
 
   const submitRecordMutation = useMutation({
@@ -3600,9 +3598,7 @@ export function PharmacyCooperationWorkflowContent() {
       toast.success('協力訪問記録を提出しました');
       await invalidateWorkflow();
     },
-    onError: (error) => {
-      toast.error(messageFromError(error, '協力訪問記録の提出に失敗しました'));
-    },
+    onError: (error) => handleIrreversibleActionError(error, '協力訪問記録の提出に失敗しました'),
   });
 
   const reviewRecordMutation = useMutation({
@@ -3641,9 +3637,7 @@ export function PharmacyCooperationWorkflowContent() {
       toast.success('協力訪問記録を更新しました');
       await invalidateWorkflow();
     },
-    onError: (error) => {
-      toast.error(messageFromError(error, '協力訪問記録の更新に失敗しました'));
-    },
+    onError: (error) => handleIrreversibleActionError(error, '協力訪問記録の更新に失敗しました'),
   });
 
   const createReportDraftMutation = useMutation({
@@ -3663,9 +3657,7 @@ export function PharmacyCooperationWorkflowContent() {
       toast.success(result.message);
       await invalidateWorkflow();
     },
-    onError: (error) => {
-      toast.error(messageFromError(error, '報告書ドラフトの作成に失敗しました'));
-    },
+    onError: (error) => handleIrreversibleActionError(error, '報告書ドラフトの作成に失敗しました'),
   });
 
   const isBusy =
