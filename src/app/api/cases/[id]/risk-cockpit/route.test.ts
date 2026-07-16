@@ -4,20 +4,59 @@ import { expectSensitiveNoStore } from '@/test/api-response-assertions';
 
 const {
   requireAuthContextMock,
+  withAuthContextMock,
   getCaseRiskCockpitMock,
   withOrgContextMock,
-  loggerErrorMock,
   recordPhiReadAuditForRequestMock,
-} = vi.hoisted(() => ({
-  requireAuthContextMock: vi.fn(),
-  getCaseRiskCockpitMock: vi.fn(),
-  withOrgContextMock: vi.fn(),
-  loggerErrorMock: vi.fn(),
-  recordPhiReadAuditForRequestMock: vi.fn(),
-}));
+} = vi.hoisted(() => {
+  const requireAuthContextMock = vi.fn();
+  const withAuthContextMock = vi.fn(
+    (
+      handler: (
+        req: NextRequest,
+        ctx: { orgId: string; userId: string; role: string },
+        routeContext: { params: Promise<{ id: string }> },
+      ) => Promise<Response>,
+      options: unknown,
+    ) => {
+      return async (req: NextRequest, routeContext: { params: Promise<{ id: string }> }) => {
+        const authResult = await requireAuthContextMock(req, options);
+        let response: Response;
+        if (authResult && typeof authResult === 'object' && 'response' in authResult) {
+          response = authResult.response;
+        } else {
+          try {
+            response = await handler(req, authResult.ctx, routeContext);
+          } catch {
+            response = NextResponse.json(
+              { code: 'INTERNAL_ERROR', message: 'サーバー内部でエラーが発生しました' },
+              { status: 500 },
+            );
+          }
+        }
+        response.headers.set('Cache-Control', 'private, no-store, max-age=0');
+        response.headers.set('Pragma', 'no-cache');
+        response.headers.set('X-Request-Id', '00000000-0000-4000-8000-000000000001');
+        response.headers.set(
+          'X-Correlation-Id',
+          req.headers.get('x-correlation-id') ?? '00000000-0000-4000-8000-000000000001',
+        );
+        return response;
+      };
+    },
+  );
+
+  return {
+    requireAuthContextMock,
+    withAuthContextMock,
+    getCaseRiskCockpitMock: vi.fn(),
+    withOrgContextMock: vi.fn(),
+    recordPhiReadAuditForRequestMock: vi.fn(),
+  };
+});
 
 vi.mock('@/lib/auth/context', () => ({
-  requireAuthContext: requireAuthContextMock,
+  withAuthContext: withAuthContextMock,
 }));
 
 vi.mock('@/lib/db/client', () => ({
@@ -32,12 +71,6 @@ vi.mock('@/lib/audit/phi-read-audit', () => ({
   recordPhiReadAuditForRequest: recordPhiReadAuditForRequestMock,
 }));
 
-vi.mock('@/lib/utils/logger', () => ({
-  logger: {
-    error: loggerErrorMock,
-  },
-}));
-
 vi.mock('@/server/services/case-risk-cockpit', () => ({
   getCaseRiskCockpit: getCaseRiskCockpitMock,
 }));
@@ -45,7 +78,9 @@ vi.mock('@/server/services/case-risk-cockpit', () => ({
 import { GET } from './route';
 
 function createRequest() {
-  return new NextRequest('http://localhost/api/cases/case_1/risk-cockpit');
+  return new NextRequest('http://localhost/api/cases/case_1/risk-cockpit', {
+    headers: { 'x-correlation-id': 'risk_cockpit_test' },
+  });
 }
 
 function baseCockpit() {
@@ -114,6 +149,8 @@ describe('/api/cases/[id]/risk-cockpit', () => {
 
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
+    expect(response.headers.get('X-Request-Id')).toBe('00000000-0000-4000-8000-000000000001');
+    expect(response.headers.get('X-Correlation-Id')).toBe('risk_cockpit_test');
     expect(requireAuthContextMock).toHaveBeenCalledWith(expect.any(NextRequest), {
       permission: 'canViewDashboard',
       message: 'ケースリスク参照の権限がありません',
@@ -228,14 +265,6 @@ describe('/api/cases/[id]/risk-cockpit', () => {
     expect(serialized).not.toContain('アムロジピン');
     expect(serialized).not.toContain('storageKey');
     expect(serialized).not.toContain('provider raw error');
-    expect(loggerErrorMock).toHaveBeenCalledWith({
-      event: 'route_handler_unhandled_error',
-      route: '/api/cases/case_1/risk-cockpit',
-      method: 'GET',
-      code: 'Error',
-    });
-    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('山田花子');
-    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('アムロジピン');
     expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
   });
 });

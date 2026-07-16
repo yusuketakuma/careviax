@@ -1,22 +1,16 @@
 import { NextRequest } from 'next/server';
-import { unstable_rethrow } from 'next/navigation';
-import { requireAuthContext } from '@/lib/auth/context';
+import { withAuthContext, type AuthContext, type AuthRouteContext } from '@/lib/auth/context';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
-import { success, validationError, notFound, internalError } from '@/lib/api/response';
-import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
+import { success, validationError, notFound } from '@/lib/api/response';
 import { recordPhiReadAuditForRequest } from '@/lib/audit/phi-read-audit';
 import { withOrgContext } from '@/lib/db/rls';
-import { logger } from '@/lib/utils/logger';
 import { getCaseRiskCockpit } from '@/server/services/case-risk-cockpit';
 
-async function authenticatedGET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canViewDashboard',
-    message: 'ケースリスク参照の権限がありません',
-  });
-  if ('response' in authResult) return authResult.response;
-  const ctx = authResult.ctx;
-
+async function caseRiskCockpitGET(
+  _req: NextRequest,
+  ctx: AuthContext,
+  { params }: AuthRouteContext<{ id: string }>,
+) {
   const { id: rawId } = await params;
   const id = normalizeRequiredRouteParam(rawId);
   if (!id) return validationError('ケースIDが不正です');
@@ -44,17 +38,7 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
   return success({ data: cockpit });
 }
 
-export async function GET(req: NextRequest, routeContext: { params: Promise<{ id: string }> }) {
-  try {
-    return withSensitiveNoStore(await authenticatedGET(req, routeContext));
-  } catch (err) {
-    unstable_rethrow(err);
-    logger.error({
-      event: 'route_handler_unhandled_error',
-      route: req.nextUrl?.pathname,
-      method: req.method,
-      code: err instanceof Error ? err.name : typeof err,
-    });
-    return withSensitiveNoStore(internalError());
-  }
-}
+export const GET = withAuthContext(caseRiskCockpitGET, {
+  permission: 'canViewDashboard',
+  message: 'ケースリスク参照の権限がありません',
+});
