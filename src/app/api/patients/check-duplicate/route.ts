@@ -2,6 +2,7 @@ import { unstable_rethrow } from 'next/navigation';
 import { withAuthContext } from '@/lib/auth/context';
 import { internalError, success, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
+import { recordPhiReadAuditForRequest } from '@/lib/audit/phi-read-audit';
 import { prisma } from '@/lib/db/client';
 import { patientGenderSchema } from '@/lib/validations/patient';
 import {
@@ -135,10 +136,18 @@ const authenticatedGET = withAuthContext(
       },
     });
 
+    recordPhiReadAuditForRequest(ctx, {
+      view: 'patient_duplicate_check',
+      purpose: 'patient_registration',
+      targetType: 'patient_search',
+      targetId: 'duplicate_check',
+      metadata: { result_count: duplicates.length },
+    });
+
     return success({ data: { duplicates: duplicates.map(toDuplicateCheckCandidate) } });
   },
   {
-    permission: 'canVisit',
+    permission: 'canViewDashboard',
     message: '患者情報の閲覧権限がありません',
   },
 );

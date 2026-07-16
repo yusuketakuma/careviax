@@ -80,7 +80,7 @@ export const routeCatalog: RouteCatalogEntry[] = [
   {
     path: '/api/patients/check-duplicate',
     methods: ['GET'],
-    permission: 'canVisit',
+    permission: 'canViewDashboard',
     description: '患者登録前の重複候補検索',
     area: 'patients',
   },

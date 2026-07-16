@@ -2,7 +2,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 import { expectSensitiveNoStore } from '@/test/api-response-assertions';
 
-const { authContextMock, authFailureResponseMock, patientFindManyMock } = vi.hoisted(() => ({
+const {
+  authContextMock,
+  authFailureResponseMock,
+  patientFindManyMock,
+  recordPhiReadAuditForRequestMock,
+  withAuthContextOptionsMock,
+} = vi.hoisted(() => ({
   authContextMock: {
     orgId: 'org_1',
     userId: 'user_1',
@@ -10,6 +16,8 @@ const { authContextMock, authFailureResponseMock, patientFindManyMock } = vi.hoi
   },
   authFailureResponseMock: vi.fn<() => Response | null>(),
   patientFindManyMock: vi.fn(),
+  recordPhiReadAuditForRequestMock: vi.fn(),
+  withAuthContextOptionsMock: vi.fn(),
 }));
 
 const emptyRouteContext = { params: Promise.resolve({}) };
@@ -21,10 +29,17 @@ vi.mock('@/lib/auth/context', () => ({
       ctx: { orgId: string; userId: string; role: 'pharmacist' },
       routeContext: typeof emptyRouteContext,
     ) => Promise<Response>,
+    options: unknown,
   ) => {
-    return (req: NextRequest, routeContext = emptyRouteContext) =>
-      authFailureResponseMock() ?? handler(req, authContextMock, routeContext);
+    return (req: NextRequest, routeContext = emptyRouteContext) => {
+      withAuthContextOptionsMock(options);
+      return authFailureResponseMock() ?? handler(req, authContextMock, routeContext);
+    };
   },
+}));
+
+vi.mock('@/lib/audit/phi-read-audit', () => ({
+  recordPhiReadAuditForRequest: recordPhiReadAuditForRequestMock,
 }));
 
 vi.mock('@/lib/db/client', () => ({
@@ -68,6 +83,7 @@ describe('/api/patients/check-duplicate GET', () => {
       },
     });
     expect(patientFindManyMock).not.toHaveBeenCalled();
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
   });
 
   it('searches duplicates by name, birth date, and gender', async () => {
@@ -78,6 +94,10 @@ describe('/api/patients/check-duplicate GET', () => {
 
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
+    expect(withAuthContextOptionsMock).toHaveBeenCalledWith({
+      permission: 'canViewDashboard',
+      message: '患者情報の閲覧権限がありません',
+    });
     expect(patientFindManyMock).toHaveBeenCalledWith({
       where: {
         org_id: 'org_1',
@@ -104,6 +124,40 @@ describe('/api/patients/check-duplicate GET', () => {
       gender: 'male',
     });
     expect(body.data.duplicates[0]).not.toHaveProperty('name_kana');
+    expect(recordPhiReadAuditForRequestMock).toHaveBeenCalledWith(authContextMock, {
+      view: 'patient_duplicate_check',
+      purpose: 'patient_registration',
+      targetType: 'patient_search',
+      targetId: 'duplicate_check',
+      metadata: { result_count: 1 },
+    });
+    expect(recordPhiReadAuditForRequestMock).toHaveBeenCalledTimes(1);
+    const auditPayload = JSON.stringify(recordPhiReadAuditForRequestMock.mock.calls[0]?.[1]);
+    expect(auditPayload).not.toContain('山田');
+    expect(auditPayload).not.toContain('patient_1');
+    expect(auditPayload).not.toContain('1950-01-01');
+    expect(auditPayload).not.toContain('male');
+  });
+
+  it('audits a successful zero-result duplicate check without query PHI', async () => {
+    patientFindManyMock.mockResolvedValueOnce([]);
+
+    const response = (await GET(
+      createGetRequest('?name=該当なし&date_of_birth=1950-01-01&gender=male'),
+      emptyRouteContext,
+    ))!;
+
+    expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({ data: { duplicates: [] } });
+    expect(recordPhiReadAuditForRequestMock).toHaveBeenCalledWith(authContextMock, {
+      view: 'patient_duplicate_check',
+      purpose: 'patient_registration',
+      targetType: 'patient_search',
+      targetId: 'duplicate_check',
+      metadata: { result_count: 0 },
+    });
+    expect(recordPhiReadAuditForRequestMock).toHaveBeenCalledTimes(1);
   });
 
   it('adds sensitive no-store headers to auth failures', async () => {
@@ -119,6 +173,7 @@ describe('/api/patients/check-duplicate GET', () => {
     expect(response.status).toBe(401);
     expectSensitiveNoStore(response);
     expect(patientFindManyMock).not.toHaveBeenCalled();
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
   });
 
   it('returns a fixed sensitive no-store error when duplicate lookup fails', async () => {
@@ -134,6 +189,7 @@ describe('/api/patients/check-duplicate GET', () => {
     expectSensitiveNoStore(response);
     expect(body.code).toBe('INTERNAL_ERROR');
     expect(JSON.stringify(body)).not.toContain('raw duplicate lookup failure');
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -175,6 +231,7 @@ describe('/api/patients/check-duplicate GET', () => {
         details,
       });
       expect(patientFindManyMock).not.toHaveBeenCalled();
+      expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
     },
   );
 
@@ -190,6 +247,7 @@ describe('/api/patients/check-duplicate GET', () => {
     expect(body.code).toBe('VALIDATION_ERROR');
     expect(body.details.gender).toEqual(['対応していない性別です']);
     expect(patientFindManyMock).not.toHaveBeenCalled();
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
   });
 
   it('rejects impossible birth dates before querying patients', async () => {
@@ -207,5 +265,6 @@ describe('/api/patients/check-duplicate GET', () => {
       },
     });
     expect(patientFindManyMock).not.toHaveBeenCalled();
+    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
   });
 });
