@@ -1,118 +1,100 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const {
+  organizationFindManyMock,
   qrScanDraftFindManyMock,
   qrScanDraftUpdateManyMock,
-  jahisSupplementalRecordDeleteManyMock,
-  runJobMock,
+  supplementalDeleteManyMock,
+  withOrgContextMock,
 } = vi.hoisted(() => ({
+  organizationFindManyMock: vi.fn(),
   qrScanDraftFindManyMock: vi.fn(),
   qrScanDraftUpdateManyMock: vi.fn(),
-  jahisSupplementalRecordDeleteManyMock: vi.fn(),
-  runJobMock: vi.fn(async (_jobType: string, fn: () => Promise<unknown>) => fn()),
+  supplementalDeleteManyMock: vi.fn(),
+  withOrgContextMock: vi.fn(),
 }));
 
 vi.mock('@/lib/db/client', () => ({
-  prisma: {
-    qrScanDraft: {
-      findMany: qrScanDraftFindManyMock,
-      updateMany: qrScanDraftUpdateManyMock,
-    },
-    jahisSupplementalRecord: {
-      deleteMany: jahisSupplementalRecordDeleteManyMock,
-    },
-  },
+  prisma: { organization: { findMany: organizationFindManyMock } },
 }));
-
+vi.mock('@/lib/db/rls', () => ({ withOrgContext: withOrgContextMock }));
+vi.mock('@/lib/utils/logger', () => ({ logger: { info: vi.fn() } }));
 vi.mock('../runner', () => ({
-  runJob: runJobMock,
+  runJob: vi.fn(async (_type: string, work: () => Promise<unknown>) => work()),
 }));
 
 import { cleanupAbandonedQrDrafts, cleanupTerminalQrDraftPayloads } from './cleanup';
 
-describe('cleanupAbandonedQrDrafts', () => {
+describe('tenant-scoped QR draft cleanup', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date('2026-07-03T12:00:00.000Z'));
-    runJobMock.mockImplementation(async (_jobType: string, fn: () => Promise<unknown>) => fn());
-  });
-
-  afterEach(() => {
-    vi.useRealTimers();
-  });
-
-  it('queries drafts older than the 24h cutoff (boundary) and processes them', async () => {
-    qrScanDraftFindManyMock.mockResolvedValue([{ id: 'draft_1' }, { id: 'draft_2' }]);
-    qrScanDraftUpdateManyMock.mockResolvedValue({ count: 2 });
-    jahisSupplementalRecordDeleteManyMock.mockResolvedValue({ count: 1 });
-
-    const result = await cleanupAbandonedQrDrafts();
-
-    expect(result).toEqual({ processedCount: 2 });
-
-    const findManyArgs = qrScanDraftFindManyMock.mock.calls[0]?.[0];
-    expect(findManyArgs.where.status).toBe('pending');
-    // cutoff は現在時刻から厳密に 24 時間前。
-    expect(findManyArgs.where.created_at.lt).toEqual(new Date('2026-07-02T12:00:00.000Z'));
-
-    expect(qrScanDraftUpdateManyMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { id: { in: ['draft_1', 'draft_2'] } },
-        data: expect.objectContaining({ status: 'discarded' }),
-      }),
+    organizationFindManyMock.mockResolvedValue([{ id: 'org_a' }, { id: 'org_b' }]);
+    withOrgContextMock.mockImplementation(
+      async (orgId: string, work: (tx: unknown) => Promise<unknown>) =>
+        work({
+          qrScanDraft: {
+            findMany: (args: unknown) => qrScanDraftFindManyMock(orgId, args),
+            updateMany: (args: unknown) => qrScanDraftUpdateManyMock(orgId, args),
+          },
+          jahisSupplementalRecord: {
+            deleteMany: (args: unknown) => supplementalDeleteManyMock(orgId, args),
+          },
+        }),
     );
-    // 破棄対象のドラフトIDのみをスコープに JAHIS 補足レコードを削除すること
-    // （放置ドラフトに紐づかないレコードを巻き込まない）。
-    expect(jahisSupplementalRecordDeleteManyMock).toHaveBeenCalledWith({
-      where: {
-        qr_draft_id: { in: ['draft_1', 'draft_2'] },
-        prescription_intake_id: null,
-      },
+    supplementalDeleteManyMock.mockResolvedValue({ count: 0 });
+  });
+
+  it('processes abandoned drafts in bounded tenant batches', async () => {
+    const firstPage = Array.from({ length: 100 }, (_, index) => ({ id: `draft_${index}` }));
+    qrScanDraftFindManyMock.mockImplementation(async (orgId: string) => {
+      const orgCalls = qrScanDraftFindManyMock.mock.calls.filter(
+        ([calledOrg]) => calledOrg === orgId,
+      );
+      return orgCalls.length === 1 ? firstPage : [];
+    });
+    qrScanDraftUpdateManyMock.mockResolvedValue({ count: 100 });
+
+    await expect(cleanupAbandonedQrDrafts()).resolves.toEqual({ processedCount: 200 });
+
+    expect(qrScanDraftFindManyMock).toHaveBeenCalledTimes(4);
+    expect(
+      qrScanDraftFindManyMock.mock.calls.every(
+        ([orgId, args]) =>
+          ['org_a', 'org_b'].includes(orgId as string) && (args as { take: number }).take === 100,
+      ),
+    ).toBe(true);
+    expect(qrScanDraftUpdateManyMock).toHaveBeenCalledTimes(2);
+    expect(supplementalDeleteManyMock).toHaveBeenCalledTimes(2);
+    expect(withOrgContextMock).toHaveBeenCalledWith('org_a', expect.any(Function), {
+      isolationLevel: 'Serializable',
     });
   });
 
-  it('skips the update/delete calls entirely when there are no abandoned drafts (boundary: empty result)', async () => {
-    qrScanDraftFindManyMock.mockResolvedValue([]);
+  it('continues after a concurrent update reduces the updated count of a full selected batch', async () => {
+    organizationFindManyMock.mockResolvedValue([{ id: 'org_a' }]);
+    const firstPage = Array.from({ length: 100 }, (_, index) => ({ id: `draft_${index}` }));
+    qrScanDraftFindManyMock.mockResolvedValueOnce(firstPage).mockResolvedValueOnce([]);
+    qrScanDraftUpdateManyMock.mockResolvedValueOnce({ count: 99 });
 
-    const result = await cleanupAbandonedQrDrafts();
+    await expect(cleanupAbandonedQrDrafts()).resolves.toEqual({ processedCount: 99 });
 
-    expect(result).toEqual({ processedCount: 0 });
-    expect(qrScanDraftUpdateManyMock).not.toHaveBeenCalled();
-    expect(jahisSupplementalRecordDeleteManyMock).not.toHaveBeenCalled();
-  });
-});
-
-describe('cleanupTerminalQrDraftPayloads', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    runJobMock.mockImplementation(async (_jobType: string, fn: () => Promise<unknown>) => fn());
+    expect(qrScanDraftFindManyMock).toHaveBeenCalledTimes(2);
   });
 
-  it('scrubs only confirmed/discarded draft payloads and reports the scrubbed count', async () => {
-    qrScanDraftUpdateManyMock.mockResolvedValue({ count: 5 });
+  it('scrubs terminal payloads once per tenant', async () => {
+    qrScanDraftUpdateManyMock.mockResolvedValue({ count: 3 });
 
-    const result = await cleanupTerminalQrDraftPayloads();
+    await expect(cleanupTerminalQrDraftPayloads()).resolves.toEqual({ processedCount: 6 });
 
-    expect(result).toEqual({ processedCount: 5 });
-    expect(qrScanDraftUpdateManyMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { status: { in: ['confirmed', 'discarded'] } },
-        data: expect.objectContaining({
-          raw_qr_texts: [],
-          qr_payload_hash: null,
-        }),
-      }),
+    expect(qrScanDraftUpdateManyMock).toHaveBeenNthCalledWith(
+      1,
+      'org_a',
+      expect.objectContaining({ where: expect.objectContaining({ org_id: 'org_a' }) }),
     );
-    // 破棄済みQRドラフトのクリーンアップは JAHIS 補足レコードには触れないこと。
-    expect(jahisSupplementalRecordDeleteManyMock).not.toHaveBeenCalled();
-  });
-
-  it('reports zero when nothing needed scrubbing (boundary: no rows updated)', async () => {
-    qrScanDraftUpdateManyMock.mockResolvedValue({ count: 0 });
-
-    const result = await cleanupTerminalQrDraftPayloads();
-
-    expect(result).toEqual({ processedCount: 0 });
+    expect(qrScanDraftUpdateManyMock).toHaveBeenNthCalledWith(
+      2,
+      'org_b',
+      expect.objectContaining({ where: expect.objectContaining({ org_id: 'org_b' }) }),
+    );
   });
 });

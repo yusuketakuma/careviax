@@ -2854,6 +2854,18 @@ describe('cleanupAbandonedQrDrafts', () => {
     vi.clearAllMocks();
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-04-21T12:00:00.000Z'));
+    organizationFindManyMock.mockResolvedValue([{ id: 'org_1' }]);
+    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
+      callback({
+        qrScanDraft: {
+          findMany: qrScanDraftFindManyMock,
+          updateMany: qrScanDraftUpdateManyMock,
+        },
+        jahisSupplementalRecord: {
+          deleteMany: jahisSupplementalRecordDeleteManyMock,
+        },
+      }),
+    );
   });
 
   afterEach(() => {
@@ -2861,7 +2873,9 @@ describe('cleanupAbandonedQrDrafts', () => {
   });
 
   it('discards stale QR drafts and removes unconfirmed supplemental records', async () => {
-    qrScanDraftFindManyMock.mockResolvedValue([{ id: 'draft_1' }, { id: 'draft_2' }]);
+    qrScanDraftFindManyMock
+      .mockResolvedValueOnce([{ id: 'draft_1' }, { id: 'draft_2' }])
+      .mockResolvedValueOnce([]);
     qrScanDraftUpdateManyMock.mockResolvedValue({ count: 2 });
     jahisSupplementalRecordDeleteManyMock.mockResolvedValue({ count: 3 });
 
@@ -2870,12 +2884,18 @@ describe('cleanupAbandonedQrDrafts', () => {
     expect(result).toEqual({ processedCount: 2 });
     expect(qrScanDraftFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: expect.objectContaining({ status: 'pending' }),
+        where: expect.objectContaining({ org_id: 'org_1', status: 'pending' }),
+        orderBy: { id: 'asc' },
+        take: 100,
         select: { id: true },
       }),
     );
     expect(qrScanDraftUpdateManyMock).toHaveBeenCalledWith({
-      where: { id: { in: ['draft_1', 'draft_2'] } },
+      where: {
+        org_id: 'org_1',
+        id: { in: ['draft_1', 'draft_2'] },
+        status: 'pending',
+      },
       data: expect.objectContaining({
         status: 'discarded',
         raw_qr_texts: [],
@@ -2889,6 +2909,7 @@ describe('cleanupAbandonedQrDrafts', () => {
     });
     expect(jahisSupplementalRecordDeleteManyMock).toHaveBeenCalledWith({
       where: {
+        org_id: 'org_1',
         qr_draft_id: { in: ['draft_1', 'draft_2'] },
         prescription_intake_id: null,
       },
@@ -2911,6 +2932,14 @@ describe('cleanupTerminalQrDraftPayloads', () => {
     vi.clearAllMocks();
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-04-21T12:00:00.000Z'));
+    organizationFindManyMock.mockResolvedValue([{ id: 'org_1' }]);
+    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
+      callback({
+        qrScanDraft: {
+          updateMany: qrScanDraftUpdateManyMock,
+        },
+      }),
+    );
   });
 
   afterEach(() => {
@@ -2925,6 +2954,7 @@ describe('cleanupTerminalQrDraftPayloads', () => {
     expect(result).toEqual({ processedCount: 7 });
     expect(qrScanDraftUpdateManyMock).toHaveBeenCalledWith({
       where: {
+        org_id: 'org_1',
         status: { in: ['confirmed', 'discarded'] },
       },
       data: expect.objectContaining({
