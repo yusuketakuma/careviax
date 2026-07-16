@@ -5,6 +5,15 @@
 
 ---
 
+## 2026-07-16: Startup secret bootstrap readiness `cc:完了`
+
+- [x] `OPS-SECRET-BOOTSTRAP-READINESS-001`
+  - DB/Authのmodule-evaluation fire-and-forget hydrationを廃止し、Next.js Node instrumentationがtraffic受入前にawaitする単一startup barrierへ統合した。
+  - Secrets Managerは明示設定時だけ利用し、既存env値を上書きしない。必須key欠落、provider失敗、invalid/missing/expired payloadはsecret値を出さず起動拒否する。
+  - public healthはcheap livenessのまま維持し、admin healthへstartup-secret readinessを追加した。AWS SDK timeoutとbounded retryを既存共通client contractで維持する。
+
+---
+
 ## 2026-07-16: Explicit-patient print hub `cc:完了`
 
 - [x] `MEDSAFE-PRINT-HUB-EXPLICIT-PATIENT-001`

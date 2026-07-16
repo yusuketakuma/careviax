@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthContext } from '@/lib/auth/context';
 import { hasPermission } from '@/lib/auth/permissions';
+import { getSecretsBootstrapStatus } from '@/lib/config/secrets';
 import { prisma } from '@/lib/db/client';
 import { readJsonObject } from '@/lib/db/json';
 import { runBackupMonitorChecks } from '@/server/services/backup-monitor';
@@ -60,6 +61,12 @@ export async function GET(req: NextRequest) {
   const includeDetailedChecks = Boolean(authContext && hasPermission(authContext.role, 'canAdmin'));
 
   if (includeDetailedChecks) {
+    const secretsStatus = getSecretsBootstrapStatus();
+    checks.startupSecrets = { status: secretsStatus.state === 'ready' ? 'ok' : 'down' };
+    if (secretsStatus.state !== 'ready') {
+      overall = 'down';
+    }
+
     // DB readiness is admin-only; public liveness must remain cheap.
     try {
       const start = Date.now();

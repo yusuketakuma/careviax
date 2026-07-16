@@ -17,6 +17,12 @@ function secretPayload(overrides: Partial<typeof validSecrets> = {}) {
   });
 }
 
+function stubRuntimeSecrets(overrides: Partial<typeof validSecrets> = {}) {
+  for (const [key, value] of Object.entries({ ...validSecrets, ...overrides })) {
+    vi.stubEnv(key, value);
+  }
+}
+
 afterEach(() => {
   vi.doUnmock('@aws-sdk/client-secrets-manager');
   vi.unstubAllEnvs();
@@ -110,6 +116,7 @@ describe('getSecrets', () => {
     vi.resetModules();
     vi.stubEnv('APP_ENV', 'staging');
     vi.stubEnv('AWS_REGION', 'ap-northeast-1');
+    vi.stubEnv('SECRETS_MANAGER_ENABLED', '1');
 
     const sendMock = vi
       .fn()
@@ -167,6 +174,7 @@ describe('getSecrets', () => {
     vi.resetModules();
     vi.stubEnv('APP_ENV', 'staging');
     vi.stubEnv('AWS_REGION', 'eu-central-1');
+    vi.stubEnv('SECRETS_MANAGER_ENABLED', '1');
 
     const sendMock = vi
       .fn()
@@ -220,5 +228,140 @@ describe('getSecrets', () => {
     );
     expect(sendMock).toHaveBeenCalledTimes(2);
     expect(getSecretValueCommandMock).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('bootstrapSecretsForStartup', () => {
+  it('single-flights a strict Secrets Manager fetch and preserves explicit env overrides', async () => {
+    vi.resetModules();
+    vi.stubEnv('APP_ENV', 'production');
+    vi.stubEnv('SECRETS_MANAGER_ENABLED', '1');
+    vi.stubEnv('SECRETS_MANAGER_SECRET_ID', 'ph-os/production/app-secrets');
+    stubRuntimeSecrets({ DATABASE_URL: 'postgresql://explicit-env/db' });
+    vi.stubEnv('NEXTAUTH_SECRET', '');
+    vi.stubEnv('ENCRYPTION_KEY', '');
+    vi.stubEnv('JWT_SIGNING_SECRET', '');
+    vi.stubEnv('JOB_API_KEY', '');
+
+    const sendMock = vi.fn().mockResolvedValue({ SecretString: secretPayload() });
+    vi.doMock('@aws-sdk/client-secrets-manager', () => ({
+      SecretsManagerClient: vi.fn(function MockSecretsManagerClient() {
+        return { send: sendMock };
+      }),
+      GetSecretValueCommand: vi.fn(function MockGetSecretValueCommand() {}),
+    }));
+
+    const { bootstrapSecretsForStartup, getSecretsBootstrapStatus } = await import('./secrets');
+    const [first, second] = await Promise.all([
+      bootstrapSecretsForStartup(),
+      bootstrapSecretsForStartup(),
+    ]);
+
+    expect(first).toEqual({ state: 'ready', source: 'secrets-manager' });
+    expect(second).toEqual(first);
+    expect(getSecretsBootstrapStatus()).toEqual(first);
+    expect(sendMock).toHaveBeenCalledOnce();
+    expect(process.env.DATABASE_URL).toBe('postgresql://explicit-env/db');
+    expect(process.env.NEXTAUTH_SECRET).toBe(validSecrets.NEXTAUTH_SECRET);
+  });
+
+  it('fails closed with a sanitized error when the provider cannot be read', async () => {
+    vi.resetModules();
+    vi.stubEnv('APP_ENV', 'staging');
+    vi.stubEnv('SECRETS_MANAGER_ENABLED', 'true');
+    stubRuntimeSecrets();
+
+    const sendMock = vi
+      .fn()
+      .mockRejectedValue(
+        new Error('AccessDenied secret-provider-token patient-name should-not-escape'),
+      );
+    vi.doMock('@aws-sdk/client-secrets-manager', () => ({
+      SecretsManagerClient: vi.fn(function MockSecretsManagerClient() {
+        return { send: sendMock };
+      }),
+      GetSecretValueCommand: vi.fn(function MockGetSecretValueCommand() {}),
+    }));
+
+    const { bootstrapSecretsForStartup, getSecretsBootstrapStatus } = await import('./secrets');
+    await expect(bootstrapSecretsForStartup()).rejects.toThrow(
+      'Application secret startup bootstrap failed',
+    );
+    expect(getSecretsBootstrapStatus()).toEqual({ state: 'failed', source: null });
+    expect(sendMock).toHaveBeenCalledOnce();
+  });
+
+  it('validates every required env value in an env-only deployment', async () => {
+    vi.resetModules();
+    vi.stubEnv('APP_ENV', 'production');
+    vi.stubEnv('SECRETS_MANAGER_DISABLED', '1');
+    stubRuntimeSecrets();
+    vi.stubEnv('JOB_API_KEY', '');
+
+    const { bootstrapSecretsForStartup } = await import('./secrets');
+    await expect(bootstrapSecretsForStartup()).rejects.toThrow(
+      'Application secret startup bootstrap failed',
+    );
+  });
+
+  it('rejects an expired Secrets Manager payload before applying any value', async () => {
+    vi.resetModules();
+    vi.stubEnv('APP_ENV', 'production');
+    vi.stubEnv('SECRETS_MANAGER_ENABLED', '1');
+    stubRuntimeSecrets();
+    vi.stubEnv('NEXTAUTH_SECRET', '');
+
+    const sendMock = vi.fn().mockResolvedValue({
+      SecretString: JSON.stringify({
+        ...validSecrets,
+        EXPIRES_AT: '2020-01-01T00:00:00.000Z',
+      }),
+    });
+    vi.doMock('@aws-sdk/client-secrets-manager', () => ({
+      SecretsManagerClient: vi.fn(function MockSecretsManagerClient() {
+        return { send: sendMock };
+      }),
+      GetSecretValueCommand: vi.fn(function MockGetSecretValueCommand() {}),
+    }));
+
+    const { bootstrapSecretsForStartup } = await import('./secrets');
+    await expect(bootstrapSecretsForStartup()).rejects.toThrow(
+      'Application secret startup bootstrap failed',
+    );
+    expect(process.env.NEXTAUTH_SECRET).toBe('');
+  });
+
+  it('rejects expired env-only secret metadata without calling AWS', async () => {
+    vi.resetModules();
+    vi.stubEnv('APP_ENV', 'production');
+    stubRuntimeSecrets();
+    vi.stubEnv('APP_SECRETS_EXPIRES_AT', '2020-01-01T00:00:00.000Z');
+
+    const sendMock = vi.fn();
+    vi.doMock('@aws-sdk/client-secrets-manager', () => ({
+      SecretsManagerClient: vi.fn(function MockSecretsManagerClient() {
+        return { send: sendMock };
+      }),
+      GetSecretValueCommand: vi.fn(function MockGetSecretValueCommand() {}),
+    }));
+
+    const { bootstrapSecretsForStartup } = await import('./secrets');
+    await expect(bootstrapSecretsForStartup()).rejects.toThrow(
+      'Application secret startup bootstrap failed',
+    );
+    expect(sendMock).not.toHaveBeenCalled();
+  });
+
+  it('keeps local development AWS-free and backward compatible', async () => {
+    vi.resetModules();
+    vi.stubEnv('APP_ENV', 'development');
+    vi.stubEnv('DATABASE_URL', '');
+
+    const { bootstrapSecretsForStartup, getSecretsBootstrapStatus } = await import('./secrets');
+    await expect(bootstrapSecretsForStartup()).resolves.toEqual({
+      state: 'ready',
+      source: 'environment',
+    });
+    expect(getSecretsBootstrapStatus()).toEqual({ state: 'ready', source: 'environment' });
   });
 });

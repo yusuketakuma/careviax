@@ -1,8 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
-const { getAuthContextMock, queryRawMock, runBackupMonitorChecksMock } = vi.hoisted(() => ({
+const {
+  getAuthContextMock,
+  getSecretsBootstrapStatusMock,
+  queryRawMock,
+  runBackupMonitorChecksMock,
+} = vi.hoisted(() => ({
   getAuthContextMock: vi.fn(),
+  getSecretsBootstrapStatusMock: vi.fn(),
   queryRawMock: vi.fn(),
   runBackupMonitorChecksMock: vi.fn(),
 }));
@@ -15,6 +21,10 @@ vi.mock('@/lib/db/client', () => ({
   prisma: {
     $queryRaw: queryRawMock,
   },
+}));
+
+vi.mock('@/lib/config/secrets', () => ({
+  getSecretsBootstrapStatus: getSecretsBootstrapStatusMock,
 }));
 
 vi.mock('@/server/services/backup-monitor', () => ({
@@ -31,6 +41,7 @@ describe('/api/health GET', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     getAuthContextMock.mockResolvedValue(null);
+    getSecretsBootstrapStatusMock.mockReturnValue({ state: 'ready', source: 'environment' });
   });
 
   it('keeps unauthenticated public liveness cheap', async () => {
@@ -53,6 +64,7 @@ describe('/api/health GET', () => {
     expect(payload.checks.backups).toBeUndefined();
     expect(queryRawMock).not.toHaveBeenCalled();
     expect(runBackupMonitorChecksMock).not.toHaveBeenCalled();
+    expect(getSecretsBootstrapStatusMock).not.toHaveBeenCalled();
   });
 
   it('returns detailed checks for authenticated admins', async () => {
@@ -74,10 +86,32 @@ describe('/api/health GET', () => {
     await expect(response.json()).resolves.toMatchObject({
       status: 'degraded',
       checks: {
+        startupSecrets: { status: 'ok' },
         backups: { status: 'warning' },
       },
     });
     expect(runBackupMonitorChecksMock).toHaveBeenCalledOnce();
+  });
+
+  it('keeps public liveness separate but reports admin readiness down on secret failure', async () => {
+    getAuthContextMock.mockResolvedValue({
+      userId: 'user_1',
+      orgId: 'org_1',
+      role: 'admin',
+    });
+    getSecretsBootstrapStatusMock.mockReturnValue({ state: 'failed', source: null });
+    queryRawMock.mockResolvedValue([{ '?column?': 1 }]);
+
+    const response = await GET(healthRequest());
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toMatchObject({
+      status: 'down',
+      checks: {
+        startupSecrets: { status: 'down' },
+        database: { status: 'ok' },
+      },
+    });
+    expect(runBackupMonitorChecksMock).not.toHaveBeenCalled();
   });
 
   it('drops non-object backup details for authenticated admins', async () => {

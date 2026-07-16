@@ -14,7 +14,8 @@
  *   "NEXTAUTH_SECRET": "...",
  *   "ENCRYPTION_KEY": "...",
  *   "JWT_SIGNING_SECRET": "...",
- *   "JOB_API_KEY": "..."
+ *   "JOB_API_KEY": "...",
+ *   "EXPIRES_AT": "2027-01-01T00:00:00.000Z" // optional validity guard
  * }
  *
  * Secret name convention: ph-os/{env}/app-secrets
@@ -72,6 +73,21 @@ function readRequiredSecretString(
   throw new Error(`${sourceLabel} is missing required string keys: ${key}`);
 }
 
+function assertOptionalExpiry(value: unknown, sourceLabel: string) {
+  if (value === undefined || value === null || value === '') return;
+  if (typeof value !== 'string') {
+    throw new Error(`${sourceLabel} expiration must be an ISO-8601 string`);
+  }
+
+  const expiresAt = Date.parse(value);
+  if (!Number.isFinite(expiresAt)) {
+    throw new Error(`${sourceLabel} expiration must be a valid ISO-8601 timestamp`);
+  }
+  if (expiresAt <= Date.now()) {
+    throw new Error(`${sourceLabel} is expired`);
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Internal cache
 // ---------------------------------------------------------------------------
@@ -107,8 +123,9 @@ function isExplicitlyTrue(value: string | undefined): boolean {
  *   2. `SECRETS_MANAGER_ENABLED`  truthy  → ON.
  *   3. A secret id/ARN override is present (`SECRETS_MANAGER_SECRET_ID` /
  *      `SECRETS_MANAGER_SECRET_ARN`)      → ON.
- *   4. Otherwise fall back to the legacy environment rule: any non-development
- *      `APP_ENV` (staging / production) consults Secrets Manager.
+ *   4. Otherwise Secrets Manager is OFF and the startup barrier validates the
+ *      environment-provided values. Deployment environments never infer an AWS
+ *      call from APP_ENV alone.
  *
  * Local development and the test suite leave all `SECRETS_MANAGER_*` env unset
  * and run with `APP_ENV=development`, so they never touch Secrets Manager.
@@ -128,9 +145,7 @@ export function isSecretsManagerConfigured(): boolean {
   ) {
     return true;
   }
-  // Legacy behavior preserved for backward compatibility: non-development
-  // deployments consult Secrets Manager unless explicitly disabled above.
-  return APP_ENV !== 'development';
+  return false;
 }
 
 function secretName(): string {
@@ -167,6 +182,8 @@ export function parseAppSecrets(raw: string, sourceLabel = `Secret "${secretName
     throw new Error(`${sourceLabel} is missing required string keys: ${missing.join(', ')}`);
   }
 
+  assertOptionalExpiry(record.EXPIRES_AT, sourceLabel);
+
   return {
     DATABASE_URL: readRequiredSecretString(record, 'DATABASE_URL', sourceLabel),
     NEXTAUTH_SECRET: readRequiredSecretString(record, 'NEXTAUTH_SECRET', sourceLabel),
@@ -186,14 +203,6 @@ function logSecretsManagerFallback(error: unknown) {
   console.warn('[secrets] Falling back to environment variables after Secrets Manager failure', {
     event: 'secrets_manager_fetch_failed',
     operation: 'fallback_to_env',
-    error_name: getSafeSecretsErrorName(error),
-  });
-}
-
-function logSecretsBootstrapFailure(error: unknown) {
-  console.warn('[secrets] bootstrapSecretsIntoEnv failed; continuing with environment values', {
-    event: 'secrets_bootstrap_failed',
-    operation: 'continue_with_env',
     error_name: getSafeSecretsErrorName(error),
   });
 }
@@ -223,6 +232,25 @@ async function fetchFromSecretsManager(): Promise<AppSecrets> {
   }
 
   return parseAppSecrets(raw, `Secret "${secretName()}"`);
+}
+
+async function getValidatedSecrets(): Promise<AppSecrets> {
+  const now = Date.now();
+  const source = secretCacheSource();
+  if (
+    cachedSecrets &&
+    cachePopulatedAt &&
+    cachedSecretsSource === source &&
+    now - cachePopulatedAt < CACHE_TTL_MS
+  ) {
+    return cachedSecrets;
+  }
+
+  const secrets = await fetchFromSecretsManager();
+  cachedSecrets = secrets;
+  cachePopulatedAt = now;
+  cachedSecretsSource = source;
+  return secrets;
 }
 
 function getSecretsManagerClient(secretsManagerModule: SecretsManagerModule, region: string) {
@@ -282,9 +310,9 @@ async function loadSecretsManagerModule(): Promise<SecretsManagerModule | null> 
 /**
  * Returns application secrets.
  *
- * - In `development`: reads directly from environment variables (no AWS call).
- * - In `staging` / `production`: fetches from Secrets Manager on first call,
- *   then returns cached values until the TTL expires.
+ * - Without explicit Secrets Manager configuration: reads environment values.
+ * - With explicit Secrets Manager configuration: fetches on first call, then
+ *   returns cached values until the TTL expires.
  */
 export async function getSecrets(): Promise<AppSecrets> {
   // SAFETY: when Secrets Manager is not configured (local dev, tests, or a
@@ -294,26 +322,12 @@ export async function getSecrets(): Promise<AppSecrets> {
     return fromEnv();
   }
 
-  const now = Date.now();
-  const source = secretCacheSource();
-  if (
-    cachedSecrets &&
-    cachePopulatedAt &&
-    cachedSecretsSource === source &&
-    now - cachePopulatedAt < CACHE_TTL_MS
-  ) {
-    return cachedSecrets;
-  }
-
   try {
-    cachedSecrets = await fetchFromSecretsManager();
+    return await getValidatedSecrets();
   } catch (error) {
     logSecretsManagerFallback(error);
-    cachedSecrets = fromEnv();
+    return fromEnv();
   }
-  cachePopulatedAt = now;
-  cachedSecretsSource = source;
-  return cachedSecrets;
 }
 
 /**
@@ -325,49 +339,72 @@ export async function getSecret<K extends keyof AppSecrets>(key: K): Promise<App
   return secrets[key];
 }
 
-let bootstrapPromise: Promise<void> | null = null;
+let startupBootstrapPromise: Promise<SecretsBootstrapStatus> | null = null;
+
+export type SecretsBootstrapStatus = {
+  state: 'idle' | 'ready' | 'failed';
+  source: 'environment' | 'secrets-manager' | null;
+};
+
+let startupBootstrapStatus: SecretsBootstrapStatus = { state: 'idle', source: null };
+
+function applySecretsToMissingEnv(secrets: AppSecrets) {
+  for (const key of REQUIRED_SECRET_KEYS) {
+    const value = secrets[key];
+    if (
+      typeof value === 'string' &&
+      value !== '' &&
+      (process.env[key] === undefined || process.env[key] === '')
+    ) {
+      process.env[key] = value;
+    }
+  }
+}
+
+function assertRequiredRuntimeSecrets() {
+  const missing = REQUIRED_SECRET_KEYS.filter((key) => {
+    const value = process.env[key];
+    return typeof value !== 'string' || value.trim() === '';
+  });
+  if (missing.length > 0) {
+    throw new Error(`Application secret bootstrap is missing required keys: ${missing.join(', ')}`);
+  }
+  assertOptionalExpiry(process.env.APP_SECRETS_EXPIRES_AT, 'Application secret environment');
+}
 
 /**
- * Populates `process.env` from Secrets Manager once per process.
+ * Strict Node startup barrier for staging and production.
  *
- * This is the bridge for synchronous consumers (NextAuth `secret`, the Prisma
- * connection string, the Edge proxy job-API-key check) that read secrets from
- * `process.env` at module-evaluation time and cannot await an async fetch.
- *
- * SAFETY (guardrails):
- *  - When Secrets Manager is not configured this is a no-op — `process.env`
- *    stays exactly as provided by the environment.
- *  - `process.env` remains the source of truth: a value already present in the
- *    environment is NEVER overwritten, so explicit env always wins.
- *  - Secret values are never logged or interpolated into messages.
- *  - Resolves once and caches the in-flight promise; safe to call repeatedly.
- *  - Never throws — a failed fetch leaves `process.env` untouched.
+ * Next.js awaits instrumentation.register() before accepting requests. This
+ * function must run there, before synchronous Prisma/Auth consumers evaluate.
  */
-export async function bootstrapSecretsIntoEnv(): Promise<void> {
-  if (!isSecretsManagerConfigured()) return;
-  if (bootstrapPromise) return bootstrapPromise;
+export function bootstrapSecretsForStartup(): Promise<SecretsBootstrapStatus> {
+  if (APP_ENV === 'development') {
+    startupBootstrapStatus = { state: 'ready', source: 'environment' };
+    return Promise.resolve(startupBootstrapStatus);
+  }
+  if (startupBootstrapPromise) return startupBootstrapPromise;
 
-  bootstrapPromise = (async () => {
+  startupBootstrapPromise = (async () => {
     try {
-      const secrets = await getSecrets();
-      for (const key of REQUIRED_SECRET_KEYS) {
-        const value = secrets[key];
-        // Source-of-truth rule: only fill keys the environment did not provide.
-        if (
-          typeof value === 'string' &&
-          value !== '' &&
-          (process.env[key] === undefined || process.env[key] === '')
-        ) {
-          process.env[key] = value;
-        }
+      const source = isSecretsManagerConfigured() ? 'secrets-manager' : 'environment';
+      if (source === 'secrets-manager') {
+        applySecretsToMissingEnv(await getValidatedSecrets());
       }
-    } catch (error) {
-      // Never block startup on Secrets Manager; env remains authoritative.
-      logSecretsBootstrapFailure(error);
+      assertRequiredRuntimeSecrets();
+      startupBootstrapStatus = { state: 'ready', source };
+      return startupBootstrapStatus;
+    } catch {
+      startupBootstrapStatus = { state: 'failed', source: null };
+      throw new Error('Application secret startup bootstrap failed');
     }
   })();
 
-  return bootstrapPromise;
+  return startupBootstrapPromise;
+}
+
+export function getSecretsBootstrapStatus(): SecretsBootstrapStatus {
+  return { ...startupBootstrapStatus };
 }
 
 /**
@@ -378,5 +415,6 @@ export function clearSecretsCache(): void {
   cachedSecrets = null;
   cachePopulatedAt = null;
   cachedSecretsSource = null;
-  bootstrapPromise = null;
+  startupBootstrapPromise = null;
+  startupBootstrapStatus = { state: 'idle', source: null };
 }
