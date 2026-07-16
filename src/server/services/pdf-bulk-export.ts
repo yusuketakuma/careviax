@@ -591,6 +591,8 @@ async function refreshBulkExportJobLock(args: {
 async function buildMedicationHistoryArchive(
   orgId: string,
   patientIds: string[],
+  accessContext: VisitScheduleAccessContext,
+  requestContext: RequestAuthContext,
   onProgress?: () => Promise<void>,
 ): Promise<{ zipEntries: Record<string, Uint8Array>; errors: BulkExportRenderError[] }> {
   const pdfs = await mapWithConcurrency(
@@ -598,7 +600,9 @@ async function buildMedicationHistoryArchive(
     PDF_RENDER_CONCURRENCY,
     async (patientId): Promise<PdfRenderResult> => {
       try {
-        const pdf = await buildMedicationHistoryPdf(orgId, patientId);
+        const pdf = await buildMedicationHistoryPdf(orgId, patientId, accessContext, {
+          runDb: (work) => withOrgContext(orgId, work, { requestContext }),
+        });
         return {
           patientId,
           fileName: pdf.fileName,
@@ -942,6 +946,8 @@ export async function runMedicationHistoryBulkExportJob(
     const { zipEntries, errors } = await buildMedicationHistoryArchive(
       job.org_id,
       parsedInput.data.patientIds,
+      accessContext,
+      requestContext,
       heartbeat,
     );
     const patientCount = Object.keys(zipEntries).length;

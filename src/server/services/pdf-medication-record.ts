@@ -1,3 +1,4 @@
+import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db/client';
 import {
   applyPatientAssignmentWhere,
@@ -26,12 +27,18 @@ export type MedicationHistoryRecord = {
   medications: MedicationProfileRow[];
 };
 
+export type MedicationHistoryRecordDb = Pick<
+  Prisma.TransactionClient,
+  'patient' | 'medicationProfile'
+>;
+
 export async function getMedicationHistoryRecord(
   orgId: string,
   patientId: string,
   accessContext?: VisitScheduleAccessContext,
+  db: MedicationHistoryRecordDb = prisma,
 ): Promise<MedicationHistoryRecord> {
-  const patient = await prisma.patient.findFirst({
+  const patient = await db.patient.findFirst({
     where: accessContext
       ? applyPatientAssignmentWhere({ id: patientId, org_id: orgId }, accessContext)
       : { id: patientId, org_id: orgId },
@@ -42,7 +49,7 @@ export async function getMedicationHistoryRecord(
     throw new PdfNotFoundError('patient');
   }
 
-  const medications = await prisma.medicationProfile.findMany({
+  const medications = await db.medicationProfile.findMany({
     where: { org_id: orgId, patient_id: patientId, is_current: true },
     orderBy: [{ drug_name: 'asc' }, { created_at: 'desc' }],
     select: {

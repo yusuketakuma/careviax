@@ -484,8 +484,20 @@ describe('pdf-bulk-export', () => {
       fileId: storedFileId,
       patientCount: 2,
     });
-    expect(buildMedicationHistoryPdfMock).toHaveBeenNthCalledWith(1, 'org_1', 'patient_1');
-    expect(buildMedicationHistoryPdfMock).toHaveBeenNthCalledWith(2, 'org_1', 'patient_2');
+    expect(buildMedicationHistoryPdfMock).toHaveBeenNthCalledWith(
+      1,
+      'org_1',
+      'patient_1',
+      { userId: 'user_1', role: 'admin' },
+      { runDb: expect.any(Function) },
+    );
+    expect(buildMedicationHistoryPdfMock).toHaveBeenNthCalledWith(
+      2,
+      'org_1',
+      'patient_2',
+      { userId: 'user_1', role: 'admin' },
+      { runDb: expect.any(Function) },
+    );
     expect(storeGeneratedFileMock).toHaveBeenCalledWith(
       expect.objectContaining({
         orgId: 'org_1',

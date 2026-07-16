@@ -13,6 +13,7 @@ import {
 } from '@/lib/patient/home-visit-intake';
 import type { PatientArchiveSummary } from '@/lib/patient/archive-summary';
 import type { VisitScheduleAccessContext } from '@/lib/auth/visit-schedule-access';
+import type { Prisma } from '@prisma/client';
 import { flattenPdfJson, readPdfJsonObject } from '@/server/services/pdf-document-json';
 import { formatYen } from '@/lib/format/currency';
 import {
@@ -1580,11 +1581,16 @@ export async function buildMedicationHistoryPdf(
   orgId: string,
   patientId: string,
   accessContext?: VisitScheduleAccessContext,
+  options?: {
+    runDb?: <T>(work: (db: Prisma.TransactionClient) => Promise<T>) => Promise<T>;
+  },
 ): Promise<PdfRenderResult> {
-  const [branding, record] = await Promise.all([
-    getPdfBranding(orgId),
-    getMedicationHistoryRecord(orgId, patientId, accessContext),
-  ]);
+  const load = (db?: Prisma.TransactionClient) =>
+    Promise.all([
+      getPdfBranding(orgId, db),
+      getMedicationHistoryRecord(orgId, patientId, accessContext, db),
+    ]);
+  const [branding, record] = options?.runDb ? await options.runDb(load) : await load();
   const fileName = buildPhiSafePdfFileName('medications');
 
   return renderPdf(

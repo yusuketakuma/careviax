@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { Font, type DocumentProps, renderToBuffer } from '@react-pdf/renderer';
+import type { Prisma } from '@prisma/client';
 import type { ReactElement } from 'react';
 import { prisma } from '@/lib/db/client';
 
@@ -74,13 +75,15 @@ export async function renderPdf(
   return { buffer, fileName };
 }
 
-export async function getPdfBranding(orgId: string) {
+export type PdfBrandingDb = Pick<Prisma.TransactionClient, 'organization' | 'pharmacySite'>;
+
+export async function getPdfBranding(orgId: string, db: PdfBrandingDb = prisma) {
   const [org, site] = await Promise.all([
-    prisma.organization.findUnique({
+    db.organization.findUnique({
       where: { id: orgId },
       select: { name: true },
     }),
-    prisma.pharmacySite.findFirst({
+    db.pharmacySite.findFirst({
       where: { org_id: orgId },
       orderBy: { created_at: 'asc' },
       select: { name: true },

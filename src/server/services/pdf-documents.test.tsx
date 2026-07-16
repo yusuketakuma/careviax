@@ -659,6 +659,49 @@ describe('buildMedicationHistoryPdf', () => {
     expect(text).not.toContain('internal_user');
   });
 
+  it('loads medication PDF data through the injected short transaction before rendering', async () => {
+    const order: string[] = [];
+    const scopedOrganizationFindUnique = vi.fn().mockResolvedValue({ name: 'Scoped Pharmacy' });
+    const scopedPharmacySiteFindFirst = vi.fn().mockResolvedValue({ name: 'Scoped Site' });
+    const scopedPatientFindFirst = vi.fn().mockResolvedValue({
+      id: 'patient_1',
+      name: 'Scoped Patient',
+      birth_date: new Date('1940-01-01T00:00:00.000Z'),
+      gender: 'male',
+      archived_at: null,
+      archived_by: null,
+    });
+    const scopedMedicationProfileFindMany = vi.fn().mockResolvedValue([]);
+    renderToBufferMock.mockImplementationOnce(async () => {
+      order.push('render');
+      return Buffer.from('pdf');
+    });
+
+    await buildMedicationHistoryPdf('org_1', 'patient_1', undefined, {
+      runDb: async (work) => {
+        order.push('transaction:start');
+        const result = await work({
+          organization: { findUnique: scopedOrganizationFindUnique },
+          pharmacySite: { findFirst: scopedPharmacySiteFindFirst },
+          patient: { findFirst: scopedPatientFindFirst },
+          medicationProfile: { findMany: scopedMedicationProfileFindMany },
+        } as never);
+        order.push('transaction:end');
+        return result;
+      },
+    });
+
+    expect(order).toEqual(['transaction:start', 'transaction:end', 'render']);
+    expect(scopedOrganizationFindUnique).toHaveBeenCalledOnce();
+    expect(scopedPharmacySiteFindFirst).toHaveBeenCalledOnce();
+    expect(scopedPatientFindFirst).toHaveBeenCalledOnce();
+    expect(scopedMedicationProfileFindMany).toHaveBeenCalledOnce();
+    expect(organizationFindUniqueMock).not.toHaveBeenCalled();
+    expect(pharmacySiteFindFirstMock).not.toHaveBeenCalled();
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(medicationProfileFindManyMock).not.toHaveBeenCalled();
+  });
+
   it('keeps ASCII patient names out of medication history PDF filenames', async () => {
     patientFindFirstMock.mockResolvedValue({
       id: 'patient_1',
