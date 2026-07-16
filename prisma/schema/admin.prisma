@@ -184,6 +184,7 @@ model Notification {
   @@index([user_id])
   @@index([is_read])
   @@index([event_type])
+  @@index([org_id, user_id, is_read, created_at, id], map: "Notification_stream_poll_idx")
 }
 
 model AuditLog {

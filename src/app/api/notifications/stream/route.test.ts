@@ -4,6 +4,7 @@ import { scheduleSseTimer } from './sse-timer';
 
 const {
   requireAuthContextMock,
+  withOrgContextMock,
   notificationFindManyMock,
   acquireSseConnectionMock,
   releaseSseConnectionMock,
@@ -15,6 +16,7 @@ const {
   loggerInfoMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
+  withOrgContextMock: vi.fn(),
   notificationFindManyMock: vi.fn(),
   acquireSseConnectionMock: vi.fn(),
   releaseSseConnectionMock: vi.fn(),
@@ -49,13 +51,7 @@ vi.mock('@/lib/auth/context', async () => {
   };
 });
 
-vi.mock('@/lib/db/client', () => ({
-  prisma: {
-    notification: {
-      findMany: notificationFindManyMock,
-    },
-  },
-}));
+vi.mock('@/lib/db/rls', () => ({ withOrgContext: withOrgContextMock }));
 
 vi.mock('@/lib/api/rate-limit', () => ({
   acquireSseConnection: acquireSseConnectionMock,
@@ -151,6 +147,10 @@ describe('/api/notifications/stream', () => {
       },
     });
     notificationFindManyMock.mockResolvedValue([]);
+    withOrgContextMock.mockImplementation(
+      async (_orgId: string, work: (tx: unknown) => Promise<unknown>) =>
+        work({ notification: { findMany: notificationFindManyMock } }),
+    );
     acquireSseConnectionMock.mockReturnValue({ allowed: true });
     subscribeToChannelMock.mockResolvedValue(undefined);
     getRealtimeAdapterMock.mockReturnValue({
@@ -704,16 +704,25 @@ describe('/api/notifications/stream', () => {
     await vi.advanceTimersByTimeAsync(5_000);
 
     expect(notificationFindManyMock).toHaveBeenCalledTimes(1);
+    expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
+      requestContext: expect.objectContaining({ orgId: 'org_1', userId: 'user_1' }),
+      maxWaitMs: 2_000,
+      timeoutMs: 3_000,
+    });
     expect(notificationFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
           org_id: 'org_1',
           user_id: 'user_1',
           is_read: false,
-          created_at: expect.objectContaining({
-            gt: new Date('2026-04-01T00:00:00.000Z'),
-            lte: expect.any(Date),
-          }),
+          created_at: { lte: expect.any(Date) },
+          OR: [
+            { created_at: { gt: new Date('2026-04-01T00:00:00.000Z') } },
+            {
+              created_at: new Date('2026-04-01T00:00:00.000Z'),
+              id: { gt: '' },
+            },
+          ],
         }),
         select: {
           id: true,
@@ -724,18 +733,196 @@ describe('/api/notifications/stream', () => {
           is_read: true,
           created_at: true,
         },
-        orderBy: { created_at: 'desc' },
+        orderBy: [{ created_at: 'asc' }, { id: 'asc' }],
         take: 10,
       }),
     );
 
     const firstCall = notificationFindManyMock.mock.calls[0]?.[0];
     expect(firstCall?.where.created_at.lte.getTime()).toBeGreaterThan(
-      firstCall?.where.created_at.gt.getTime(),
+      firstCall?.where.OR[0].created_at.gt.getTime(),
     );
 
     controller.abort();
     await vi.runOnlyPendingTimersAsync();
+  });
+
+  it.each([10, 11, 25])(
+    'drains %i same-timestamp notifications without duplicates or loss',
+    async (notificationCount) => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-04-01T00:00:00.000Z'));
+      subscribeToChannelMock.mockRejectedValue(new Error('realtime unavailable'));
+
+      const createdAt = new Date('2026-04-01T00:00:04.000Z');
+      const rows = Array.from({ length: notificationCount }, (_, index) => ({
+        id: `notification_${index.toString().padStart(2, '0')}`,
+        type: 'urgent',
+        title: '患者対応',
+        message: '訪問前確認があります',
+        link: '/notifications',
+        is_read: false,
+        created_at: createdAt,
+      }));
+      notificationFindManyMock.mockImplementation(async (query) => {
+        const cursorAt = query.where.OR[0].created_at.gt as Date;
+        const cursorId = query.where.OR[1].id.gt as string;
+        const windowEnd = query.where.created_at.lte as Date;
+        return rows
+          .filter(
+            (row) =>
+              row.created_at <= windowEnd &&
+              (row.created_at > cursorAt ||
+                (row.created_at.getTime() === cursorAt.getTime() && row.id > cursorId)),
+          )
+          .slice(0, query.take);
+      });
+
+      const controller = new AbortController();
+      const response = (await invokeGET(streamRequest(controller.signal)))!;
+      const reader = response.body?.getReader();
+      if (!reader) throw new Error('reader is required');
+      await reader.read();
+      await readSseEvent(reader, 'realtime_readiness');
+
+      vi.setSystemTime(new Date('2026-04-01T00:00:05.000Z'));
+      await vi.advanceTimersByTimeAsync(5_000);
+
+      const delivered = [];
+      for (let page = 0; page < Math.ceil(notificationCount / 10); page += 1) {
+        delivered.push(...(await readSseData(reader)));
+      }
+      expect(delivered.map((notification) => notification.id)).toEqual(
+        rows.map((notification) => notification.id),
+      );
+      expect(new Set(delivered.map((notification) => notification.id)).size).toBe(
+        notificationCount,
+      );
+      expect(withOrgContextMock).toHaveBeenCalledTimes(Math.floor(notificationCount / 10) + 1);
+      for (const call of withOrgContextMock.mock.calls) {
+        expect(call[0]).toBe('org_1');
+      }
+
+      controller.abort();
+      await vi.runOnlyPendingTimersAsync();
+    },
+  );
+
+  it('retries from the last completed page after a later page fails', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-04-01T00:00:00.000Z'));
+    subscribeToChannelMock.mockRejectedValue(new Error('realtime unavailable'));
+
+    const createdAt = new Date('2026-04-01T00:00:04.000Z');
+    const rows = Array.from({ length: 11 }, (_, index) => ({
+      id: `notification_${index.toString().padStart(2, '0')}`,
+      type: 'urgent',
+      title: '患者対応',
+      message: '訪問前確認があります',
+      link: '/notifications',
+      is_read: false,
+      created_at: createdAt,
+    }));
+    notificationFindManyMock
+      .mockResolvedValueOnce(rows.slice(0, 10))
+      .mockRejectedValueOnce(new Error('transient db failure'))
+      .mockResolvedValueOnce(rows.slice(10));
+
+    const controller = new AbortController();
+    const response = (await invokeGET(streamRequest(controller.signal)))!;
+    const reader = response.body?.getReader();
+    if (!reader) throw new Error('reader is required');
+    await reader.read();
+    await readSseEvent(reader, 'realtime_readiness');
+
+    vi.setSystemTime(new Date('2026-04-01T00:00:05.000Z'));
+    await vi.advanceTimersByTimeAsync(5_000);
+    const firstPage = await readSseData(reader);
+
+    vi.setSystemTime(new Date('2026-04-01T00:00:10.000Z'));
+    await vi.advanceTimersByTimeAsync(5_000);
+    const retriedPage = await readSseData(reader);
+
+    expect([...firstPage, ...retriedPage].map((notification) => notification.id)).toEqual(
+      rows.map((notification) => notification.id),
+    );
+    expect(notificationFindManyMock.mock.calls[2]?.[0].where.OR).toEqual([
+      { created_at: { gt: createdAt } },
+      { created_at: createdAt, id: { gt: 'notification_09' } },
+    ]);
+    expect(loggerInfoMock).toHaveBeenCalledWith('notification stream poll recovered', {
+      event: 'notification_stream_poll_recovered',
+      previous_consecutive_failures: 1,
+    });
+
+    controller.abort();
+    await vi.runOnlyPendingTimersAsync();
+  });
+
+  it('does not advance past a row that commits after an empty poll window', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-04-01T00:00:00.000Z'));
+    subscribeToChannelMock.mockRejectedValue(new Error('realtime unavailable'));
+    const lateCommittedRow = {
+      id: 'notification_late_commit',
+      type: 'urgent',
+      title: '患者対応',
+      message: '訪問前確認があります',
+      link: '/notifications',
+      is_read: false,
+      created_at: new Date('2026-04-01T00:00:04.000Z'),
+    };
+    notificationFindManyMock.mockResolvedValueOnce([]).mockResolvedValueOnce([lateCommittedRow]);
+
+    const controller = new AbortController();
+    const response = (await invokeGET(streamRequest(controller.signal)))!;
+    const reader = response.body?.getReader();
+    if (!reader) throw new Error('reader is required');
+    await reader.read();
+    await readSseEvent(reader, 'realtime_readiness');
+
+    vi.setSystemTime(new Date('2026-04-01T00:00:05.000Z'));
+    await vi.advanceTimersByTimeAsync(5_000);
+    vi.setSystemTime(new Date('2026-04-01T00:00:10.000Z'));
+    await vi.advanceTimersByTimeAsync(5_000);
+
+    await expect(readSseData(reader)).resolves.toMatchObject([{ id: lateCommittedRow.id }]);
+    expect(notificationFindManyMock.mock.calls[1]?.[0].where.OR).toEqual([
+      { created_at: { gt: new Date('2026-04-01T00:00:00.000Z') } },
+      { created_at: new Date('2026-04-01T00:00:00.000Z'), id: { gt: '' } },
+    ]);
+
+    controller.abort();
+    await vi.runOnlyPendingTimersAsync();
+  });
+
+  it('releases the stream and does not reschedule when aborted during a DB poll', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-04-01T00:00:00.000Z'));
+    subscribeToChannelMock.mockRejectedValue(new Error('realtime unavailable'));
+    const pendingQuery = createDeferred<never[]>();
+    notificationFindManyMock.mockReturnValueOnce(pendingQuery.promise);
+
+    const controller = new AbortController();
+    const response = (await invokeGET(streamRequest(controller.signal)))!;
+    const reader = response.body?.getReader();
+    if (!reader) throw new Error('reader is required');
+    await reader.read();
+    await readSseEvent(reader, 'realtime_readiness');
+
+    vi.setSystemTime(new Date('2026-04-01T00:00:05.000Z'));
+    vi.advanceTimersByTime(5_000);
+    await Promise.resolve();
+    expect(notificationFindManyMock).toHaveBeenCalledOnce();
+
+    controller.abort();
+    pendingQuery.resolve([]);
+    await Promise.resolve();
+    await Promise.resolve();
+    await vi.runOnlyPendingTimersAsync();
+
+    expect(releaseSseConnectionMock).toHaveBeenCalledOnce();
+    expect(notificationFindManyMock).toHaveBeenCalledOnce();
   });
 
   it('normalizes DB safety poll notifications before streaming', async () => {

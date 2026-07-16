@@ -387,6 +387,58 @@ describeProof('FORCE RLS non-superuser proof (RLS_PROOF_DATABASE_URL)', () => {
           }
         }
       }
+
+      // Notification stream proof against the actual migrated table. The route
+      // polls through withOrgContext; this verifies the NOBYPASSRLS role still
+      // cannot observe another tenant even when user_id matches.
+      const notificationReg = await adminPool.query<{ reg: string | null }>(
+        `SELECT to_regclass('public."Notification"')::text AS reg`,
+      );
+      if (notificationReg.rows[0]?.reg) {
+        const suffix = randomUUID().replaceAll('-', '');
+        const notificationIds = [`notification_rls_a_${suffix}`, `notification_rls_b_${suffix}`];
+        const orgA = `notification_org_a_${suffix}`;
+        const orgB = `notification_org_b_${suffix}`;
+        const sharedUserId = `notification_user_${suffix}`;
+
+        try {
+          await adminPool.query(
+            `INSERT INTO "Notification"
+               (id, org_id, user_id, type, title, message, is_read, created_at, updated_at)
+             VALUES
+               ($1, $3, $5, 'system', 'RLS proof', 'tenant A', false, now(), now()),
+               ($2, $4, $5, 'system', 'RLS proof', 'tenant B', false, now(), now())`,
+            [notificationIds[0], notificationIds[1], orgA, orgB, sharedUserId],
+          );
+
+          const notificationClient = await proofPool.connect();
+          try {
+            await notificationClient.query(
+              "SELECT set_config('app.rls_context_applied', 'true', false)",
+            );
+            await notificationClient.query("SELECT set_config('app.current_org_id', $1, false)", [
+              orgA,
+            ]);
+            const visibleNotifications = await notificationClient.query<{
+              id: string;
+              org_id: string;
+            }>(
+              `SELECT id, org_id
+                 FROM "Notification"
+                WHERE user_id = $1 AND id = ANY($2::text[])
+                ORDER BY id`,
+              [sharedUserId, notificationIds],
+            );
+            expect(visibleNotifications.rows).toEqual([{ id: notificationIds[0], org_id: orgA }]);
+          } finally {
+            notificationClient.release();
+          }
+        } finally {
+          await adminPool.query('DELETE FROM "Notification" WHERE id = ANY($1::text[])', [
+            notificationIds,
+          ]);
+        }
+      }
     } finally {
       await adminPool.query(`DROP SCHEMA IF EXISTS ${quoteIdent(schema)} CASCADE`);
       await adminPool.end();

@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { withAuthContext, type AuthContext } from '@/lib/auth/context';
-import { prisma } from '@/lib/db/client';
+import { withOrgContext } from '@/lib/db/rls';
 import { logger } from '@/lib/utils/logger';
 import { acquireSseConnection, releaseSseConnection } from '@/lib/api/rate-limit';
 import { getRealtimeAdapter } from '@/server/adapters/realtime';
@@ -21,6 +21,8 @@ export const runtime = 'nodejs';
 const KEEPALIVE_INTERVAL_MS = 30_000;
 const POLL_INTERVAL_MS = 5_000;
 const SUBSCRIBED_SAFETY_POLL_INTERVAL_MS = 60_000;
+const POLL_PAGE_SIZE = 10;
+const MAX_POLL_PAGES = 3;
 const MAX_STREAM_DURATION_MS = 5 * 60_000;
 const MAX_PRESENCE_STREAM_ROOMS = 8;
 const NOTIFICATION_STREAM_NORMALIZE_OPTIONS = {
@@ -36,6 +38,11 @@ type PresenceStreamTarget = {
   entityType: CollaborationEntityType;
   entityId: string;
   channel: string;
+};
+
+type NotificationPollCursor = {
+  createdAt: Date;
+  id: string;
 };
 
 function jsonError(status: number, code: string, message: string) {
@@ -171,7 +178,7 @@ async function streamNotifications(req: NextRequest, ctx: AuthContext) {
       let stopped = false;
       let keepaliveTimer: ReturnType<typeof setTimeout> | null = null;
       let pollTimer: ReturnType<typeof setTimeout> | null = null;
-      let lastCheckAt = new Date();
+      let pollCursor: NotificationPollCursor = { createdAt: new Date(), id: '' };
       let adapter: ReturnType<typeof getRealtimeAdapter> | null = null;
       const subscribedChannels = new Map<string, (data: unknown) => void>();
       const orgChannel = `org:${orgId}`;
@@ -315,31 +322,72 @@ async function streamNotifications(req: NextRequest, ctx: AuthContext) {
       const poll = async () => {
         if (stopped) return;
         const windowEnd = new Date();
+        let needsImmediateDrain = false;
         try {
-          const notifications = await prisma.notification.findMany({
-            where: {
-              org_id: orgId,
-              user_id: userId,
-              is_read: false,
-              created_at: {
-                gt: lastCheckAt,
-                lte: windowEnd,
-              },
-            },
-            select: {
-              id: true,
-              type: true,
-              title: true,
-              message: true,
-              link: true,
-              is_read: true,
-              created_at: true,
-            },
-            orderBy: { created_at: 'desc' },
-            take: 10,
-          });
+          for (let page = 0; page < MAX_POLL_PAGES; page += 1) {
+            const cursorAtPageStart = pollCursor;
+            const notifications = await withOrgContext(
+              orgId,
+              (tx) =>
+                tx.notification.findMany({
+                  where: {
+                    org_id: orgId,
+                    user_id: userId,
+                    is_read: false,
+                    created_at: { lte: windowEnd },
+                    OR: [
+                      { created_at: { gt: cursorAtPageStart.createdAt } },
+                      {
+                        created_at: cursorAtPageStart.createdAt,
+                        id: { gt: cursorAtPageStart.id },
+                      },
+                    ],
+                  },
+                  select: {
+                    id: true,
+                    type: true,
+                    title: true,
+                    message: true,
+                    link: true,
+                    is_read: true,
+                    created_at: true,
+                  },
+                  orderBy: [{ created_at: 'asc' }, { id: 'asc' }],
+                  take: POLL_PAGE_SIZE,
+                }),
+              { requestContext: ctx, maxWaitMs: 2_000, timeoutMs: 3_000 },
+            );
 
-          lastCheckAt = windowEnd;
+            if (stopped) return;
+
+            const lastNotification = notifications.at(-1);
+            if (lastNotification) {
+              const normalizedNotifications = normalizeNotificationStreamPayload(
+                notifications,
+                NOTIFICATION_STREAM_NORMALIZE_OPTIONS,
+              );
+              if (normalizedNotifications.length > 0) {
+                sendEvent(normalizedNotifications);
+              }
+
+              // Commit the cursor page-by-page only after normalization/delivery.
+              // A later page failure resumes after this completed page.
+              pollCursor = {
+                createdAt: lastNotification.created_at,
+                id: lastNotification.id,
+              };
+            }
+
+            if (notifications.length < POLL_PAGE_SIZE) {
+              // The bounded window is fully drained. Keep the cursor at the last
+              // row actually delivered: a row whose created_at is inside this
+              // window may still commit after this query and must remain eligible.
+              needsImmediateDrain = false;
+              break;
+            }
+
+            needsImmediateDrain = page === MAX_POLL_PAGES - 1;
+          }
 
           if (consecutivePollFailures > 0) {
             logger.info('notification stream poll recovered', {
@@ -347,14 +395,6 @@ async function streamNotifications(req: NextRequest, ctx: AuthContext) {
               previous_consecutive_failures: consecutivePollFailures,
             });
             consecutivePollFailures = 0;
-          }
-
-          const streamNotifications = normalizeNotificationStreamPayload(
-            notifications,
-            NOTIFICATION_STREAM_NORMALIZE_OPTIONS,
-          );
-          if (streamNotifications.length > 0) {
-            sendEvent(streamNotifications);
           }
         } catch (error) {
           // ストリームは生かしたまま、無音障害を観測可能にする。
@@ -372,7 +412,11 @@ async function streamNotifications(req: NextRequest, ctx: AuthContext) {
         if (!stopped) {
           pollTimer = scheduleSseTimer(
             poll,
-            userChannelSubscribed ? SUBSCRIBED_SAFETY_POLL_INTERVAL_MS : POLL_INTERVAL_MS,
+            needsImmediateDrain
+              ? 0
+              : userChannelSubscribed
+                ? SUBSCRIBED_SAFETY_POLL_INTERVAL_MS
+                : POLL_INTERVAL_MS,
           );
         }
       };
