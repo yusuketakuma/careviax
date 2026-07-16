@@ -848,6 +848,36 @@ describe('MedicationsContent JAHIS QR patient identity', () => {
     source: 'manual',
     created_at: '2026-06-01T00:00:00.000Z',
   };
+  const jahisExportContext = {
+    dispensingInstitution: {
+      name: 'PH-OS薬局',
+      prefCode: '13',
+      scoreTableCode: '4' as const,
+      institutionCode: '7654321',
+    },
+    prescribingInstitution: {
+      name: 'PH-OS Clinic',
+      prefCode: '13',
+      scoreTableCode: '1' as const,
+      institutionCode: '1234567',
+    },
+    prescribingDoctor: '田中 医師',
+    prescribingDepartment: '内科',
+    dispensingDate: '2026-06-01',
+    medications: [
+      {
+        drugCodeType: 1 as const,
+        drugName: 'アムロジピン錠5mg',
+        dose: '1',
+        unit: '錠',
+        usageName: '朝食後',
+        dispensingQuantity: '14',
+        dispensingUnit: '日分',
+        formCode: 1 as const,
+        usageCodeType: 1 as const,
+      },
+    ],
+  };
 
   function validPatientSummary() {
     return {
@@ -884,7 +914,7 @@ describe('MedicationsContent JAHIS QR patient identity', () => {
       isError: boolean;
       refetch?: ReturnType<typeof vi.fn>;
     },
-    medicationProfile = profile,
+    exportContext: typeof jahisExportContext | null = jahisExportContext,
   ) {
     const refetch = patientSummary.refetch ?? vi.fn();
     useOrgIdMock.mockReturnValue('org_1');
@@ -894,7 +924,7 @@ describe('MedicationsContent JAHIS QR patient identity', () => {
       const key = String(queryKey[0]);
       if (key === 'medication-profiles') {
         return {
-          data: { data: [medicationProfile] },
+          data: { data: [profile] },
           isLoading: false,
           isError: false,
           refetch: vi.fn(),
@@ -911,7 +941,9 @@ describe('MedicationsContent JAHIS QR patient identity', () => {
       };
     });
 
-    const view = render(<MedicationsContent patientId="patient_1" />);
+    const view = render(
+      <MedicationsContent patientId="patient_1" jahisExportContext={exportContext ?? undefined} />,
+    );
     return { refetch, rerender: view.rerender, unmount: view.unmount };
   }
 
@@ -1030,7 +1062,7 @@ describe('MedicationsContent JAHIS QR patient identity', () => {
     );
     expect(qrExportDescriptionButton).toBeTruthy();
     fireEvent.click(qrExportDescriptionButton!);
-    expect(screen.getByText(/服薬中薬剤から JAHIS Ver\.2\.6 の QR/)).toBeTruthy();
+    expect(screen.getByText(/確定した処方・調剤記録から JAHIS Ver\.2\.6 の QR/)).toBeTruthy();
     fireEvent.click(qrExportDescriptionButton!);
 
     await act(async () => {
@@ -1038,7 +1070,7 @@ describe('MedicationsContent JAHIS QR patient identity', () => {
     });
 
     expect(await screen.findByRole('dialog', { name: 'お薬手帳QRコード' })).toBeTruthy();
-    expect(screen.getByText(/現在の服薬中薬剤から JAHIS Ver\.2\.6 形式の QR/)).toBeTruthy();
+    expect(screen.getByText(/確定した調剤記録から JAHIS Ver\.2\.6 形式の QR/)).toBeTruthy();
     expect(screen.queryByText(/JAHIS Ver\.2\.5/)).toBeNull();
     expect(qrModuleLoadMock).toHaveBeenCalledOnce();
     expect(qrToDataUrlMock).toHaveBeenCalledOnce();
@@ -1050,11 +1082,17 @@ describe('MedicationsContent JAHIS QR patient identity', () => {
     expect(segments[0]?.mode).toBe('byte');
     const payload = new TextDecoder('shift_jis').decode(segments[0]?.data);
     expect(payload.split('\r\n')[1]).toBe('1,山田花子,2,19500401,,,,,,,ヤマダハナコ');
+    expect(payload).toContain('11,PH-OS薬局,13,4,7654321,,,,1\r\n');
+    expect(payload).toContain('201,1,アムロジピン錠5mg,1,錠,1,,1,,,\r\n');
+    expect(payload).toContain('301,1,朝食後,14,日分,1,1,,1\r\n');
     expect(qrToDataUrlMock.mock.calls[0]?.[1]).not.toHaveProperty('toSJISFunc');
   });
 
   it('fails before QR rendering when a medication contains an unsupported character', async () => {
-    renderQrState(validPatientSummary(), { ...profile, drug_name: '薬剤😀' });
+    renderQrState(validPatientSummary(), {
+      ...jahisExportContext,
+      medications: [{ ...jahisExportContext.medications[0], drugName: '薬剤😀' }],
+    });
 
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'お薬手帳QRを生成' }));
@@ -1063,6 +1101,16 @@ describe('MedicationsContent JAHIS QR patient identity', () => {
     expect(qrToDataUrlMock).not.toHaveBeenCalled();
     expect(toast.error).toHaveBeenCalledWith('QRコードの生成に失敗しました');
     expectQrOutputUnreachable();
+  });
+
+  it('keeps export disabled when no authoritative dispensing context is available', () => {
+    renderQrState(validPatientSummary(), null);
+
+    expect(screen.getByText(/確定した調剤日・調剤薬局・処方元・用量単位・調剤数量/)).toBeTruthy();
+    expect(
+      (screen.getByRole('button', { name: 'お薬手帳QRを生成' }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+    expect(qrToDataUrlMock).not.toHaveBeenCalled();
   });
 
   it('clears generated QR output when the route patient changes', async () => {

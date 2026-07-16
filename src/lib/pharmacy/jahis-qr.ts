@@ -1,5 +1,10 @@
 import { isValidDateKey, parseSourceDate } from '@/lib/validations/date-key';
-import { assertJahisShiftJisByteLimit, encodeJahisShiftJis } from '@/lib/pharmacy/jahis-shift-jis';
+import { encodeJahisShiftJis } from '@/lib/pharmacy/jahis-shift-jis';
+import {
+  assertJahisExportRecordOrder,
+  JAHIS_EXPORT_CONTRACT_V2_6,
+  serializeJahisExportRecord,
+} from '@/lib/pharmacy/jahis-export-contract';
 
 /**
  * JAHIS お薬手帳データフォーマット ver.2.6 (JAHISTC08) パーサー
@@ -160,30 +165,40 @@ export interface JahisQRData {
 // ── Export types (buildJahisQRText 向け) ──
 
 export interface JahisQrExportMedication {
+  drugCodeType: 1 | 2 | 3 | 4 | 6;
   drugCode?: string | null;
   drugName: string;
-  dose?: string | null;
-  unit?: string | null;
-  frequency?: string | null;
-  daysOrTimes?: string | null;
-  dispensedQuantity?: string | null;
+  dose: string;
+  unit: string;
+  usageName: string;
+  dispensingQuantity: string;
+  dispensingUnit: string;
+  formCode: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10;
+  usageCodeType: 1 | 2;
+  usageCode?: string | null;
+  genericName?: string | null;
+  genericCodeType?: 1 | 2 | null;
+  genericCode?: string | null;
+}
+
+export interface JahisQrExportInstitution {
+  name: string;
+  prefCode: string;
+  scoreTableCode: '1' | '3' | '4';
+  institutionCode: string;
+  postalCode?: string | null;
+  address?: string | null;
+  phone?: string | null;
 }
 
 export interface JahisQrExportInput {
   patient: JahisPatient;
-  medications: JahisQrExportMedication[];
-  /** @deprecated prescribingInstitution を使うこと */
-  pharmacy?: {
-    institutionCode?: string;
-    institutionName?: string;
-    doctorName?: string;
-  };
-  prescribingInstitution?: JahisInstitution;
+  medications: readonly JahisQrExportMedication[];
+  dispensingInstitution: JahisQrExportInstitution & { scoreTableCode: '4' };
+  prescribingInstitution: JahisQrExportInstitution & { scoreTableCode: '1' | '3' };
   prescribingDoctor?: string;
   prescribingDepartment?: string;
-  /** @deprecated dispensingDate を使うこと */
-  prescriptionDate?: string;
-  dispensingDate?: string;
+  dispensingDate: string;
 }
 
 export type JahisQrPatientIdentity = {
@@ -276,24 +291,6 @@ function parseJahisDateField(args: {
 export function parseJahisQR(text: string): JahisQRData {
   const result = parseJahisQRSafe(text);
   return result.success ? result.data : (result.data as JahisQRData);
-}
-
-// ────────────────────────────────────────────────────────────────────────────
-// Build (Export)
-// ────────────────────────────────────────────────────────────────────────────
-
-function getInstitutionName(institution?: JahisInstitution | JahisQrExportInput['pharmacy']) {
-  if (!institution) return undefined;
-  const legacyInstitution = institution as JahisQrExportInput['pharmacy'];
-  if (legacyInstitution?.institutionName !== undefined) {
-    return legacyInstitution.institutionName;
-  }
-  return (institution as JahisInstitution).name;
-}
-
-function getInstitutionCode(institution?: JahisInstitution | JahisQrExportInput['pharmacy']) {
-  if (!institution) return undefined;
-  return institution.institutionCode;
 }
 
 const SUPPLEMENTAL_RECORD_LABELS: Record<JahisSupplementalRecordType, string> = {
@@ -466,100 +463,113 @@ export function buildJahisQrExport(input: JahisQrExportInput): {
   }
 
   const patient = patientIdentity.data;
-  const lines = ['JAHISTC08,1'];
+  const contract = JAHIS_EXPORT_CONTRACT_V2_6;
+  const lines = [`${contract.header},${contract.outputType}`];
 
-  // Record 1: 患者情報
-  // 1,<name>,<gender>,<birthdate>,<zip>,<address>,<phone>,<emergency>,<blood_type>,<weight>,<name_kana>
   lines.push(
-    [
-      '1',
-      sanitizeJahisField(patient.name, 40),
+    serializeJahisExportRecord(contract.records['1'], [
+      sanitizeJahisField(patient.name),
       toJahisGenderCode(patient.gender),
       formatJahisExportDate(patient.birthDate),
-      '', // zip
-      '', // address
-      '', // phone
-      '', // emergency
-      '', // blood_type
-      '', // weight
-      sanitizeJahisField(patient.nameKana, 40),
-    ].join(','),
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      sanitizeJahisField(patient.nameKana),
+    ]),
   );
 
-  // 調剤日 (Record 5)
-  const dispensingDate = input.dispensingDate;
-  if (dispensingDate) {
-    lines.push(`5,${formatJahisExportDate(dispensingDate)},1`);
-  }
+  lines.push(
+    serializeJahisExportRecord(contract.records['5'], [
+      formatJahisExportDate(input.dispensingDate),
+      '1',
+    ]),
+  );
 
-  // 調剤薬局（Record 11）— 後方互換: pharmacy から prescribingInstitution を流用しない
-  // (exportは処方元のみ出力する)
+  const dispensingInstitution = input.dispensingInstitution;
+  lines.push(
+    serializeJahisExportRecord(contract.records['11'], [
+      sanitizeJahisField(dispensingInstitution.name),
+      sanitizeJahisField(dispensingInstitution.prefCode),
+      dispensingInstitution.scoreTableCode,
+      sanitizeJahisField(dispensingInstitution.institutionCode),
+      sanitizeJahisField(dispensingInstitution.postalCode),
+      sanitizeJahisField(dispensingInstitution.address),
+      sanitizeJahisField(dispensingInstitution.phone),
+      '1',
+    ]),
+  );
 
-  // 処方-医療機関 (Record 51)
-  const presInst = input.prescribingInstitution ?? input.pharmacy;
-  const presInstName = getInstitutionName(presInst) ?? input.pharmacy?.institutionName ?? '';
-  const presInstCode = getInstitutionCode(presInst) ?? input.pharmacy?.institutionCode ?? '';
-  if (presInstName || presInstCode) {
+  const prescribingInstitution = input.prescribingInstitution;
+  lines.push(
+    serializeJahisExportRecord(contract.records['51'], [
+      sanitizeJahisField(prescribingInstitution.name),
+      sanitizeJahisField(prescribingInstitution.prefCode),
+      prescribingInstitution.scoreTableCode,
+      sanitizeJahisField(prescribingInstitution.institutionCode),
+      '1',
+    ]),
+  );
+
+  if (input.prescribingDoctor) {
     lines.push(
-      [
-        '51',
-        sanitizeJahisField(presInstName, 120),
-        '', // pref_code
-        '', // score_table_code
-        sanitizeJahisField(presInstCode, 7),
-        '1', // creator
-      ].join(','),
-    );
-  }
-
-  // 処方-医師 (Record 55)
-  const doctorName = input.prescribingDoctor ?? input.pharmacy?.doctorName;
-  if (doctorName) {
-    lines.push(
-      [
-        '55',
-        sanitizeJahisField(doctorName, 40),
-        sanitizeJahisField(input.prescribingDepartment, 80),
+      serializeJahisExportRecord(contract.records['55'], [
+        sanitizeJahisField(input.prescribingDoctor),
+        sanitizeJahisField(input.prescribingDepartment),
         '1',
-      ].join(','),
+      ]),
     );
   }
 
-  // 薬品 (Record 201, 301)
-  for (let i = 0; i < input.medications.length; i++) {
-    const medication = input.medications[i];
-    const rp = i + 1;
-    lines.push(
-      [
-        '201',
-        String(rp),
-        sanitizeJahisField(medication.drugName, 120),
-        sanitizeJahisField(medication.dose, 12),
-        sanitizeJahisField(medication.unit, 12),
-        '1', // code_type: none (簡易エクスポート)
-        sanitizeJahisField(medication.drugCode, 13),
-        '1', // creator
-      ].join(','),
-    );
-
-    // 用法 (Record 301)
-    if (medication.frequency || medication.daysOrTimes) {
-      lines.push(
-        [
-          '301',
-          String(rp),
-          sanitizeJahisField(medication.frequency, 100),
-          sanitizeJahisField(medication.daysOrTimes, 100),
-          '', // unit
-          '1', // form_code: 内服
-          '', // usage_code_type
-          '', // usage_code
-          '1', // creator
-        ].join(','),
-      );
+  for (const [index, medication] of input.medications.entries()) {
+    const rpNumber = String(index + 1);
+    const drugCode = sanitizeJahisField(medication.drugCode);
+    if ((medication.drugCodeType === 1) !== (drugCode.length === 0)) {
+      throw new RangeError('JAHIS_DRUG_CODE_CONTRACT_INVALID');
     }
+
+    const genericCodeType = medication.genericCodeType ? String(medication.genericCodeType) : '';
+    const genericCode = sanitizeJahisField(medication.genericCode);
+    if ((genericCodeType === '2') !== genericCode.length > 0) {
+      throw new RangeError('JAHIS_GENERIC_CODE_CONTRACT_INVALID');
+    }
+
+    lines.push(
+      serializeJahisExportRecord(contract.records['201'], [
+        rpNumber,
+        sanitizeJahisField(medication.drugName),
+        sanitizeJahisField(medication.dose),
+        sanitizeJahisField(medication.unit),
+        String(medication.drugCodeType),
+        drugCode,
+        '1',
+        sanitizeJahisField(medication.genericName),
+        genericCodeType,
+        genericCode,
+      ]),
+    );
+
+    const usageCode = sanitizeJahisField(medication.usageCode);
+    if ((medication.usageCodeType === 2) !== usageCode.length > 0) {
+      throw new RangeError('JAHIS_USAGE_CODE_CONTRACT_INVALID');
+    }
+    lines.push(
+      serializeJahisExportRecord(contract.records['301'], [
+        rpNumber,
+        sanitizeJahisField(medication.usageName),
+        sanitizeJahisField(medication.dispensingQuantity),
+        sanitizeJahisField(medication.dispensingUnit),
+        String(medication.formCode),
+        String(medication.usageCodeType),
+        usageCode,
+        '1',
+      ]),
+    );
   }
 
+  assertJahisExportRecordOrder(lines.slice(1).map((line) => line.split(',', 1)[0]));
   const payload = `${lines.join('\r\n')}\r\n`;
   return { text: payload, bytes: encodeJahisShiftJis(payload) };
 }
@@ -1311,15 +1321,13 @@ function appendPrescriptionMedicationSupplement(
 // Helpers
 // ────────────────────────────────────────────────────────────────────────────
 
-function sanitizeJahisField(value: string | null | undefined, maxBytes: number): string {
+function sanitizeJahisField(value: string | null | undefined): string {
   const rawValue = value ?? '';
   if (JAHIS_FORBIDDEN_FIELD_CONTROL_PATTERN.test(rawValue)) {
     throw new RangeError('JAHIS_FIELD_CONTROL_CHARACTER_INVALID');
   }
 
-  const sanitized = rawValue.replace(/,/g, '，').trim();
-  assertJahisShiftJisByteLimit(sanitized, maxBytes);
-  return sanitized;
+  return rawValue.replace(/,/g, '，').trim();
 }
 
 function toJahisGenderCode(gender: JahisPatient['gender']): string {

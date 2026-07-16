@@ -59,6 +59,7 @@ import {
   buildJahisQrExport,
   validateJahisQrPatientIdentity,
   type JahisQrPatientIdentity,
+  type JahisQrExportInput,
 } from '@/lib/pharmacy/jahis-qr';
 import { formatDateTimeLabel } from '@/lib/ui/date-format';
 import { toast } from 'sonner';
@@ -104,6 +105,7 @@ type MedicationsContentProps = {
   birthDate?: string;
   gender?: string;
   allergyInfo?: Array<{ drug_name: string; category: string; severity: string } | string> | null;
+  jahisExportContext?: Omit<JahisQrExportInput, 'patient'>;
 };
 
 const sourceLabel: Record<string, string> = {
@@ -626,7 +628,7 @@ function QrExportDialog({
         <DialogHeader>
           <DialogTitle>お薬手帳QRコード</DialogTitle>
           <DialogDescription>
-            現在の服薬中薬剤から JAHIS Ver.2.6 形式の QR を生成しています。
+            確定した調剤記録から JAHIS Ver.2.6 形式の QR を生成しています。
           </DialogDescription>
         </DialogHeader>
 
@@ -697,6 +699,7 @@ export function MedicationsContent({
   birthDate,
   gender,
   allergyInfo,
+  jahisExportContext,
 }: MedicationsContentProps) {
   const orgId = useOrgId();
   const queryClient = useQueryClient();
@@ -897,15 +900,21 @@ export function MedicationsContent({
       : null;
   const isQrPatientIdentityLoading =
     !providedPatientIdentity.success && patientSummaryQuery.isLoading;
+  const isQrPatientIdentityUnavailable = !qrPatientIdentity;
   const qrPatientIdentityUnavailableReason = qrPatientIdentity
-    ? null
+    ? jahisExportContext
+      ? null
+      : '確定した調剤日・調剤薬局・処方元・用量単位・調剤数量を確認できないため、JAHIS QRを生成できません。処方・調剤記録から発行してください。'
     : isQrPatientIdentityLoading
       ? '患者情報を確認中のため、QRを生成できません。読み込み完了後に再度お試しください。'
       : patientSummaryQuery.isError
         ? '患者情報を取得できないため、QRを生成できません。再読み込みしてください。'
         : '患者氏名・生年月日・性別を確認できないため、QRを生成できません。患者基本情報を確認して再読み込みしてください。';
   const canRetryQrPatientIdentity =
-    !providedPatientIdentity.success && !isQrPatientIdentityLoading && !!orgId;
+    isQrPatientIdentityUnavailable &&
+    !providedPatientIdentity.success &&
+    !isQrPatientIdentityLoading &&
+    !!orgId;
   const resolvedAllergyInfo = allergyInfo ?? patientSummaryQuery.data?.allergy_info ?? null;
   const isAllergyInfoError = allergyInfo === undefined && patientSummaryQuery.isError;
 
@@ -951,8 +960,8 @@ export function MedicationsContent({
       return;
     }
 
-    if (profiles.length === 0) {
-      toast.error('服薬中薬剤がないため QR を生成できません');
+    if (!jahisExportContext) {
+      toast.error('正式な調剤記録を確認できないため QR を生成できません');
       return;
     }
 
@@ -968,15 +977,8 @@ export function MedicationsContent({
 
     try {
       const payload = buildJahisQrExport({
+        ...jahisExportContext,
         patient: qrPatientIdentity,
-        medications: profiles.map((item) => ({
-          drugCode: null,
-          drugName: item.drug_name,
-          dose: item.dose,
-          frequency: item.frequency,
-        })),
-        prescriptionDate: format(new Date(), 'yyyy-MM-dd'),
-        dispensingDate: format(new Date(), 'yyyy-MM-dd'),
       });
       const QRCode = await import('qrcode');
       if (!isCurrentRequest()) return;
@@ -1548,7 +1550,7 @@ export function MedicationsContent({
             <CardHeader>
               <h2 className="font-heading text-base leading-snug font-medium">お薬手帳QR発行</h2>
               <CardDescription>
-                服薬中薬剤から JAHIS Ver.2.6 の QR を生成し、その場で表示と印刷ができます。
+                確定した処方・調剤記録から JAHIS Ver.2.6 の QR を生成し、表示と印刷ができます。
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
