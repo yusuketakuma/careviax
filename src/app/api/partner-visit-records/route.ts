@@ -9,8 +9,14 @@ import { conflict, internalError, notFound, success, validationError } from '@/l
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { toPatientSafeDisplay } from '@/lib/pharmacy-cooperation/api-contracts';
 import { toPrismaJsonInput } from '@/lib/db/json';
+import { acquireAdvisoryTxLock } from '@/lib/db/advisory-lock';
 import { withOrgContext } from '@/lib/db/rls';
-import { buildActivePatientShareCaseReadWhere } from '@/server/services/patient-share-access';
+import {
+  buildActivePatientShareCaseMutationWhere,
+  buildActivePatientShareCaseReadWhere,
+  buildPatientShareCaseConsentLockKey,
+  PATIENT_SHARE_CASE_CONSENT_LOCK_NAMESPACE,
+} from '@/server/services/patient-share-access';
 import { canEditPharmacyOwnedData } from '@/server/services/pharmacy-partnerships';
 
 const partnerVisitRecordStatusSchema = z.enum([
@@ -68,6 +74,12 @@ const savePartnerVisitRecordSchema = z.object({
   attachments: z.unknown().optional(),
   source_visit_record_id: optionalTrimmedString(128),
 });
+
+class TransactionResponse extends Error {
+  constructor(readonly response: ReturnType<typeof conflict>) {
+    super('transaction_response');
+  }
+}
 
 function optionalSearchParam(value: string | null) {
   const trimmed = value?.trim() ?? '';
@@ -326,31 +338,53 @@ const authenticatedPOST = withAuthContext(
     const result = await withOrgContext(
       ctx.orgId,
       async (tx) => {
-        const visitRequest = await tx.pharmacyVisitRequest.findFirst({
-          where: { id: parsed.data.visit_request_id, org_id: ctx.orgId },
-          select: {
-            id: true,
-            status: true,
-            share_case_id: true,
-            partner_pharmacy_id: true,
-            share_case: {
-              select: {
-                status: true,
-                base_patient_id: true,
-              },
-            },
-            partnership: {
-              select: {
-                status: true,
-                partner_pharmacy: { select: { status: true } },
-              },
-            },
-          },
+        const now = new Date();
+        const activeShareCaseWhere = buildActivePatientShareCaseMutationWhere({
+          orgId: ctx.orgId,
+          asOf: now,
         });
+        const findActiveVisitRequest = () =>
+          tx.pharmacyVisitRequest.findFirst({
+            where: {
+              id: parsed.data.visit_request_id,
+              org_id: ctx.orgId,
+              share_case: { is: activeShareCaseWhere },
+            },
+            select: {
+              id: true,
+              status: true,
+              share_case_id: true,
+              partner_pharmacy_id: true,
+              share_case: {
+                select: {
+                  status: true,
+                  base_patient_id: true,
+                },
+              },
+              partnership: {
+                select: {
+                  status: true,
+                  partner_pharmacy: { select: { status: true } },
+                },
+              },
+            },
+          });
 
-        if (!visitRequest) return { response: notFound('訪問依頼が見つかりません') };
-        if (visitRequest.share_case.status !== 'active') {
-          return { response: conflict('共有中の患者共有ケースに紐づく訪問依頼のみ記録できます') };
+        const initialVisitRequest = await findActiveVisitRequest();
+        if (!initialVisitRequest) return { response: notFound('訪問依頼が見つかりません') };
+
+        await acquireAdvisoryTxLock(
+          tx,
+          PATIENT_SHARE_CASE_CONSENT_LOCK_NAMESPACE,
+          buildPatientShareCaseConsentLockKey({
+            orgId: ctx.orgId,
+            shareCaseId: initialVisitRequest.share_case_id,
+          }),
+        );
+
+        const visitRequest = await findActiveVisitRequest();
+        if (!visitRequest) {
+          return { response: conflict('患者共有の同意状態が更新されています') };
         }
         if (
           visitRequest.partnership.status !== 'active' ||
@@ -425,6 +459,7 @@ const authenticatedPOST = withAuthContext(
                   id: latestRecord.id,
                   org_id: ctx.orgId,
                   status: { in: ['draft', 'returned'] },
+                  share_case: { is: activeShareCaseWhere },
                 },
                 data: {
                   ...recordData,
@@ -498,14 +533,18 @@ const authenticatedPOST = withAuthContext(
             ? 'recording'
             : visitRequest.status;
         if (nextVisitRequestStatus !== visitRequest.status) {
-          await tx.pharmacyVisitRequest.updateMany({
+          const requestUpdateCount = await tx.pharmacyVisitRequest.updateMany({
             where: {
               id: visitRequest.id,
               org_id: ctx.orgId,
               status: { in: ['accepted', 'returned'] },
+              share_case: { is: activeShareCaseWhere },
             },
             data: { status: nextVisitRequestStatus },
           });
+          if (requestUpdateCount.count !== 1) {
+            throw new TransactionResponse(conflict('訪問依頼はすでに更新されています'));
+          }
         }
 
         await createAuditLogEntry(tx, ctx, {
@@ -532,8 +571,14 @@ const authenticatedPOST = withAuthContext(
 
         return { partnerVisitRecord: toSafePartnerVisitRecord(partnerVisitRecord), isCreate };
       },
-      { requestContext: ctx },
-    );
+      {
+        requestContext: ctx,
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+      },
+    ).catch((error) => {
+      if (error instanceof TransactionResponse) return { response: error.response };
+      throw error;
+    });
 
     if ('response' in result) return result.response ?? validationError('入力値が不正です');
     return success({ data: result.partnerVisitRecord }, result.isCreate ? 201 : 200);

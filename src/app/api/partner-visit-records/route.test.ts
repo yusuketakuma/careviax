@@ -6,6 +6,7 @@ import { expectNoStore } from '@/test/api-response-assertions';
 const {
   authPlumbingFailureRef,
   withOrgContextMock,
+  acquireAdvisoryTxLockMock,
   partnerVisitRecordFindManyMock,
   partnerVisitRecordCountMock,
   partnerVisitRecordGroupByMock,
@@ -20,6 +21,7 @@ const {
 } = vi.hoisted(() => ({
   authPlumbingFailureRef: { current: null as Error | null },
   withOrgContextMock: vi.fn(),
+  acquireAdvisoryTxLockMock: vi.fn(),
   partnerVisitRecordFindManyMock: vi.fn(),
   partnerVisitRecordCountMock: vi.fn(),
   partnerVisitRecordGroupByMock: vi.fn(),
@@ -54,6 +56,10 @@ vi.mock('@/lib/auth/context', () => ({
 
 vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
+}));
+
+vi.mock('@/lib/db/advisory-lock', () => ({
+  acquireAdvisoryTxLock: acquireAdvisoryTxLockMock,
 }));
 
 vi.mock('@/lib/audit/audit-entry', () => ({
@@ -103,6 +109,7 @@ describe('/api/partner-visit-records', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     authPlumbingFailureRef.current = null;
+    acquireAdvisoryTxLockMock.mockResolvedValue(undefined);
     pharmacyVisitRequestFindFirstMock.mockResolvedValue({
       id: 'visit_request_1',
       status: 'accepted',
@@ -473,7 +480,46 @@ describe('/api/partner-visit-records', () => {
     expect(response.headers.get('Pragma')).toBe('no-cache');
     expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
       requestContext: expect.objectContaining({ orgId: 'org_1', userId: 'user_1' }),
+      isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
     });
+    expect(pharmacyVisitRequestFindFirstMock).toHaveBeenCalledTimes(2);
+    for (const [call] of pharmacyVisitRequestFindFirstMock.mock.calls) {
+      expect(call.where).toEqual(
+        expect.objectContaining({
+          id: 'visit_request_1',
+          org_id: 'org_1',
+          share_case: {
+            is: expect.objectContaining({
+              org_id: 'org_1',
+              status: 'active',
+              revoked_at: null,
+              ended_at: null,
+            }),
+          },
+        }),
+      );
+      expect(call.where.share_case.is.AND).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            consents: { some: expect.objectContaining({ revoked_at: null }) },
+          }),
+        ]),
+      );
+    }
+    expect(acquireAdvisoryTxLockMock).toHaveBeenCalledWith(
+      expect.anything(),
+      'patient_share_case_consent',
+      'org_1:share_case_1',
+    );
+    expect(pharmacyVisitRequestFindFirstMock.mock.invocationCallOrder[0]).toBeLessThan(
+      acquireAdvisoryTxLockMock.mock.invocationCallOrder[0] ?? Number.POSITIVE_INFINITY,
+    );
+    expect(acquireAdvisoryTxLockMock.mock.invocationCallOrder[0]).toBeLessThan(
+      pharmacyVisitRequestFindFirstMock.mock.invocationCallOrder[1] ?? Number.POSITIVE_INFINITY,
+    );
+    expect(pharmacyVisitRequestFindFirstMock.mock.invocationCallOrder[1]).toBeLessThan(
+      partnerVisitRecordCreateMock.mock.invocationCallOrder[0] ?? Number.POSITIVE_INFINITY,
+    );
     expect(sourceVisitRecordFindFirstMock).toHaveBeenCalledWith({
       where: { id: 'visit_record_1', org_id: 'org_1', patient_id: 'patient_1' },
       select: { id: true },
@@ -494,6 +540,7 @@ describe('/api/partner-visit-records', () => {
         id: 'visit_request_1',
         org_id: 'org_1',
         status: { in: ['accepted', 'returned'] },
+        share_case: { is: expect.objectContaining({ org_id: 'org_1', status: 'active' }) },
       },
       data: { status: 'recording' },
     });
@@ -540,6 +587,57 @@ describe('/api/partner-visit-records', () => {
     expect(responseText).not.toContain('山田花子');
     expect(responseText).not.toContain('飲み忘れ');
     expect(responseText).not.toContain('A薬');
+  });
+
+  it('fails closed when active consent changes after target resolution and lock acquisition', async () => {
+    pharmacyVisitRequestFindFirstMock
+      .mockResolvedValueOnce({
+        id: 'visit_request_1',
+        status: 'accepted',
+        share_case_id: 'share_case_1',
+        partner_pharmacy_id: 'partner_pharmacy_1',
+        share_case: { status: 'active', base_patient_id: 'patient_1' },
+        partnership: { status: 'active', partner_pharmacy: { status: 'active' } },
+      })
+      .mockResolvedValueOnce(null);
+
+    const response = await POST(
+      createRequest({
+        visit_request_id: 'visit_request_1',
+        visit_at: '2026-06-20T01:30:00.000Z',
+        record_content: { medication_adherence: '確認済み' },
+      }),
+    );
+
+    expect(response.status).toBe(409);
+    expect(acquireAdvisoryTxLockMock).toHaveBeenCalledOnce();
+    expect(sourceVisitRecordFindFirstMock).not.toHaveBeenCalled();
+    expect(partnerVisitRecordFindFirstMock).not.toHaveBeenCalled();
+    expect(partnerVisitRecordCreateMock).not.toHaveBeenCalled();
+    expect(partnerVisitRecordUpdateManyMock).not.toHaveBeenCalled();
+    expect(pharmacyVisitRequestUpdateManyMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+  });
+
+  it('rolls back when the visit request status CAS loses after the draft write', async () => {
+    pharmacyVisitRequestUpdateManyMock.mockResolvedValueOnce({ count: 0 });
+
+    const response = await POST(
+      createRequest({
+        visit_request_id: 'visit_request_1',
+        visit_at: '2026-06-20T01:30:00.000Z',
+        record_content: { medication_adherence: '確認済み' },
+      }),
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: '訪問依頼はすでに更新されています',
+    });
+    expect(partnerVisitRecordCreateMock).toHaveBeenCalledOnce();
+    expect(pharmacyVisitRequestUpdateManyMock).toHaveBeenCalledOnce();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
   });
 
   it('rejects invalid draft payloads with no-store headers before loading records', async () => {
