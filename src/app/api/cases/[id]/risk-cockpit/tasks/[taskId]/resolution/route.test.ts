@@ -4,33 +4,70 @@ import { expectSensitiveNoStore } from '@/test/api-response-assertions';
 
 const {
   requireAuthContextMock,
+  withAuthContextMock,
   careCaseFindFirstMock,
-  taskFindFirstMock,
   withOrgContextMock,
-  requireWritableTaskPatientMock,
+  requireWritablePatientMock,
   waiveRiskOperationalTaskByIdMock,
-  loggerErrorMock,
-} = vi.hoisted(() => ({
-  requireAuthContextMock: vi.fn(),
-  careCaseFindFirstMock: vi.fn(),
-  taskFindFirstMock: vi.fn(),
-  withOrgContextMock: vi.fn(),
-  requireWritableTaskPatientMock: vi.fn(),
-  waiveRiskOperationalTaskByIdMock: vi.fn(),
-  loggerErrorMock: vi.fn(),
-}));
+} = vi.hoisted(() => {
+  const requireAuthContextMock = vi.fn();
+  const withAuthContextMock = vi.fn(
+    (
+      handler: (
+        req: NextRequest,
+        ctx: { orgId: string; userId: string; role: string },
+        routeContext: { params: Promise<{ id: string; taskId: string }> },
+      ) => Promise<Response>,
+      options: unknown,
+    ) => {
+      return async (
+        req: NextRequest,
+        routeContext: { params: Promise<{ id: string; taskId: string }> },
+      ) => {
+        const authResult = await requireAuthContextMock(req, options);
+        let response: Response;
+        if (authResult && typeof authResult === 'object' && 'response' in authResult) {
+          response = authResult.response;
+        } else {
+          try {
+            response = await handler(req, authResult.ctx, routeContext);
+          } catch {
+            response = NextResponse.json(
+              { code: 'INTERNAL_ERROR', message: 'サーバー内部でエラーが発生しました' },
+              { status: 500 },
+            );
+          }
+        }
+        response.headers.set('Cache-Control', 'private, no-store, max-age=0');
+        response.headers.set('Pragma', 'no-cache');
+        response.headers.set('X-Request-Id', '00000000-0000-4000-8000-000000000001');
+        response.headers.set(
+          'X-Correlation-Id',
+          req.headers.get('x-correlation-id') ?? '00000000-0000-4000-8000-000000000001',
+        );
+        return response;
+      };
+    },
+  );
+
+  return {
+    requireAuthContextMock,
+    withAuthContextMock,
+    careCaseFindFirstMock: vi.fn(),
+    withOrgContextMock: vi.fn(),
+    requireWritablePatientMock: vi.fn(),
+    waiveRiskOperationalTaskByIdMock: vi.fn(),
+  };
+});
 
 vi.mock('@/lib/auth/context', () => ({
-  requireAuthContext: requireAuthContextMock,
+  withAuthContext: withAuthContextMock,
 }));
 
 vi.mock('@/lib/db/client', () => ({
   prisma: {
     careCase: {
       findFirst: careCaseFindFirstMock,
-    },
-    task: {
-      findFirst: taskFindFirstMock,
     },
   },
 }));
@@ -39,18 +76,12 @@ vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
 }));
 
-vi.mock('@/server/services/task-write-guard', () => ({
-  requireWritableTaskPatient: requireWritableTaskPatientMock,
+vi.mock('@/server/services/patient-write-guard', () => ({
+  requireWritablePatient: requireWritablePatientMock,
 }));
 
 vi.mock('@/server/services/risk-task-resolution', () => ({
   waiveRiskOperationalTaskById: waiveRiskOperationalTaskByIdMock,
-}));
-
-vi.mock('@/lib/utils/logger', () => ({
-  logger: {
-    error: loggerErrorMock,
-  },
 }));
 
 import { POST } from './route';
@@ -58,7 +89,10 @@ import { POST } from './route';
 function request(body: unknown = waiverBody()) {
   return new NextRequest('http://localhost/api/cases/case_1/risk-cockpit/tasks/task_1/resolution', {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: {
+      'content-type': 'application/json',
+      'x-correlation-id': 'risk_task_resolution_test',
+    },
     body: JSON.stringify(body),
   });
 }
@@ -98,16 +132,11 @@ describe('/api/cases/[id]/risk-cockpit/tasks/[taskId]/resolution', () => {
         role: 'pharmacist',
       },
     });
-    careCaseFindFirstMock.mockResolvedValue({ id: 'case_1' });
-    taskFindFirstMock.mockResolvedValue({
-      id: 'task_1',
-      task_type: 'risk_billing',
-      related_entity_type: 'billing_evidence',
-      related_entity_id: 'bill_1',
-      status: 'pending',
-    });
-    requireWritableTaskPatientMock.mockResolvedValue(null);
-    withOrgContextMock.mockImplementation(async (_orgId, callback) => callback({ __tx: true }));
+    careCaseFindFirstMock.mockResolvedValue({ patient_id: 'patient_1' });
+    requireWritablePatientMock.mockResolvedValue({ patient: { id: 'patient_1' } });
+    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
+      callback({ __tx: true, careCase: { findFirst: careCaseFindFirstMock } }),
+    );
     waiveRiskOperationalTaskByIdMock.mockResolvedValue({
       status: 'waived',
       task_id: 'task_1',
@@ -123,18 +152,33 @@ describe('/api/cases/[id]/risk-cockpit/tasks/[taskId]/resolution', () => {
 
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
+    expect(response.headers.get('X-Request-Id')).toBe('00000000-0000-4000-8000-000000000001');
+    expect(response.headers.get('X-Correlation-Id')).toBe('risk_task_resolution_test');
     expect(requireAuthContextMock).toHaveBeenCalledWith(expect.any(NextRequest), {
       permission: 'canAuditDispense',
       message: 'リスクタスクを免除する権限がありません',
     });
     expect(careCaseFindFirstMock).toHaveBeenCalledWith({
-      where: { id: 'case_1', org_id: 'org_1' },
-      select: { id: true },
+      where: {
+        id: 'case_1',
+        org_id: 'org_1',
+        AND: [
+          {
+            OR: [
+              { primary_pharmacist_id: 'user_1' },
+              { backup_pharmacist_id: 'user_1' },
+              { visit_schedules: { some: { pharmacist_id: 'user_1' } } },
+            ],
+          },
+        ],
+      },
+      select: { patient_id: true },
     });
-    expect(taskFindFirstMock).toHaveBeenCalledWith({
-      where: { id: 'task_1', org_id: 'org_1' },
-    });
-    expect(requireWritableTaskPatientMock).toHaveBeenCalled();
+    expect(requireWritablePatientMock).toHaveBeenCalledWith(
+      expect.objectContaining({ __tx: true }),
+      expect.objectContaining({ orgId: 'org_1', userId: 'user_1', role: 'pharmacist' }),
+      'patient_1',
+    );
     expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
       requestContext: expect.objectContaining({
         orgId: 'org_1',
@@ -143,7 +187,7 @@ describe('/api/cases/[id]/risk-cockpit/tasks/[taskId]/resolution', () => {
       }),
     });
     expect(waiveRiskOperationalTaskByIdMock).toHaveBeenCalledWith(
-      { __tx: true },
+      expect.objectContaining({ __tx: true }),
       expect.objectContaining({
         orgId: 'org_1',
         caseId: 'case_1',
@@ -219,7 +263,7 @@ describe('/api/cases/[id]/risk-cockpit/tasks/[taskId]/resolution', () => {
     expect(withOrgContextMock).not.toHaveBeenCalled();
   });
 
-  it('returns no-store 404 for missing or out-of-scope case/task', async () => {
+  it('returns no-store 404 for an unassigned case or missing task', async () => {
     careCaseFindFirstMock.mockResolvedValueOnce(null);
     const missingCase = (await POST(request(), routeContext()))!;
     expect(missingCase.status).toBe(404);
@@ -228,14 +272,28 @@ describe('/api/cases/[id]/risk-cockpit/tasks/[taskId]/resolution', () => {
       code: 'WORKFLOW_NOT_FOUND',
       message: 'ケースまたはタスクが見つかりません',
     });
-    expect(taskFindFirstMock).not.toHaveBeenCalled();
+    expect(requireWritablePatientMock).not.toHaveBeenCalled();
+    expect(waiveRiskOperationalTaskByIdMock).not.toHaveBeenCalled();
 
-    careCaseFindFirstMock.mockResolvedValueOnce({ id: 'case_1' });
-    taskFindFirstMock.mockResolvedValueOnce(null);
+    waiveRiskOperationalTaskByIdMock.mockResolvedValueOnce({ status: 'not_found' });
     const missingTask = (await POST(request(), routeContext()))!;
     expect(missingTask.status).toBe(404);
     expectSensitiveNoStore(missingTask);
-    expect(withOrgContextMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects archived or otherwise non-writable assigned patients before task mutation', async () => {
+    requireWritablePatientMock.mockResolvedValueOnce({
+      response: NextResponse.json(
+        { code: 'WORKFLOW_CONFLICT', message: 'アーカイブ済み患者は更新できません' },
+        { status: 409 },
+      ),
+    });
+
+    const response = (await POST(request(), routeContext()))!;
+
+    expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
+    expect(waiveRiskOperationalTaskByIdMock).not.toHaveBeenCalled();
   });
 
   it('maps invalid risk task and stale update results to no-store conflicts', async () => {
@@ -271,13 +329,6 @@ describe('/api/cases/[id]/risk-cockpit/tasks/[taskId]/resolution', () => {
     });
     expect(JSON.stringify(body)).not.toContain('山田花子');
     expect(JSON.stringify(body)).not.toContain('アムロジピン');
-    expect(loggerErrorMock).toHaveBeenCalledWith({
-      event: 'route_handler_unhandled_error',
-      route: '/api/cases/case_1/risk-cockpit/tasks/task_1/resolution',
-      method: 'POST',
-      code: 'Error',
-    });
-    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('山田花子');
   });
 
   it('returns no-store validation error for malformed JSON', async () => {

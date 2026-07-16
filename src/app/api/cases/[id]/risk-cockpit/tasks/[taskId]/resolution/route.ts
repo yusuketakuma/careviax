@@ -1,15 +1,12 @@
 import { NextRequest } from 'next/server';
-import { unstable_rethrow } from 'next/navigation';
 import { z } from 'zod';
 import { parseJsonObjectRequestBodyOrError } from '@/lib/api/request-body';
-import { conflict, internalError, notFound, success, validationError } from '@/lib/api/response';
+import { conflict, notFound, success, validationError } from '@/lib/api/response';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
-import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
-import { requireAuthContext } from '@/lib/auth/context';
-import { prisma } from '@/lib/db/client';
+import { withAuthContext, type AuthContext, type AuthRouteContext } from '@/lib/auth/context';
+import { buildPersonalCareCaseAssignmentWhere } from '@/lib/auth/visit-schedule-access';
 import { withOrgContext } from '@/lib/db/rls';
-import { logger } from '@/lib/utils/logger';
-import { requireWritableTaskPatient } from '@/server/services/task-write-guard';
+import { requireWritablePatient } from '@/server/services/patient-write-guard';
 import { waiveRiskOperationalTaskById } from '@/server/services/risk-task-resolution';
 
 const riskTaskResolutionSchema = z.object({
@@ -23,17 +20,11 @@ const riskTaskResolutionSchema = z.object({
     .nullable(),
 });
 
-async function authenticatedPOST(
+async function riskTaskResolutionPOST(
   req: NextRequest,
-  { params }: { params: Promise<{ id: string; taskId: string }> },
+  ctx: AuthContext,
+  { params }: AuthRouteContext<{ id: string; taskId: string }>,
 ) {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canAuditDispense',
-    message: 'リスクタスクを免除する権限がありません',
-  });
-  if ('response' in authResult) return authResult.response;
-  const ctx = authResult.ctx;
-
   const { id: rawCaseId, taskId: rawTaskId } = await params;
   const caseId = normalizeRequiredRouteParam(rawCaseId);
   const taskId = normalizeRequiredRouteParam(rawTaskId);
@@ -46,43 +37,40 @@ async function authenticatedPOST(
   });
   if (!body.ok) return body.response;
 
-  const careCase = await prisma.careCase.findFirst({
-    where: {
-      id: caseId,
-      org_id: ctx.orgId,
-    },
-    select: {
-      id: true,
-    },
-  });
-  if (!careCase) return notFound('ケースまたはタスクが見つかりません');
-
-  const existing = await prisma.task.findFirst({
-    where: {
-      id: taskId,
-      org_id: ctx.orgId,
-    },
-  });
-  if (!existing) return notFound('ケースまたはタスクが見つかりません');
-
-  const writable = await requireWritableTaskPatient(prisma, ctx, existing);
-  if (writable && 'response' in writable) return writable.response;
-
   const result = await withOrgContext(
     ctx.orgId,
-    (tx) =>
-      waiveRiskOperationalTaskById(tx, {
+    async (tx) => {
+      const careCase = await tx.careCase.findFirst({
+        where: {
+          id: caseId,
+          org_id: ctx.orgId,
+          AND: [buildPersonalCareCaseAssignmentWhere(ctx)],
+        },
+        select: {
+          patient_id: true,
+        },
+      });
+      if (!careCase) return { status: 'not_found' as const };
+
+      const writable = await requireWritablePatient(tx, ctx, careCase.patient_id);
+      if ('response' in writable) {
+        return { status: 'write_rejected' as const, response: writable.response };
+      }
+
+      return waiveRiskOperationalTaskById(tx, {
         orgId: ctx.orgId,
         caseId,
         taskId,
         ctx,
         waiverReason: body.data.waiver_reason,
         reasonCode: body.data.reason_code,
-      }),
+      });
+    },
     { requestContext: ctx },
   );
 
   if (result.status === 'not_found') return notFound('ケースまたはタスクが見つかりません');
+  if (result.status === 'write_rejected') return result.response;
   if (result.status === 'invalid_risk_task') {
     return conflict('このタスクはリスク解決専用フローの対象外です');
   }
@@ -103,20 +91,7 @@ async function authenticatedPOST(
   });
 }
 
-export async function POST(
-  req: NextRequest,
-  routeContext: { params: Promise<{ id: string; taskId: string }> },
-) {
-  try {
-    return withSensitiveNoStore(await authenticatedPOST(req, routeContext));
-  } catch (err) {
-    unstable_rethrow(err);
-    logger.error({
-      event: 'route_handler_unhandled_error',
-      route: req.nextUrl?.pathname,
-      method: req.method,
-      code: err instanceof Error ? err.name : typeof err,
-    });
-    return withSensitiveNoStore(internalError());
-  }
-}
+export const POST = withAuthContext(riskTaskResolutionPOST, {
+  permission: 'canAuditDispense',
+  message: 'リスクタスクを免除する権限がありません',
+});
