@@ -16,6 +16,7 @@ export const medicationIssueListItemSchema = z
     identified_at: z.string(),
     resolved_by: z.string().nullable(),
     resolved_at: z.string().nullable(),
+    version: z.number().int().positive(),
     created_at: z.string(),
     updated_at: z.string(),
   })

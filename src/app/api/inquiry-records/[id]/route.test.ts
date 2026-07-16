@@ -722,6 +722,7 @@ describe('/api/inquiry-records/[id] PATCH', () => {
         status: 'in_progress',
         resolved_by: null,
         resolved_at: null,
+        version: { increment: 1 },
       },
     });
     expect(auditLogCreateMock).toHaveBeenCalledWith({

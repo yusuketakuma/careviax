@@ -431,6 +431,7 @@ model MedicationIssue {
   identified_at DateTime      @default(now())
   resolved_by   String?
   resolved_at   DateTime?
+  version       Int           @default(1)
   created_at    DateTime      @default(now())
   updated_at    DateTime      @updatedAt
 

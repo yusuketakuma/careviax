@@ -48,14 +48,26 @@ export const createMedicationIssueSchema = z.object({
 
 export type CreateMedicationIssueInput = z.infer<typeof createMedicationIssueSchema>;
 
-export const updateMedicationIssueSchema = z.object({
-  status: medicationIssueStatusSchema.optional(),
-  priority: z.enum(['critical', 'high', 'medium', 'low']).optional(),
-  title: z.string().min(1).optional(),
-  description: z.string().min(1).optional(),
-  category: z.enum(['adherence', 'side_effect', 'interaction', 'duplicate', 'other']).optional(),
-  promote_to_medication_profile: z.boolean().optional(),
-});
+export const updateMedicationIssueSchema = z
+  .object({
+    version: z.number().int().min(1, 'バージョンは1以上です'),
+    status: medicationIssueStatusSchema.optional(),
+    priority: z.enum(['critical', 'high', 'medium', 'low']).optional(),
+    title: z.string().min(1).optional(),
+    description: z.string().min(1).optional(),
+    category: z.enum(['adherence', 'side_effect', 'interaction', 'duplicate', 'other']).optional(),
+    promote_to_medication_profile: z.boolean().optional(),
+  })
+  .refine(
+    (value) =>
+      value.status !== undefined ||
+      value.priority !== undefined ||
+      value.title !== undefined ||
+      value.description !== undefined ||
+      value.category !== undefined ||
+      value.promote_to_medication_profile === true,
+    { message: '更新する項目がありません' },
+  );
 
 export type UpdateMedicationIssueInput = z.infer<typeof updateMedicationIssueSchema>;
 

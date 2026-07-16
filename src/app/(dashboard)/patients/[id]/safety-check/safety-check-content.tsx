@@ -372,8 +372,14 @@ export function SafetyCheckContent({ patientId }: { patientId: string }) {
   const [selectedCategory, setSelectedCategory] = useState<ConcernCategory | null>(null);
   const [consultDialogOpen, setConsultDialogOpen] = useState(false);
   const [resolveDialogOpen, setResolveDialogOpen] = useState(false);
-  const [resolveDialogIssueId, setResolveDialogIssueId] = useState<string | null>(null);
-  const [failedResolveIssueId, setFailedResolveIssueId] = useState<string | null>(null);
+  const [resolveDialogIssue, setResolveDialogIssue] = useState<{
+    id: string;
+    version: number;
+  } | null>(null);
+  const [failedResolveIssue, setFailedResolveIssue] = useState<{
+    id: string;
+    version: number;
+  } | null>(null);
 
   const issuesQuery = useQuery({
     queryKey: ['medication-issues', orgId, patientId],
@@ -461,7 +467,7 @@ export function SafetyCheckContent({ patientId }: { patientId: string }) {
         const patchResponse = await fetch(`/api/medication-issues/${followUpIssuePath}`, {
           method: 'PATCH',
           headers: buildOrgJsonHeaders(orgId),
-          body: JSON.stringify({ status: 'in_progress' }),
+          body: JSON.stringify({ status: 'in_progress', version: selectedIssue.version }),
         });
         if (!patchResponse.ok) {
           const patchPayload = await patchResponse.json().catch(() => null);
@@ -481,11 +487,11 @@ export function SafetyCheckContent({ patientId }: { patientId: string }) {
   });
 
   const resolveMutation = useMutation({
-    mutationFn: async (issueId: string) => {
-      const response = await fetch(`/api/medication-issues/${encodePathSegment(issueId)}`, {
+    mutationFn: async (issue: { id: string; version: number }) => {
+      const response = await fetch(`/api/medication-issues/${encodePathSegment(issue.id)}`, {
         method: 'PATCH',
         headers: buildOrgJsonHeaders(orgId),
-        body: JSON.stringify({ status: 'resolved' }),
+        body: JSON.stringify({ status: 'resolved', version: issue.version }),
       });
       const payload = await response.json().catch(() => null);
       if (!response.ok) {
@@ -494,33 +500,33 @@ export function SafetyCheckContent({ patientId }: { patientId: string }) {
       return payload;
     },
     onMutate: () => {
-      setFailedResolveIssueId(null);
+      setFailedResolveIssue(null);
     },
     onSuccess: async () => {
       await invalidatePatientIssueQueries();
       toast.success('問題なしとして完了しました');
-      setFailedResolveIssueId(null);
-      setResolveDialogIssueId(null);
+      setFailedResolveIssue(null);
+      setResolveDialogIssue(null);
       setResolveDialogOpen(false);
     },
-    onError: (_error, issueId) => {
-      setFailedResolveIssueId(issueId);
+    onError: (_error, issue) => {
+      setFailedResolveIssue(issue);
       toast.error('課題の完了に失敗しました');
     },
   });
 
   const openResolveDialog = () => {
     if (!selectedIssue) return;
-    setResolveDialogIssueId(selectedIssue.id);
-    setFailedResolveIssueId(null);
+    setResolveDialogIssue({ id: selectedIssue.id, version: selectedIssue.version });
+    setFailedResolveIssue(null);
     setResolveDialogOpen(true);
   };
 
   const handleResolveDialogOpenChange = (open: boolean) => {
     setResolveDialogOpen(open);
     if (!open) {
-      setResolveDialogIssueId(null);
-      setFailedResolveIssueId(null);
+      setResolveDialogIssue(null);
+      setFailedResolveIssue(null);
     }
   };
 
@@ -680,13 +686,13 @@ export function SafetyCheckContent({ patientId }: { patientId: string }) {
         }
         confirmLabel="問題なしにする"
         closeOnConfirm={false}
-        confirmDisabled={!resolveDialogIssueId || resolveMutation.isPending}
+        confirmDisabled={!resolveDialogIssue || resolveMutation.isPending}
         cancelDisabled={resolveMutation.isPending}
         onConfirm={() => {
-          if (resolveDialogIssueId) resolveMutation.mutate(resolveDialogIssueId);
+          if (resolveDialogIssue) resolveMutation.mutate(resolveDialogIssue);
         }}
       >
-        {failedResolveIssueId ? (
+        {failedResolveIssue ? (
           <ErrorState
             variant="server"
             size="inline"
@@ -695,7 +701,7 @@ export function SafetyCheckContent({ patientId }: { patientId: string }) {
             title="課題を完了できません"
             cause="課題の完了処理に失敗しました。"
             nextAction="選択内容を保持しています。同じ課題で再試行してください。"
-            onRetry={() => resolveMutation.mutate(failedResolveIssueId)}
+            onRetry={() => resolveMutation.mutate(failedResolveIssue)}
             retryLabel="同じ課題で再試行"
             retryDisabled={resolveMutation.isPending}
             className="px-4 py-5"

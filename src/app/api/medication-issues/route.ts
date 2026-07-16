@@ -221,6 +221,7 @@ async function authenticatedGET(req: NextRequest) {
         identified_at: true,
         resolved_by: true,
         resolved_at: true,
+        version: true,
         created_at: true,
         updated_at: true,
       },

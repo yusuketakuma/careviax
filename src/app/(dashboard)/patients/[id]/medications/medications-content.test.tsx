@@ -244,6 +244,7 @@ describe('MedicationsContent url/header convergence', () => {
       category: 'adherence',
       identified_at: '2026-06-10T09:00:00.000Z',
       resolved_at: null,
+      version: 1,
     };
   }
 
@@ -679,14 +680,14 @@ describe('MedicationsContent url/header convergence', () => {
     try {
       // issueStatusMutation is the last mutation registered on the main render
       const statusMutation = mutationConfigs.at(-1)!;
-      await statusMutation.mutationFn({ issueId: HOSTILE, status: 'resolved' });
+      await statusMutation.mutationFn({ issueId: HOSTILE, status: 'resolved', version: 1 });
       const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
       expect(url).toBe(`/api/medication-issues/${ENCODED}`);
       expect(url).not.toContain('%25');
       expect(init.method).toBe('PATCH');
       expect(init.headers).toBe(sentinel);
       expect(vi.mocked(buildOrgJsonHeaders)).toHaveBeenCalledWith('org_1');
-      expect(JSON.parse(init.body as string)).toEqual({ status: 'resolved' });
+      expect(JSON.parse(init.body as string)).toEqual({ status: 'resolved', version: 1 });
       expect(init.body as string).not.toContain(HOSTILE);
       // org-scoped invalidation on success (tenant-isolated cache key)
       await act(async () => {
@@ -707,7 +708,7 @@ describe('MedicationsContent url/header convergence', () => {
       const fetchMock = stubFetch();
       try {
         await expect(
-          mutationConfigs.at(-1)!.mutationFn({ issueId: dotId, status: 'resolved' }),
+          mutationConfigs.at(-1)!.mutationFn({ issueId: dotId, status: 'resolved', version: 1 }),
         ).rejects.toThrow(RangeError);
         expect(fetchMock).not.toHaveBeenCalled();
       } finally {
@@ -763,7 +764,11 @@ describe('MedicationsContent url/header convergence', () => {
       expect(init.method).toBe('PATCH');
       expect(init.headers).toBe(sentinel);
       // update body is the form only; path id not serialized
-      expect(JSON.parse(init.body as string)).toEqual({ title: '更新', priority: 'low' });
+      expect(JSON.parse(init.body as string)).toEqual({
+        title: '更新',
+        priority: 'low',
+        version: 1,
+      });
       expect(init.body as string).not.toContain(HOSTILE);
     } finally {
       vi.unstubAllGlobals();

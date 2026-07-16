@@ -3,6 +3,7 @@ import { NextRequest } from 'next/server';
 
 const {
   requireAuthContextMock,
+  membershipFindFirstMock,
   patientFindFirstMock,
   patientFindManyMock,
   careCaseFindFirstMock,
@@ -10,7 +11,7 @@ const {
   medicationProfileCreateMock,
   medicationProfileFindFirstMock,
   medicationIssueFindFirstMock,
-  medicationIssueUpdateMock,
+  medicationIssueUpdateManyMock,
   patientLabObservationCreateMock,
   patientLabObservationFindFirstMock,
   patientUpdateMock,
@@ -21,6 +22,7 @@ const {
   allocateDisplayIdRangeMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
+  membershipFindFirstMock: vi.fn(),
   patientFindFirstMock: vi.fn(),
   patientFindManyMock: vi.fn(),
   careCaseFindFirstMock: vi.fn(),
@@ -28,7 +30,7 @@ const {
   medicationProfileCreateMock: vi.fn(),
   medicationProfileFindFirstMock: vi.fn(),
   medicationIssueFindFirstMock: vi.fn(),
-  medicationIssueUpdateMock: vi.fn(),
+  medicationIssueUpdateManyMock: vi.fn(),
   patientLabObservationCreateMock: vi.fn(),
   patientLabObservationFindFirstMock: vi.fn(),
   patientUpdateMock: vi.fn(),
@@ -80,10 +82,14 @@ import { PATCH } from './route';
 import { expectSensitiveNoStore } from '@/test/api-response-assertions';
 
 function createPatchRequest(body: unknown) {
+  const versionedBody =
+    body !== null && typeof body === 'object' && !Array.isArray(body)
+      ? { version: 1, ...body }
+      : body;
   return new NextRequest('http://localhost/api/medication-issues/issue_1', {
     method: 'PATCH',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(body),
+    body: JSON.stringify(versionedBody),
   });
 }
 
@@ -93,25 +99,6 @@ function createMalformedJsonPatchRequest() {
     headers: { 'content-type': 'application/json' },
     body: '{"status":',
   });
-}
-
-function expectNoMedicationIssuePatchSideEffects() {
-  expect(patientFindManyMock).not.toHaveBeenCalled();
-  expect(careCaseFindManyMock).not.toHaveBeenCalled();
-  expect(medicationIssueFindFirstMock).not.toHaveBeenCalled();
-  expect(patientFindFirstMock).not.toHaveBeenCalled();
-  expect(careCaseFindFirstMock).not.toHaveBeenCalled();
-  expect(withOrgContextMock).not.toHaveBeenCalled();
-  expect(medicationIssueUpdateMock).not.toHaveBeenCalled();
-  expect(patientUpdateMock).not.toHaveBeenCalled();
-  expect(patientLabObservationFindFirstMock).not.toHaveBeenCalled();
-  expect(patientLabObservationCreateMock).not.toHaveBeenCalled();
-  expect(medicationProfileFindFirstMock).not.toHaveBeenCalled();
-  expect(medicationProfileCreateMock).not.toHaveBeenCalled();
-  expect(allocateDisplayIdMock).not.toHaveBeenCalled();
-  expect(allocateDisplayIdRangeMock).not.toHaveBeenCalled();
-  expect(createAuditLogEntryMock).not.toHaveBeenCalled();
-  expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
 }
 
 describe('/api/medication-issues/[id]', () => {
@@ -128,6 +115,7 @@ describe('/api/medication-issues/[id]', () => {
     patientFindManyMock.mockResolvedValue([{ id: 'patient_1' }]);
     careCaseFindFirstMock.mockResolvedValue({ id: 'case_1', patient_id: 'patient_1' });
     careCaseFindManyMock.mockResolvedValue([{ id: 'case_1' }]);
+    membershipFindFirstMock.mockResolvedValue({ role: 'pharmacist' });
     medicationIssueFindFirstMock.mockResolvedValue({
       id: 'issue_1',
       status: 'open',
@@ -137,21 +125,31 @@ describe('/api/medication-issues/[id]', () => {
       description: '説明',
       priority: 'medium',
       category: 'other',
+      version: 1,
     });
-    medicationIssueUpdateMock.mockResolvedValue({
-      id: 'issue_1',
-      status: 'resolved',
-    });
+    medicationIssueUpdateManyMock.mockResolvedValue({ count: 1 });
     createAuditLogEntryMock.mockResolvedValue({ id: 'audit_1' });
     notifyWorkflowMutationMock.mockResolvedValue(undefined);
     allocateDisplayIdMock.mockResolvedValue('m0000000001');
     allocateDisplayIdRangeMock.mockResolvedValue(['plab0000000001', 'plab0000000002']);
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
+        membership: {
+          findFirst: membershipFindFirstMock,
+        },
         medicationIssue: {
-          update: medicationIssueUpdateMock,
+          findFirst: async (...args: unknown[]) => {
+            const issue = await medicationIssueFindFirstMock(...args);
+            return issue && issue.version === undefined ? { ...issue, version: 1 } : issue;
+          },
+          updateMany: medicationIssueUpdateManyMock,
+        },
+        careCase: {
+          findFirst: careCaseFindFirstMock,
+          findMany: careCaseFindManyMock,
         },
         patient: {
+          findMany: patientFindManyMock,
           findFirst: patientFindFirstMock,
           update: patientUpdateMock,
         },
@@ -182,7 +180,7 @@ describe('/api/medication-issues/[id]', () => {
     expect(patientFindFirstMock).not.toHaveBeenCalled();
     expect(careCaseFindFirstMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
-    expect(medicationIssueUpdateMock).not.toHaveBeenCalled();
+    expect(medicationIssueUpdateManyMock).not.toHaveBeenCalled();
   });
 
   it('rejects malformed JSON patch payloads before loading the medication issue', async () => {
@@ -200,7 +198,18 @@ describe('/api/medication-issues/[id]', () => {
     expect(patientFindFirstMock).not.toHaveBeenCalled();
     expect(careCaseFindFirstMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
-    expect(medicationIssueUpdateMock).not.toHaveBeenCalled();
+    expect(medicationIssueUpdateManyMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects a version-only patch without incrementing the record version', async () => {
+    const response = (await PATCH(createPatchRequest({}), {
+      params: Promise.resolve({ id: 'issue_1' }),
+    }))!;
+
+    expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(medicationIssueUpdateManyMock).not.toHaveBeenCalled();
   });
 
   it('rejects blank medication issue ids before parsing or loading the issue', async () => {
@@ -224,7 +233,7 @@ describe('/api/medication-issues/[id]', () => {
     expect(patientFindFirstMock).not.toHaveBeenCalled();
     expect(careCaseFindFirstMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
-    expect(medicationIssueUpdateMock).not.toHaveBeenCalled();
+    expect(medicationIssueUpdateManyMock).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -245,6 +254,7 @@ describe('/api/medication-issues/[id]', () => {
         role: 'pharmacist_trainee',
       },
     });
+    membershipFindFirstMock.mockResolvedValueOnce({ role: 'pharmacist_trainee' });
 
     const response = (await PATCH(createPatchRequest(body), {
       params: Promise.resolve({ id: 'issue_1' }),
@@ -256,7 +266,12 @@ describe('/api/medication-issues/[id]', () => {
       code: 'AUTH_FORBIDDEN',
       message: '服薬課題の状態変更・反映権限がありません',
     });
-    expectNoMedicationIssuePatchSideEffects();
+    expect(withOrgContextMock).toHaveBeenCalledOnce();
+    expect(membershipFindFirstMock).toHaveBeenCalledOnce();
+    expect(medicationIssueFindFirstMock).not.toHaveBeenCalled();
+    expect(medicationIssueUpdateManyMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
   it('allows pharmacist trainees to make non-status medication issue triage edits', async () => {
@@ -267,6 +282,7 @@ describe('/api/medication-issues/[id]', () => {
         role: 'pharmacist_trainee',
       },
     });
+    membershipFindFirstMock.mockResolvedValueOnce({ role: 'pharmacist_trainee' });
 
     const response = (await PATCH(
       createPatchRequest({
@@ -279,6 +295,10 @@ describe('/api/medication-issues/[id]', () => {
 
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
+    expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
+      requestContext: expect.objectContaining({ orgId: 'org_1', userId: 'trainee_1' }),
+      isolationLevel: 'Serializable',
+    });
     expect(medicationIssueFindFirstMock).toHaveBeenCalledWith({
       where: {
         id: 'issue_1',
@@ -293,16 +313,22 @@ describe('/api/medication-issues/[id]', () => {
         description: true,
         priority: true,
         category: true,
+        version: true,
       },
     });
-    expect(medicationIssueUpdateMock).toHaveBeenCalledWith({
-      where: { id: 'issue_1' },
+    expect(medicationIssueUpdateManyMock).toHaveBeenCalledWith({
+      where: expect.objectContaining({ id: 'issue_1', org_id: 'org_1', version: 1 }),
       data: expect.objectContaining({
         priority: 'high',
+        version: { increment: 1 },
       }),
     });
-    expect(medicationIssueUpdateMock.mock.calls[0]?.[0]?.data).not.toHaveProperty('resolved_by');
-    expect(medicationIssueUpdateMock.mock.calls[0]?.[0]?.data).not.toHaveProperty('resolved_at');
+    expect(medicationIssueUpdateManyMock.mock.calls[0]?.[0]?.data).not.toHaveProperty(
+      'resolved_by',
+    );
+    expect(medicationIssueUpdateManyMock.mock.calls[0]?.[0]?.data).not.toHaveProperty(
+      'resolved_at',
+    );
     expect(createAuditLogEntryMock).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({ orgId: 'org_1', userId: 'trainee_1' }),
@@ -356,12 +382,14 @@ describe('/api/medication-issues/[id]', () => {
         description: true,
         priority: true,
         category: true,
+        version: true,
       },
     });
-    expect(medicationIssueUpdateMock).toHaveBeenCalledWith({
-      where: { id: 'issue_1' },
+    expect(medicationIssueUpdateManyMock).toHaveBeenCalledWith({
+      where: expect.objectContaining({ id: 'issue_1', org_id: 'org_1', version: 1 }),
       data: expect.objectContaining({
         status: 'resolved',
+        version: { increment: 1 },
         resolved_by: 'user_1',
         resolved_at: expect.any(Date),
       }),
@@ -416,10 +444,11 @@ describe('/api/medication-issues/[id]', () => {
 
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
-    expect(medicationIssueUpdateMock).toHaveBeenCalledWith({
-      where: { id: 'issue_1' },
+    expect(medicationIssueUpdateManyMock).toHaveBeenCalledWith({
+      where: expect.objectContaining({ id: 'issue_1', org_id: 'org_1', version: 1 }),
       data: expect.objectContaining({
         status: 'in_progress',
+        version: { increment: 1 },
         resolved_by: null,
         resolved_at: null,
       }),
@@ -442,8 +471,76 @@ describe('/api/medication-issues/[id]', () => {
     expectSensitiveNoStore(response);
     expect(patientFindFirstMock).not.toHaveBeenCalled();
     expect(careCaseFindFirstMock).not.toHaveBeenCalled();
-    expect(withOrgContextMock).not.toHaveBeenCalled();
-    expect(medicationIssueUpdateMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).toHaveBeenCalledOnce();
+    expect(medicationIssueUpdateManyMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects an inactive membership from the fresh transaction snapshot', async () => {
+    membershipFindFirstMock.mockResolvedValueOnce(null);
+
+    const response = (await PATCH(createPatchRequest({ priority: 'high' }), {
+      params: Promise.resolve({ id: 'issue_1' }),
+    }))!;
+
+    expect(response.status).toBe(403);
+    expectSensitiveNoStore(response);
+    expect(medicationIssueFindFirstMock).not.toHaveBeenCalled();
+    expect(medicationIssueUpdateManyMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+  });
+
+  it('returns 409 when the submitted medication issue version is stale', async () => {
+    medicationIssueFindFirstMock.mockResolvedValue({
+      id: 'issue_1',
+      status: 'open',
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+      title: '服薬課題',
+      description: '説明',
+      priority: 'medium',
+      category: 'other',
+      version: 2,
+    });
+
+    const response = (await PATCH(createPatchRequest({ priority: 'high' }), {
+      params: Promise.resolve({ id: 'issue_1' }),
+    }))!;
+
+    expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      details: { expected_version: 1, current_version: 2 },
+    });
+    expect(medicationIssueUpdateManyMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('returns 409 when the compare-and-swap update loses a race', async () => {
+    medicationIssueUpdateManyMock.mockResolvedValueOnce({ count: 0 });
+
+    const response = (await PATCH(createPatchRequest({ priority: 'high' }), {
+      params: Promise.resolve({ id: 'issue_1' }),
+    }))!;
+
+    expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('maps a serializable transaction conflict to a retryable 409', async () => {
+    withOrgContextMock.mockRejectedValueOnce({ code: 'P2034' });
+
+    const response = (await PATCH(createPatchRequest({ priority: 'high' }), {
+      params: Promise.resolve({ id: 'issue_1' }),
+    }))!;
+
+    expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
     expect(createAuditLogEntryMock).not.toHaveBeenCalled();
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
@@ -458,7 +555,7 @@ describe('/api/medication-issues/[id]', () => {
       description: '説明',
       category: 'other',
     });
-    careCaseFindFirstMock.mockResolvedValue({ id: 'case_2', patient_id: 'patient_other' });
+    careCaseFindFirstMock.mockResolvedValue(null);
 
     const response = (await PATCH(
       createPatchRequest({
@@ -470,8 +567,8 @@ describe('/api/medication-issues/[id]', () => {
     ))!;
 
     expect(response.status).toBe(400);
-    expect(withOrgContextMock).not.toHaveBeenCalled();
-    expect(medicationIssueUpdateMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).toHaveBeenCalledOnce();
+    expect(medicationIssueUpdateManyMock).not.toHaveBeenCalled();
   });
 
   it('promotes a resolved QR allergy candidate to patient allergy_info', async () => {

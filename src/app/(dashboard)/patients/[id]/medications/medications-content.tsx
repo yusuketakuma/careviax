@@ -816,7 +816,7 @@ export function MedicationsContent({
           headers: buildOrgJsonHeaders(orgId),
           body: JSON.stringify(
             isUpdate
-              ? form
+              ? { ...form, version: editingIssue.version }
               : {
                   patient_id: patientId,
                   ...form,
@@ -848,14 +848,16 @@ export function MedicationsContent({
     mutationFn: async ({
       issueId,
       status,
+      version,
     }: {
       issueId: string;
       status: MedicationIssue['status'];
+      version: number;
     }) => {
       const response = await fetch(`/api/medication-issues/${encodePathSegment(issueId)}`, {
         method: 'PATCH',
         headers: buildOrgJsonHeaders(orgId),
-        body: JSON.stringify({ status }),
+        body: JSON.stringify({ status, version }),
       });
       const payload = await response.json().catch(() => null);
       if (!response.ok) {
@@ -1286,6 +1288,7 @@ export function MedicationsContent({
                               issueStatusMutation.mutate({
                                 issueId: issue.id,
                                 status: 'in_progress',
+                                version: issue.version,
                               })
                             }
                             disabled={issueStatusMutation.isPending}
@@ -1300,7 +1303,11 @@ export function MedicationsContent({
                             size="sm"
                             className={clinicalActionSizeClass}
                             onClick={() =>
-                              issueStatusMutation.mutate({ issueId: issue.id, status: 'resolved' })
+                              issueStatusMutation.mutate({
+                                issueId: issue.id,
+                                status: 'resolved',
+                                version: issue.version,
+                              })
                             }
                             disabled={issueStatusMutation.isPending}
                           >

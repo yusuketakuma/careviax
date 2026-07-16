@@ -85,6 +85,7 @@ function buildPatientSummaryPayload(patientId = 'patient_1') {
 function buildIssue(overrides: IssueOverrides): SafetyIssueRecord & {
   patient_id: string;
   case_id: string | null;
+  version: number;
 } {
   return {
     id: overrides.id,
@@ -96,6 +97,7 @@ function buildIssue(overrides: IssueOverrides): SafetyIssueRecord & {
     priority: overrides.priority ?? 'high',
     category: overrides.category ?? 'interaction',
     identified_at: overrides.identified_at ?? '2026-06-10T09:00:00.000Z',
+    version: 1,
   };
 }
 
@@ -348,12 +350,12 @@ describe('SafetyCheckContent', () => {
     const dialog = screen.getByRole('alertdialog');
     fireEvent.click(screen.getByTestId('safety-concern-duplicate'));
     fireEvent.click(within(dialog).getByRole('button', { name: '問題なしにする' }));
-    expect(resolveMutate).toHaveBeenLastCalledWith('issue_original');
+    expect(resolveMutate).toHaveBeenLastCalledWith({ id: 'issue_original', version: 1 });
 
     await act(async () => {
       mutationConfigs[1]?.onError?.(
         new Error('山田花子の課題更新でprovider detailが発生しました'),
-        'issue_original',
+        { id: 'issue_original', version: 1 },
       );
     });
 
@@ -363,7 +365,7 @@ describe('SafetyCheckContent', () => {
     expect(screen.queryByText(/山田花子の課題更新/)).toBeNull();
 
     fireEvent.click(screen.getByRole('button', { name: '同じ課題で再試行' }));
-    expect(resolveMutate).toHaveBeenLastCalledWith('issue_original');
+    expect(resolveMutate).toHaveBeenLastCalledWith({ id: 'issue_original', version: 1 });
     expect(resolveMutate).toHaveBeenCalledTimes(2);
 
     await act(async () => {
@@ -844,7 +846,7 @@ describe('SafetyCheckContent url/header convergence', () => {
       expect(patchUrl).not.toContain('%25');
       expect(patchInit.method).toBe('PATCH');
       expect(patchInit.headers).toBe(sentinel);
-      expect(JSON.parse(patchInit.body as string)).toEqual({ status: 'in_progress' });
+      expect(JSON.parse(patchInit.body as string)).toEqual({ status: 'in_progress', version: 1 });
       expect(vi.mocked(buildOrgJsonHeaders)).toHaveBeenCalledWith('org_1');
 
       await consultation.onSuccess?.();
@@ -898,14 +900,14 @@ describe('SafetyCheckContent url/header convergence', () => {
 
     try {
       const resolve = mutationConfigs[RESOLVE];
-      await resolve.mutationFn(HOSTILE);
+      await resolve.mutationFn({ id: HOSTILE, version: 7 });
       const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
       expect(url).toBe(`/api/medication-issues/${ENCODED}`);
       expect(url).not.toContain('%25');
       expect(init.method).toBe('PATCH');
       expect(init.headers).toBe(sentinel);
       expect(vi.mocked(buildOrgJsonHeaders)).toHaveBeenCalledWith('org_1');
-      expect(JSON.parse(init.body as string)).toEqual({ status: 'resolved' });
+      expect(JSON.parse(init.body as string)).toEqual({ status: 'resolved', version: 7 });
       expect(init.body as string).not.toContain(HOSTILE);
 
       await resolve.onSuccess?.();
@@ -923,7 +925,9 @@ describe('SafetyCheckContent url/header convergence', () => {
       const { mutationConfigs } = renderSafetyCheck();
       const fetchMock = stubFetch();
       try {
-        await expect(mutationConfigs[RESOLVE].mutationFn(dotId)).rejects.toThrow(RangeError);
+        await expect(
+          mutationConfigs[RESOLVE].mutationFn({ id: dotId, version: 1 }),
+        ).rejects.toThrow(RangeError);
         expect(fetchMock).not.toHaveBeenCalled();
       } finally {
         vi.unstubAllGlobals();

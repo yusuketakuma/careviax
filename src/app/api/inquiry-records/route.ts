@@ -320,6 +320,7 @@ async function authenticatedPOST(req: NextRequest) {
             status: 'in_progress',
             resolved_by: null,
             resolved_at: null,
+            version: { increment: 1 },
           },
         });
       }

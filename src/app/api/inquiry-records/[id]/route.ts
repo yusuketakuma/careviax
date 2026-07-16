@@ -339,6 +339,7 @@ async function authenticatedPATCH(
               status: 'resolved',
               resolved_by: ctx.userId,
               resolved_at: resolvedAt ?? new Date(),
+              version: { increment: 1 },
             },
           });
         }
@@ -367,6 +368,7 @@ async function authenticatedPATCH(
             status: 'in_progress',
             resolved_by: null,
             resolved_at: null,
+            version: { increment: 1 },
           },
         });
       }
