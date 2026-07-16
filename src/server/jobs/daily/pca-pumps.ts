@@ -10,6 +10,13 @@ import {
 } from '../daily-helpers';
 import { upsertOperationalTask } from '@/server/services/operational-tasks';
 import type { JobExecutionContext } from './shared';
+import { listOrganizationIds } from '../organization-iteration';
+
+const PCA_RENTAL_PAGE_SIZE = 200;
+
+async function resolvePcaJobOrgIds(context: JobExecutionContext) {
+  return context.orgId ? [context.orgId] : listOrganizationIds(prisma);
+}
 
 export async function checkPcaPumpRentalOverdues(context: JobExecutionContext = {}) {
   return runJob(
@@ -17,99 +24,104 @@ export async function checkPcaPumpRentalOverdues(context: JobExecutionContext = 
     async () => {
       // due_at(@db.Date)は UTC 深夜で保存されるため UTC 深夜の今日で比較する
       const today = utcDateFromLocalKey(japanDateKey());
-      const overdueRentals = await prisma.pcaPumpRental.findMany({
-        where: {
-          ...(context.orgId ? { org_id: context.orgId } : {}),
-          status: { in: ['scheduled', 'active'] },
-          due_at: { lt: today },
-        },
-        select: {
-          id: true,
-          org_id: true,
-          pump_id: true,
-          institution_id: true,
-          rented_at: true,
-          due_at: true,
-          rental_fee_yen: true,
-          pump: {
-            select: {
-              asset_code: true,
-              model_name: true,
-            },
-          },
-          institution: {
-            select: {
-              name: true,
-            },
-          },
-        },
-        orderBy: [{ due_at: 'asc' }, { created_at: 'asc' }],
-      });
+      const orgIds = await resolvePcaJobOrgIds(context);
+      let processedCount = 0;
 
-      // org 単位でまとめて RLS コンテキスト確立と status 更新の往復を削減
-      // (旧: rental ごとに withOrgContext + updateMany → 新: org ごとに 1 回)。
-      // dedupeKey により task upsert は冪等で、処理順序にも依存しない。
-      const rentalsByOrg = new Map<string, typeof overdueRentals>();
-      for (const rental of overdueRentals) {
-        const existing = rentalsByOrg.get(rental.org_id);
-        if (existing) existing.push(rental);
-        else rentalsByOrg.set(rental.org_id, [rental]);
-      }
+      for (const orgId of orgIds) {
+        let cursor: string | undefined;
+        for (;;) {
+          const rentals = await withOrgContext(orgId, (tx) =>
+            tx.pcaPumpRental.findMany({
+              where: {
+                org_id: orgId,
+                status: { in: ['scheduled', 'active'] },
+                due_at: { lt: today },
+              },
+              select: {
+                id: true,
+                org_id: true,
+                pump_id: true,
+                institution_id: true,
+                rented_at: true,
+                due_at: true,
+                rental_fee_yen: true,
+                pump: {
+                  select: {
+                    asset_code: true,
+                    model_name: true,
+                  },
+                },
+                institution: {
+                  select: {
+                    name: true,
+                  },
+                },
+              },
+              orderBy: [{ due_at: 'asc' }, { created_at: 'asc' }, { id: 'asc' }],
+              take: PCA_RENTAL_PAGE_SIZE,
+              ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+            }),
+          );
+          if (rentals.length === 0) break;
 
-      for (const [orgId, rentals] of rentalsByOrg) {
-        await withOrgContext(orgId, async (tx) => {
-          await tx.pcaPumpRental.updateMany({
-            where: {
-              id: { in: rentals.map((rental) => rental.id) },
-              org_id: orgId,
-              status: { in: ['scheduled', 'active'] },
-              due_at: { lt: today },
-            },
-            data: {
-              status: 'overdue',
-            },
-          });
-
-          for (const rental of rentals) {
-            const overdueDays = rental.due_at
-              ? Math.max(
-                  1,
-                  // due_at は UTC 深夜の @db.Date 値なのでそのまま日数差を取る
-                  Math.floor((today.getTime() - rental.due_at.getTime()) / 86_400_000),
-                )
-              : 0;
-            const pumpLabel = `${rental.pump.asset_code} ${rental.pump.model_name}`.trim();
-            await upsertOperationalTask(tx, {
-              orgId: rental.org_id,
-              taskType: 'pca_pump_rental_overdue',
-              title: 'PCAポンプの返却期限を超過しています',
-              description: `${rental.institution.name} への貸出 ${pumpLabel} が返却予定日を${overdueDays}日超過しています。返却予定の確認、延長可否、請求調整を確認してください。`,
-              priority: overdueDays >= 7 ? 'urgent' : 'high',
-              assignedTo: null,
-              dueDate: rental.due_at,
-              slaDueAt: rental.due_at,
-              relatedEntityType: 'pca_pump_rental',
-              relatedEntityId: rental.id,
-              dedupeKey: buildPcaPumpRentalOverdueTaskKey(rental.id),
-              metadata: {
-                rental_id: rental.id,
-                pump_id: rental.pump_id,
-                pump_asset_code: rental.pump.asset_code,
-                institution_id: rental.institution_id,
-                institution_name: rental.institution.name,
-                rented_at: japanDateKey(rental.rented_at),
-                due_at: rental.due_at ? japanDateKey(rental.due_at) : null,
-                overdue_days: overdueDays,
-                rental_fee_yen: rental.rental_fee_yen,
-                action_href: '/admin/pca-pumps',
-                action_label: 'PCAポンプ貸出を確認',
+          await withOrgContext(orgId, async (tx) => {
+            await tx.pcaPumpRental.updateMany({
+              where: {
+                id: { in: rentals.map((rental) => rental.id) },
+                org_id: orgId,
+                status: { in: ['scheduled', 'active'] },
+                due_at: { lt: today },
+              },
+              data: {
+                status: 'overdue',
               },
             });
-          }
-        });
+
+            for (const rental of rentals) {
+              const overdueDays = rental.due_at
+                ? Math.max(
+                    1,
+                    // due_at は UTC 深夜の @db.Date 値なのでそのまま日数差を取る
+                    Math.floor((today.getTime() - rental.due_at.getTime()) / 86_400_000),
+                  )
+                : 0;
+              const pumpLabel = `${rental.pump.asset_code} ${rental.pump.model_name}`.trim();
+              await upsertOperationalTask(tx, {
+                orgId,
+                taskType: 'pca_pump_rental_overdue',
+                title: 'PCAポンプの返却期限を超過しています',
+                description: `${rental.institution.name} への貸出 ${pumpLabel} が返却予定日を${overdueDays}日超過しています。返却予定の確認、延長可否、請求調整を確認してください。`,
+                priority: overdueDays >= 7 ? 'urgent' : 'high',
+                assignedTo: null,
+                dueDate: rental.due_at,
+                slaDueAt: rental.due_at,
+                relatedEntityType: 'pca_pump_rental',
+                relatedEntityId: rental.id,
+                dedupeKey: buildPcaPumpRentalOverdueTaskKey(rental.id),
+                metadata: {
+                  rental_id: rental.id,
+                  pump_id: rental.pump_id,
+                  pump_asset_code: rental.pump.asset_code,
+                  institution_id: rental.institution_id,
+                  institution_name: rental.institution.name,
+                  rented_at: japanDateKey(rental.rented_at),
+                  due_at: rental.due_at ? japanDateKey(rental.due_at) : null,
+                  overdue_days: overdueDays,
+                  rental_fee_yen: rental.rental_fee_yen,
+                  action_href: '/admin/pca-pumps',
+                  action_label: 'PCAポンプ貸出を確認',
+                },
+              });
+            }
+          });
+
+          processedCount += rentals.length;
+          if (rentals.length < PCA_RENTAL_PAGE_SIZE) break;
+          cursor = rentals.at(-1)?.id;
+        }
       }
 
-      return { processedCount: overdueRentals.length };
+      return { processedCount };
     },
     context.orgId,
   );
@@ -121,77 +133,95 @@ export async function checkPcaPumpReturnInspectionPending(context: JobExecutionC
     async () => {
       // returned_at(@db.Date)との日数差は UTC 深夜の今日を基準に取る
       const today = utcDateFromLocalKey(japanDateKey());
-      const rentals = await prisma.pcaPumpRental.findMany({
-        where: {
-          ...(context.orgId ? { org_id: context.orgId } : {}),
-          status: 'returned',
-          return_inspection_status: 'pending',
-        },
-        select: {
-          id: true,
-          org_id: true,
-          pump_id: true,
-          institution_id: true,
-          rented_at: true,
-          due_at: true,
-          returned_at: true,
-          pump: {
-            select: {
-              asset_code: true,
-              model_name: true,
-            },
-          },
-          institution: {
-            select: {
-              name: true,
-            },
-          },
-        },
-        orderBy: [{ returned_at: 'asc' }, { updated_at: 'asc' }],
-        take: 200,
-      });
+      const orgIds = await resolvePcaJobOrgIds(context);
+      const taskSpecs: GeneratedTaskSpec[] = [];
+      let processedCount = 0;
 
-      const taskSpecs: GeneratedTaskSpec[] = rentals.map((rental) => {
-        // returned_at は UTC 深夜の @db.Date 値なのでそのまま日数差を取る
-        const returnedAt = rental.returned_at ?? today;
-        const pendingDays = Math.max(
-          0,
-          Math.floor((today.getTime() - returnedAt.getTime()) / 86_400_000),
-        );
-        const pumpLabel = `${rental.pump.asset_code} ${rental.pump.model_name}`.trim();
-        return {
-          orgId: rental.org_id,
-          taskType: 'pca_pump_return_inspection_pending',
-          title: 'PCAポンプの返却検品が未完了です',
-          description: `${rental.institution.name} から返却された ${pumpLabel} の返却検品が未完了です。付属品、清拭、動作確認を完了し、利用可否を確定してください。`,
-          priority: pendingDays >= 2 ? 'high' : 'normal',
-          assignedTo: null,
-          dueDate: rental.returned_at,
-          slaDueAt: rental.returned_at,
-          relatedEntityType: 'pca_pump_rental',
-          relatedEntityId: rental.id,
-          dedupeKey: buildPcaPumpReturnInspectionPendingTaskKey(rental.id),
-          metadata: {
-            rental_id: rental.id,
-            pump_id: rental.pump_id,
-            pump_asset_code: rental.pump.asset_code,
-            institution_id: rental.institution_id,
-            institution_name: rental.institution.name,
-            rented_at: japanDateKey(rental.rented_at),
-            due_at: rental.due_at ? japanDateKey(rental.due_at) : null,
-            returned_at: rental.returned_at ? japanDateKey(rental.returned_at) : null,
-            pending_days: pendingDays,
-            action_href: '/admin/pca-pumps',
-            action_label: '返却検品を確認',
-          },
-        };
-      });
+      for (const orgId of orgIds) {
+        let cursor: string | undefined;
+        for (;;) {
+          const rentals = await withOrgContext(orgId, (tx) =>
+            tx.pcaPumpRental.findMany({
+              where: {
+                org_id: orgId,
+                status: 'returned',
+                return_inspection_status: 'pending',
+              },
+              select: {
+                id: true,
+                org_id: true,
+                pump_id: true,
+                institution_id: true,
+                rented_at: true,
+                due_at: true,
+                returned_at: true,
+                pump: {
+                  select: {
+                    asset_code: true,
+                    model_name: true,
+                  },
+                },
+                institution: {
+                  select: {
+                    name: true,
+                  },
+                },
+              },
+              orderBy: [{ returned_at: 'asc' }, { updated_at: 'asc' }, { id: 'asc' }],
+              take: PCA_RENTAL_PAGE_SIZE,
+              ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+            }),
+          );
+          if (rentals.length === 0) break;
+
+          taskSpecs.push(
+            ...rentals.map((rental): GeneratedTaskSpec => {
+              // returned_at は UTC 深夜の @db.Date 値なのでそのまま日数差を取る
+              const returnedAt = rental.returned_at ?? today;
+              const pendingDays = Math.max(
+                0,
+                Math.floor((today.getTime() - returnedAt.getTime()) / 86_400_000),
+              );
+              const pumpLabel = `${rental.pump.asset_code} ${rental.pump.model_name}`.trim();
+              return {
+                orgId,
+                taskType: 'pca_pump_return_inspection_pending',
+                title: 'PCAポンプの返却検品が未完了です',
+                description: `${rental.institution.name} から返却された ${pumpLabel} の返却検品が未完了です。付属品、清拭、動作確認を完了し、利用可否を確定してください。`,
+                priority: pendingDays >= 2 ? 'high' : 'normal',
+                assignedTo: null,
+                dueDate: rental.returned_at,
+                slaDueAt: rental.returned_at,
+                relatedEntityType: 'pca_pump_rental',
+                relatedEntityId: rental.id,
+                dedupeKey: buildPcaPumpReturnInspectionPendingTaskKey(rental.id),
+                metadata: {
+                  rental_id: rental.id,
+                  pump_id: rental.pump_id,
+                  pump_asset_code: rental.pump.asset_code,
+                  institution_id: rental.institution_id,
+                  institution_name: rental.institution.name,
+                  rented_at: japanDateKey(rental.rented_at),
+                  due_at: rental.due_at ? japanDateKey(rental.due_at) : null,
+                  returned_at: rental.returned_at ? japanDateKey(rental.returned_at) : null,
+                  pending_days: pendingDays,
+                  action_href: '/admin/pca-pumps',
+                  action_label: '返却検品を確認',
+                },
+              };
+            }),
+          );
+          processedCount += rentals.length;
+          if (rentals.length < PCA_RENTAL_PAGE_SIZE) break;
+          cursor = rentals.at(-1)?.id;
+        }
+      }
 
       await syncGeneratedOperationalTasks(taskSpecs, ['pca_pump_return_inspection_pending'], {
-        scopeOrgIds: context.orgId ? [context.orgId] : undefined,
+        scopeOrgIds: orgIds,
       });
 
-      return { processedCount: rentals.length };
+      return { processedCount };
     },
     context.orgId,
   );

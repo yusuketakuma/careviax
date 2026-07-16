@@ -195,6 +195,16 @@ export function buildPcaPumpReturnInspectionPendingTaskKey(rentalId: string) {
   return `pca-pump-return-inspection-pending:${rentalId}`;
 }
 
+const GENERATED_TASK_SYNC_CHUNK_SIZE = 100;
+
+function chunkValues<T>(values: T[], size = GENERATED_TASK_SYNC_CHUNK_SIZE) {
+  const chunks: T[][] = [];
+  for (let index = 0; index < values.length; index += size) {
+    chunks.push(values.slice(index, index + size));
+  }
+  return chunks;
+}
+
 export async function syncGeneratedOperationalTasks(
   taskSpecs: GeneratedTaskSpec[],
   managedTaskTypes: string[],
@@ -202,21 +212,44 @@ export async function syncGeneratedOperationalTasks(
 ) {
   const taskTypes = Array.from(new Set(managedTaskTypes));
   const scopeOrgIds = Array.from(new Set(options.scopeOrgIds?.filter(Boolean) ?? []));
+  const listExistingTasks = (orgId?: string) =>
+    prisma.task.findMany({
+      where: {
+        task_type: { in: taskTypes },
+        status: { in: ['pending', 'in_progress'] },
+        ...(orgId ? { org_id: orgId } : {}),
+      },
+      select: {
+        org_id: true,
+        task_type: true,
+        dedupe_key: true,
+      },
+    });
   const existingTasks =
     taskTypes.length === 0
       ? []
-      : await prisma.task.findMany({
-          where: {
-            task_type: { in: taskTypes },
-            status: { in: ['pending', 'in_progress'] },
-            ...(scopeOrgIds.length > 0 ? { org_id: { in: scopeOrgIds } } : {}),
-          },
-          select: {
-            org_id: true,
-            task_type: true,
-            dedupe_key: true,
-          },
-        });
+      : scopeOrgIds.length > 0
+        ? (
+            await Promise.all(
+              scopeOrgIds.map((orgId) =>
+                withOrgContext(orgId, (tx) =>
+                  tx.task.findMany({
+                    where: {
+                      task_type: { in: taskTypes },
+                      status: { in: ['pending', 'in_progress'] },
+                      org_id: orgId,
+                    },
+                    select: {
+                      org_id: true,
+                      task_type: true,
+                      dedupe_key: true,
+                    },
+                  }),
+                ),
+              ),
+            )
+          ).flat()
+        : await listExistingTasks();
 
   const specsByOrg = new Map<string, GeneratedTaskSpec[]>();
   const activeByBucket = new Map<string, Set<string>>();
@@ -233,24 +266,26 @@ export async function syncGeneratedOperationalTasks(
   }
 
   for (const [orgId, specs] of specsByOrg) {
-    await withOrgContext(orgId, async (tx) => {
-      for (const spec of specs) {
-        await upsertOperationalTask(tx, {
-          orgId: spec.orgId,
-          taskType: spec.taskType,
-          title: spec.title,
-          description: spec.description,
-          priority: spec.priority,
-          assignedTo: spec.assignedTo ?? null,
-          dueDate: spec.dueDate ?? null,
-          slaDueAt: spec.slaDueAt ?? null,
-          relatedEntityType: spec.relatedEntityType ?? null,
-          relatedEntityId: spec.relatedEntityId ?? null,
-          dedupeKey: spec.dedupeKey,
-          metadata: spec.metadata ?? null,
-        });
-      }
-    });
+    for (const chunk of chunkValues(specs)) {
+      await withOrgContext(orgId, async (tx) => {
+        for (const spec of chunk) {
+          await upsertOperationalTask(tx, {
+            orgId: spec.orgId,
+            taskType: spec.taskType,
+            title: spec.title,
+            description: spec.description,
+            priority: spec.priority,
+            assignedTo: spec.assignedTo ?? null,
+            dueDate: spec.dueDate ?? null,
+            slaDueAt: spec.slaDueAt ?? null,
+            relatedEntityType: spec.relatedEntityType ?? null,
+            relatedEntityId: spec.relatedEntityId ?? null,
+            dedupeKey: spec.dedupeKey,
+            metadata: spec.metadata ?? null,
+          });
+        }
+      });
+    }
   }
 
   const staleKeysByOrg = new Map<string, Map<string, string[]>>();
@@ -270,18 +305,20 @@ export async function syncGeneratedOperationalTasks(
   for (const [orgId, bucketMap] of staleKeysByOrg) {
     await withOrgContext(orgId, async (tx) => {
       for (const [taskType, dedupeKeys] of bucketMap) {
-        await tx.task.updateMany({
-          where: {
-            org_id: orgId,
-            task_type: taskType,
-            status: { in: ['pending', 'in_progress'] },
-            dedupe_key: { in: dedupeKeys },
-          },
-          data: {
-            status: 'completed',
-            completed_at: new Date(),
-          },
-        });
+        for (const chunk of chunkValues(dedupeKeys)) {
+          await tx.task.updateMany({
+            where: {
+              org_id: orgId,
+              task_type: taskType,
+              status: { in: ['pending', 'in_progress'] },
+              dedupe_key: { in: chunk },
+            },
+            data: {
+              status: 'completed',
+              completed_at: new Date(),
+            },
+          });
+        }
       }
     });
   }

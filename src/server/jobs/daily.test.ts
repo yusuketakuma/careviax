@@ -357,6 +357,7 @@ describe('checkPcaPumpRentalOverdues', () => {
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
         pcaPumpRental: {
+          findMany: pcaPumpRentalFindManyMock,
           updateMany: updateManyMock,
         },
         task: {
@@ -422,7 +423,7 @@ describe('checkPcaPumpRentalOverdues', () => {
   it('batches overdue status updates by org while preserving one task per rental', async () => {
     const updateManyByOrg = new Map<string, ReturnType<typeof vi.fn>>();
     const today = new Date('2026-06-08T00:00:00.000Z');
-    pcaPumpRentalFindManyMock.mockResolvedValue([
+    const rentals = [
       {
         id: 'rental_1',
         org_id: 'org_1',
@@ -471,12 +472,16 @@ describe('checkPcaPumpRentalOverdues', () => {
           name: '西薬局',
         },
       },
-    ]);
+    ];
+    organizationFindManyMock.mockResolvedValue([{ id: 'org_1' }, { id: 'org_2' }]);
     withOrgContextMock.mockImplementation(async (orgId: string, callback) => {
-      const updateManyMock = vi.fn().mockResolvedValue({ count: orgId === 'org_1' ? 2 : 1 });
+      const updateManyMock =
+        updateManyByOrg.get(orgId) ??
+        vi.fn().mockResolvedValue({ count: orgId === 'org_1' ? 2 : 1 });
       updateManyByOrg.set(orgId, updateManyMock);
       return callback({
         pcaPumpRental: {
+          findMany: vi.fn().mockResolvedValue(rentals.filter((rental) => rental.org_id === orgId)),
           updateMany: updateManyMock,
         },
         task: {
@@ -488,9 +493,11 @@ describe('checkPcaPumpRentalOverdues', () => {
     const result = await checkPcaPumpRentalOverdues();
 
     expect(result).toEqual({ processedCount: 3 });
-    expect(withOrgContextMock).toHaveBeenCalledTimes(2);
+    expect(withOrgContextMock).toHaveBeenCalledTimes(4);
     expect(withOrgContextMock).toHaveBeenNthCalledWith(1, 'org_1', expect.any(Function));
-    expect(withOrgContextMock).toHaveBeenNthCalledWith(2, 'org_2', expect.any(Function));
+    expect(withOrgContextMock).toHaveBeenNthCalledWith(2, 'org_1', expect.any(Function));
+    expect(withOrgContextMock).toHaveBeenNthCalledWith(3, 'org_2', expect.any(Function));
+    expect(withOrgContextMock).toHaveBeenNthCalledWith(4, 'org_2', expect.any(Function));
     expect(updateManyByOrg.get('org_1')).toHaveBeenCalledWith({
       where: {
         id: { in: ['rental_1', 'rental_2'] },
@@ -536,12 +543,16 @@ describe('checkPcaPumpRentalOverdues', () => {
   });
 
   it('does not mutate when no PCA rentals are past due', async () => {
+    organizationFindManyMock.mockResolvedValue([{ id: 'org_1' }]);
+    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
+      callback({ pcaPumpRental: { findMany: pcaPumpRentalFindManyMock } }),
+    );
     pcaPumpRentalFindManyMock.mockResolvedValue([]);
 
     const result = await checkPcaPumpRentalOverdues();
 
     expect(result).toEqual({ processedCount: 0 });
-    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).toHaveBeenCalledOnce();
     expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
   });
 });
@@ -554,6 +565,7 @@ describe('checkPcaPumpReturnInspectionPending', () => {
     restoreTimezone = useTimezone('Asia/Tokyo');
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-06-08T09:00:00+09:00'));
+    taskFindManyMock.mockResolvedValue([]);
   });
 
   afterEach(() => {
@@ -582,7 +594,11 @@ describe('checkPcaPumpReturnInspectionPending', () => {
     ]);
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
+        pcaPumpRental: {
+          findMany: pcaPumpRentalFindManyMock,
+        },
         task: {
+          findMany: taskFindManyMock,
           upsert: vi.fn(),
         },
       }),
@@ -633,12 +649,20 @@ describe('checkPcaPumpReturnInspectionPending', () => {
   });
 
   it('does not create tasks when no returned rentals are waiting for inspection', async () => {
+    organizationFindManyMock.mockResolvedValue([{ id: 'org_1' }]);
     pcaPumpRentalFindManyMock.mockResolvedValue([]);
+    taskFindManyMock.mockResolvedValue([]);
+    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
+      callback({
+        pcaPumpRental: { findMany: pcaPumpRentalFindManyMock },
+        task: { findMany: taskFindManyMock },
+      }),
+    );
 
     const result = await checkPcaPumpReturnInspectionPending();
 
     expect(result).toEqual({ processedCount: 0 });
-    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).toHaveBeenCalledTimes(2);
     expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
   });
 
@@ -654,7 +678,11 @@ describe('checkPcaPumpReturnInspectionPending', () => {
     const updateManyMock = vi.fn().mockResolvedValue({ count: 1 });
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
+        pcaPumpRental: {
+          findMany: pcaPumpRentalFindManyMock,
+        },
         task: {
+          findMany: taskFindManyMock,
           updateMany: updateManyMock,
         },
       }),
@@ -666,7 +694,7 @@ describe('checkPcaPumpReturnInspectionPending', () => {
     expect(taskFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
-          org_id: { in: ['org_1'] },
+          org_id: 'org_1',
           task_type: { in: ['pca_pump_return_inspection_pending'] },
           status: { in: ['pending', 'in_progress'] },
         }),
@@ -684,6 +712,75 @@ describe('checkPcaPumpReturnInspectionPending', () => {
         completed_at: expect.any(Date),
       },
     });
+    expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
+  });
+
+  it('scans 201 pending inspections before reconciling stale tasks', async () => {
+    const rentals = Array.from({ length: 201 }, (_, index) => ({
+      id: `rental_${String(index).padStart(3, '0')}`,
+      org_id: 'org_1',
+      pump_id: `pump_${index}`,
+      institution_id: 'institution_1',
+      rented_at: new Date('2026-05-01T00:00:00.000Z'),
+      due_at: new Date('2026-05-31T00:00:00.000Z'),
+      returned_at: new Date('2026-06-05T00:00:00.000Z'),
+      pump: { asset_code: `PCA-${index}`, model_name: 'CADD' },
+      institution: { name: 'テスト施設' },
+    }));
+    pcaPumpRentalFindManyMock
+      .mockResolvedValueOnce(rentals.slice(0, 200))
+      .mockResolvedValueOnce(rentals.slice(200));
+    taskFindManyMock.mockResolvedValue([]);
+    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
+      callback({
+        pcaPumpRental: { findMany: pcaPumpRentalFindManyMock },
+        task: { findMany: taskFindManyMock },
+      }),
+    );
+
+    const result = await checkPcaPumpReturnInspectionPending({ orgId: 'org_1' });
+
+    expect(result).toEqual({ processedCount: 201 });
+    expect(pcaPumpRentalFindManyMock).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        cursor: { id: 'rental_199' },
+        skip: 1,
+        take: 200,
+        orderBy: [{ returned_at: 'asc' }, { updated_at: 'asc' }, { id: 'asc' }],
+      }),
+    );
+    expect(taskFindManyMock).toHaveBeenCalledTimes(1);
+    expect(upsertOperationalTaskMock).toHaveBeenCalledTimes(201);
+  });
+
+  it('does not upsert or reconcile tasks when a later inspection page fails', async () => {
+    const firstPage = Array.from({ length: 200 }, (_, index) => ({
+      id: `rental_${String(index).padStart(3, '0')}`,
+      org_id: 'org_1',
+      pump_id: `pump_${index}`,
+      institution_id: 'institution_1',
+      rented_at: new Date('2026-05-01T00:00:00.000Z'),
+      due_at: new Date('2026-05-31T00:00:00.000Z'),
+      returned_at: new Date('2026-06-05T00:00:00.000Z'),
+      pump: { asset_code: `PCA-${index}`, model_name: 'CADD' },
+      institution: { name: 'テスト施設' },
+    }));
+    pcaPumpRentalFindManyMock
+      .mockResolvedValueOnce(firstPage)
+      .mockRejectedValueOnce(new Error('page_2_failed'));
+    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
+      callback({
+        pcaPumpRental: { findMany: pcaPumpRentalFindManyMock },
+        task: { findMany: taskFindManyMock },
+      }),
+    );
+
+    await expect(checkPcaPumpReturnInspectionPending({ orgId: 'org_1' })).rejects.toThrow(
+      'page_2_failed',
+    );
+
+    expect(taskFindManyMock).not.toHaveBeenCalled();
     expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
   });
 });
