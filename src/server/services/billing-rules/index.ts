@@ -21,7 +21,9 @@ export {
 // ルールエンジン
 export {
   buildBillingCandidateSpecs,
+  createBillingRuleEvaluationCache,
   getHomeCareBillingSsotSummary,
+  type BillingRuleEvaluationCache,
   type HomeCareBillingRuleEngineTx,
 } from './rule-engine';
 

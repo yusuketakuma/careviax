@@ -9,7 +9,7 @@ vi.mock('./seeder', () => ({
   HOME_CARE_BILLING_RULESET_VERSION: 'home-care-ssot-registry-v2',
 }));
 
-import { buildBillingCandidateSpecs } from './rule-engine';
+import { buildBillingCandidateSpecs, createBillingRuleEvaluationCache } from './rule-engine';
 import type { HomeCareBillingRuleEngineTx } from './rule-engine';
 import type { BillingEvidenceContext, BillingRuleConditions } from './types';
 
@@ -121,6 +121,36 @@ describe('rule-engine: buildBillingCandidateSpecs', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     ensureHomeCareBillingSsotMock.mockResolvedValue(undefined);
+  });
+
+  it('loads the SSOT once per org and UTC business date within a generation cache', async () => {
+    const tx = makeTx([makeBaseRule()]);
+    const cache = createBillingRuleEvaluationCache();
+
+    await buildBillingCandidateSpecs(
+      tx,
+      makeContext({ asOfDate: new Date('2026-03-18T01:00:00.000Z') }),
+      cache,
+    );
+    await buildBillingCandidateSpecs(
+      tx,
+      makeContext({ asOfDate: new Date('2026-03-18T12:00:00.000Z') }),
+      cache,
+    );
+
+    expect(ensureHomeCareBillingSsotMock).toHaveBeenCalledTimes(1);
+    expect(tx.sourceOfTruthMatrix.findFirst).toHaveBeenCalledTimes(1);
+    expect(tx.billingRule.findMany).toHaveBeenCalledTimes(1);
+
+    await buildBillingCandidateSpecs(
+      tx,
+      makeContext({ asOfDate: new Date('2026-03-19T00:00:00.000Z') }),
+      cache,
+    );
+
+    expect(ensureHomeCareBillingSsotMock).toHaveBeenCalledTimes(2);
+    expect(tx.sourceOfTruthMatrix.findFirst).toHaveBeenCalledTimes(2);
+    expect(tx.billingRule.findMany).toHaveBeenCalledTimes(2);
   });
 
   // ── 1. single building ──

@@ -33,6 +33,47 @@ export type HomeCareBillingRuleEngineTx = HomeCareBillingSsotTx & {
 
 type Tx = HomeCareBillingRuleEngineTx;
 
+type HomeCareBillingSsotSummary = Awaited<ReturnType<typeof getHomeCareBillingSsotSummary>>;
+
+export type BillingRuleEvaluationCache = Map<string, Promise<HomeCareBillingSsotSummary>>;
+
+export function createBillingRuleEvaluationCache(): BillingRuleEvaluationCache {
+  return new Map();
+}
+
+function billingRuleEvaluationKey(asOfDate?: Date): string {
+  const targetDate = asOfDate ?? new Date();
+  return targetDate.toISOString().slice(0, 10);
+}
+
+async function loadHomeCareBillingSsotSummary(
+  tx: Tx,
+  context: BillingEvidenceContext,
+  cache?: BillingRuleEvaluationCache,
+): Promise<HomeCareBillingSsotSummary> {
+  const load = async () => {
+    await ensureHomeCareBillingSsot(tx, context.orgId, {
+      asOfDate: context.asOfDate,
+    });
+    return getHomeCareBillingSsotSummary(tx, context.orgId, context.asOfDate);
+  };
+
+  if (!cache) return load();
+
+  const key = `${context.orgId}:${billingRuleEvaluationKey(context.asOfDate)}`;
+  const cached = cache.get(key);
+  if (cached) return cached;
+
+  const pending = load();
+  cache.set(key, pending);
+  try {
+    return await pending;
+  } catch (error) {
+    cache.delete(key);
+    throw error;
+  }
+}
+
 function buildingTier(buildingPatientCount: number) {
   if (buildingPatientCount >= 10) return 'multi_10_plus';
   if (buildingPatientCount >= 2) return 'multi_2_9';
@@ -207,11 +248,9 @@ function manualRuleCandidates(
 export async function buildBillingCandidateSpecs(
   tx: Tx,
   context: BillingEvidenceContext,
+  cache?: BillingRuleEvaluationCache,
 ): Promise<BillingCandidateSpec[]> {
-  await ensureHomeCareBillingSsot(tx, context.orgId, {
-    asOfDate: context.asOfDate,
-  });
-  const { rules } = await getHomeCareBillingSsotSummary(tx, context.orgId, context.asOfDate);
+  const { rules } = await loadHomeCareBillingSsotSummary(tx, context, cache);
 
   const specs: BillingCandidateSpec[] = [];
   const baseRule = chooseBaseRule(rules, context);

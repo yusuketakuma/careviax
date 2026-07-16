@@ -226,6 +226,7 @@ describe('billing-evidence service', () => {
         claimable: true,
         exclusionReason: null,
       }),
+      expect.any(Map),
     );
     expect(upsertMock).toHaveBeenCalledTimes(1);
     expect(upsertMock).toHaveBeenCalledWith(
@@ -363,6 +364,7 @@ describe('billing-evidence service', () => {
         enteralRequired: true,
         careLevelCategory: 'care_required',
       }),
+      expect.any(Map),
     );
   });
 

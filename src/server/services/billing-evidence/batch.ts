@@ -3,6 +3,7 @@ import { normalizeJsonInput } from '@/lib/db/json';
 import type { Tx } from './core';
 import {
   buildBillingCandidateSpecs,
+  createBillingRuleEvaluationCache,
   ensureHomeCareBillingSsot,
   type HomeCareBillingRuleEngineTx,
 } from '../billing-rules';
@@ -169,6 +170,7 @@ export async function generateBillingCandidatesForMonth(
   );
   const blockedEvidenceIds: string[] = [];
   const claimableEvidenceByPatient = new Map<string, { any: number; care: number }>();
+  const ruleEvaluationCache = createBillingRuleEvaluationCache();
 
   for (const evidence of evidences) {
     if (!evidence.patient_id || !evidence.claimable) continue;
@@ -214,36 +216,42 @@ export async function generateBillingCandidatesForMonth(
 
     const visitRecordId =
       typeof evidence.visit_record_id === 'string' ? evidence.visit_record_id : null;
-    const specs = await buildBillingCandidateSpecs(db, {
-      orgId: args.orgId,
-      asOfDate: (visitRecordId ? visitDateByRecordId.get(visitRecordId) : undefined) ?? monthStart,
-      payerBasis: toPayerBasis(evidence.payer_basis),
-      serviceType:
-        evidence.billing_service_type === 'care_home_management'
-          ? 'care_home_management'
-          : 'medical_home_visit',
-      providerScope: evidence.provider_scope === 'hospital_clinic' ? 'hospital_clinic' : 'pharmacy',
-      buildingPatientCount: evidence.building_patient_count ?? 1,
-      monthlyVisitCount: evidence.monthly_count_snapshot ?? 0,
-      weeklyVisitCount: evidence.weekly_count_snapshot ?? 0,
-      claimable: evidence.claimable,
-      exclusionReason: evidence.exclusion_reason,
-      specialCapEligible: calculationContext.special_cap_eligible === true,
-      onlineEligible: calculationContext.online_eligible === true,
-      regionAddOnEligible,
-      visitType:
-        typeof calculationContext.visit_type === 'string' ? calculationContext.visit_type : null,
-      emergencyCategory,
-      afterHoursVisit,
-      infantEligible: calculationContext.infant_eligible === true,
-      pediatricAge: calculationContext.pediatric_age === true,
-      narcoticRequired: calculationContext.narcotic_required === true,
-      narcoticInjectionRequired: calculationContext.narcotic_injection_required === true,
-      centralVenousRequired: calculationContext.central_venous_required === true,
-      enteralRequired: calculationContext.enteral_required === true,
-      careLevelCategory,
-      facilityStandards,
-    });
+    const specs = await buildBillingCandidateSpecs(
+      db,
+      {
+        orgId: args.orgId,
+        asOfDate:
+          (visitRecordId ? visitDateByRecordId.get(visitRecordId) : undefined) ?? monthStart,
+        payerBasis: toPayerBasis(evidence.payer_basis),
+        serviceType:
+          evidence.billing_service_type === 'care_home_management'
+            ? 'care_home_management'
+            : 'medical_home_visit',
+        providerScope:
+          evidence.provider_scope === 'hospital_clinic' ? 'hospital_clinic' : 'pharmacy',
+        buildingPatientCount: evidence.building_patient_count ?? 1,
+        monthlyVisitCount: evidence.monthly_count_snapshot ?? 0,
+        weeklyVisitCount: evidence.weekly_count_snapshot ?? 0,
+        claimable: evidence.claimable,
+        exclusionReason: evidence.exclusion_reason,
+        specialCapEligible: calculationContext.special_cap_eligible === true,
+        onlineEligible: calculationContext.online_eligible === true,
+        regionAddOnEligible,
+        visitType:
+          typeof calculationContext.visit_type === 'string' ? calculationContext.visit_type : null,
+        emergencyCategory,
+        afterHoursVisit,
+        infantEligible: calculationContext.infant_eligible === true,
+        pediatricAge: calculationContext.pediatric_age === true,
+        narcoticRequired: calculationContext.narcotic_required === true,
+        narcoticInjectionRequired: calculationContext.narcotic_injection_required === true,
+        centralVenousRequired: calculationContext.central_venous_required === true,
+        enteralRequired: calculationContext.enteral_required === true,
+        careLevelCategory,
+        facilityStandards,
+      },
+      ruleEvaluationCache,
+    );
 
     for (const spec of specs) {
       const dedupeKey = `${monthStart.toISOString().slice(0, 10)}:${evidence.id}:${spec.code}`;
