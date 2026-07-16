@@ -7,6 +7,7 @@ source_kind: put_page
 ---
 
 ---
+
 type: ImplementationDecision
 title: Pharmacy invoice transitions use durable intent and version CAS
 memory_id: projects/careviax/decisions/2026-07-16/pharmacy-invoice-transition-idempotency
@@ -23,23 +24,25 @@ created_by: codex-lead
 owner_agent: codex-lead
 reviewer_agent: null
 source:
-  - file:prisma/schema/pharmacy-partnership.prisma
-  - file:src/app/api/pharmacy-invoices/[id]/route.ts
-  - file:src/server/services/pharmacy-invoices.ts
-  - test:pnpm exec vitest run pharmacy invoice focused suite
-  - test:pnpm typecheck:no-unused
-  - test:pnpm rls-policy-contract:check
-confidence: high
-evidence_level: gate_verified
-validity_scope:
+
+- file:prisma/schema/pharmacy-partnership.prisma
+- file:src/app/api/pharmacy-invoices/[id]/route.ts
+- file:src/server/services/pharmacy-invoices.ts
+- test:pnpm exec vitest run pharmacy invoice focused suite
+- test:pnpm typecheck:no-unused
+- test:pnpm rls-policy-contract:check
+  confidence: high
+  evidence_level: gate_verified
+  validity_scope:
   repo: careviax
   directories: [prisma, src/app/api/pharmacy-invoices, src/server/services]
   files: [prisma/schema/pharmacy-partnership.prisma, src/app/api/pharmacy-invoices/[id]/route.ts, src/server/services/pharmacy-invoices.ts]
   tech_stack: [Next.js, React, TypeScript, Prisma, PostgreSQL]
-expires_at: null
-superseded_by: null
-dedupe_key: b547a2f7a02085655e4af8d17f47eb22eccde75e0ddd3937f0fe979e1ecceab4
-tags: [billing, idempotency, concurrency, prisma, rls, codex-lead, accepted]
+  expires_at: null
+  superseded_by: null
+  dedupe_key: b547a2f7a02085655e4af8d17f47eb22eccde75e0ddd3937f0fe979e1ecceab4
+  tags: [billing, idempotency, concurrency, prisma, rls, codex-lead, accepted]
+
 ---
 
 # Pharmacy invoice transitions use durable intent and version CAS

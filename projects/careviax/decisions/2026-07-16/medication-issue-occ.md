@@ -7,6 +7,7 @@ source_kind: put_page
 ---
 
 ---
+
 type: ImplementationDecision
 title: MedicationIssue writes use a durable version and serializable compare-and-swap
 memory_id: projects/careviax/decisions/2026-07-16/medication-issue-occ
@@ -22,6 +23,7 @@ validity_scope: { repo: careviax, directories: [prisma, src/app/api/medication-i
 expires_at: null
 superseded_by: null
 tags: [medication-issue, optimistic-concurrency, serializable, rls, codex1, accepted]
+
 ---
 
 # MedicationIssue writes use a durable version and serializable compare-and-swap

@@ -7,6 +7,7 @@ source_kind: put_page
 ---
 
 ---
+
 type: ImplementationDecision
 title: Care case writes use fresh authorization and version CAS
 memory_id: projects/careviax/decisions/2026-07-16/care-case-write-occ
@@ -23,24 +24,26 @@ created_by: codex-lead
 owner_agent: codex-lead
 reviewer_agent: null
 source:
-  - file:prisma/schema/patient.prisma
-  - file:src/app/api/cases/[id]/route.ts
-  - file:src/app/api/cases/[id]/transition/route.ts
-  - test:pnpm exec vitest run care case focused suite
-  - test:pnpm typecheck:no-unused
-  - test:pnpm rls-policy-contract:check
-  - test:pnpm test:rls-proof
-confidence: high
-evidence_level: gate_verified
-validity_scope:
+
+- file:prisma/schema/patient.prisma
+- file:src/app/api/cases/[id]/route.ts
+- file:src/app/api/cases/[id]/transition/route.ts
+- test:pnpm exec vitest run care case focused suite
+- test:pnpm typecheck:no-unused
+- test:pnpm rls-policy-contract:check
+- test:pnpm test:rls-proof
+  confidence: high
+  evidence_level: gate_verified
+  validity_scope:
   repo: careviax
   directories: [prisma, src/app/api/cases, src/app/api/patients, src/server/services]
   files: [prisma/schema/patient.prisma, src/app/api/cases/[id]/route.ts, src/app/api/cases/[id]/transition/route.ts]
   tech_stack: [Next.js, TypeScript, Prisma, PostgreSQL]
-expires_at: null
-superseded_by: null
-dedupe_key: 59216896f6f85cb6c0a1cee87c03b537804301c091aca0a285d986004df87b07
-tags: [medsafe, care-case, concurrency, authorization, audit, prisma, rls, codex-lead, accepted]
+  expires_at: null
+  superseded_by: null
+  dedupe_key: 59216896f6f85cb6c0a1cee87c03b537804301c091aca0a285d986004df87b07
+  tags: [medsafe, care-case, concurrency, authorization, audit, prisma, rls, codex-lead, accepted]
+
 ---
 
 # Care case writes use fresh authorization and version CAS
