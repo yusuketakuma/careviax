@@ -36,6 +36,7 @@ import {
 import { formatDateDisplay as formatDate } from '@/lib/datetime/date-display';
 import { formatUtcDateKey } from '@/lib/date-key';
 import { formatYen } from '@/lib/format/currency';
+import { computeUploadSha256Hex } from '@/lib/files/upload-checksum';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import {
   partnerPharmacyRowSchema,
@@ -345,6 +346,7 @@ async function uploadContractDocumentPdf(orgId: string, file: File) {
     throw new Error('署名済み契約書PDFを選択してください');
   }
 
+  const sha256 = await computeUploadSha256Hex(file);
   const presignResponse = await fetch('/api/files/presigned-upload', {
     method: 'POST',
     headers: buildOrgHeaders(orgId, { 'content-type': 'application/json' }),
@@ -353,6 +355,7 @@ async function uploadContractDocumentPdf(orgId: string, file: File) {
       file_name: file.name,
       mime_type: 'application/pdf',
       size_bytes: file.size,
+      sha256,
     }),
   });
   const presigned = await readApiJson<PresignedUploadResponse>(presignResponse, {

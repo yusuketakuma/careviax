@@ -32,6 +32,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { downscaleImage } from '@/lib/files/downscale-image';
+import { computeUploadSha256Hex } from '@/lib/files/upload-checksum';
 import { readApiJson } from '@/lib/api/client-json';
 import {
   buildConsentListResponseSchema,
@@ -302,6 +303,7 @@ type CreateFormErrors = {
 async function uploadConsentDocument(args: { file: File; patientId: string; orgId: string }) {
   // 画像/PDF 混在: PDF は downscaleImage 内の image/* 判定で無変換のまま返す(W2-F1)。
   const uploadFile = await downscaleImage(args.file);
+  const sha256 = await computeUploadSha256Hex(uploadFile);
   const presignResponse = await fetch('/api/files/presigned-upload', {
     method: 'POST',
     headers: buildOrgJsonHeaders(args.orgId),
@@ -311,6 +313,7 @@ async function uploadConsentDocument(args: { file: File; patientId: string; orgI
       file_name: uploadFile.name,
       mime_type: inferConsentDocumentMimeType(uploadFile),
       size_bytes: uploadFile.size,
+      sha256,
     }),
   });
 

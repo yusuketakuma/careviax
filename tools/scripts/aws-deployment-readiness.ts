@@ -31,6 +31,7 @@ export type ReadinessInput = {
     operationsDoc: boolean;
     s3BucketPolicy: boolean;
     s3BucketPolicyText: string | null;
+    s3VersioningPolicy: boolean;
     s3ObjectLockPolicy: boolean;
     s3KmsKeyPolicy: boolean;
     fileApiBoundaryTests: string[];
@@ -328,6 +329,7 @@ export function evaluateReadiness(input: ReadinessInput, now = new Date()): Read
   );
   const missingS3PhiArtifacts = [
     ['tools/infra/file-storage-bucket-policy.json', input.files.s3BucketPolicy],
+    ['tools/infra/file-storage-versioning.json', input.files.s3VersioningPolicy],
     ['tools/infra/prescription-object-lock.json', input.files.s3ObjectLockPolicy],
     ['tools/infra/s3-kms-key-policy.json', input.files.s3KmsKeyPolicy],
   ]
@@ -527,6 +529,7 @@ function collectInput(args: CliArgs): ReadinessInput {
       operationsDoc: existsSync('docs/operations/aws-cost-minimal-deployment.md'),
       s3BucketPolicy: existsSync('tools/infra/file-storage-bucket-policy.json'),
       s3BucketPolicyText: readTextIfExists('tools/infra/file-storage-bucket-policy.json'),
+      s3VersioningPolicy: existsSync('tools/infra/file-storage-versioning.json'),
       s3ObjectLockPolicy: existsSync('tools/infra/prescription-object-lock.json'),
       s3KmsKeyPolicy: existsSync('tools/infra/s3-kms-key-policy.json'),
       fileApiBoundaryTests: existingFiles([

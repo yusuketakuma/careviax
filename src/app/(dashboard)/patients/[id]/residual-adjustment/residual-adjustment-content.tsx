@@ -14,6 +14,7 @@ import { BlockedReasonsPanel } from '@/components/features/workspace/action-rail
 import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { downscaleImage } from '@/lib/files/downscale-image';
+import { computeUploadSha256Hex } from '@/lib/files/upload-checksum';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import {
   buildAdjustmentConfirmDescription,
@@ -139,6 +140,7 @@ export function ResidualAdjustmentContent({ patientId }: { patientId: string }) 
       // モバイル撮影画像は長辺 1600px / JPEG 品質 0.85 に縮小してから送信する(W2-F1)。
       // fail-open: 変換失敗時は元ファイルのまま送信する。
       const uploadFile = await downscaleImage(file);
+      const sha256 = await computeUploadSha256Hex(uploadFile);
       const presignRes = await fetch('/api/files/presigned-upload', {
         method: 'POST',
         headers: buildOrgJsonHeaders(orgId),
@@ -147,6 +149,7 @@ export function ResidualAdjustmentContent({ patientId }: { patientId: string }) 
           file_name: uploadFile.name,
           mime_type: uploadFile.type,
           size_bytes: uploadFile.size,
+          sha256,
           visit_record_id: latestVisitRecordId,
         }),
       });

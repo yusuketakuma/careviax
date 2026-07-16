@@ -36,13 +36,12 @@ const optionalTrimmedStringSchema = z.preprocess(
   z.string().min(1).optional(),
 );
 
-const optionalSha256Schema = z.preprocess(
+const sha256Schema = z.preprocess(
   trimStringOrUndefined,
   z
     .string()
     .regex(/^[a-f0-9]{64}$/i, 'sha256 は64文字の16進数で指定してください')
-    .transform((value) => value.toLowerCase())
-    .optional(),
+    .transform((value) => value.toLowerCase()),
 );
 
 const presignedUploadSchema = z
@@ -68,7 +67,7 @@ const presignedUploadSchema = z
       .max(100, 'MIME タイプは100文字以内で指定してください')
       .transform((value) => value.toLowerCase()),
     size_bytes: z.number().int().positive('ファイルサイズは正の整数で指定してください'),
-    sha256: optionalSha256Schema,
+    sha256: sha256Schema,
     patient_id: optionalTrimmedStringSchema,
     visit_record_id: optionalTrimmedStringSchema,
     report_id: optionalTrimmedStringSchema,
@@ -79,22 +78,6 @@ const presignedUploadSchema = z
         code: 'custom',
         path: ['patient_id'],
         message: '処方箋アップロードには patient_id が必要です',
-      });
-    }
-
-    if (value.purpose === 'prescription' && !value.sha256) {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['sha256'],
-        message: '処方箋アップロードには sha256 が必要です',
-      });
-    }
-
-    if (value.purpose !== 'prescription' && value.sha256) {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['sha256'],
-        message: 'sha256 は処方箋アップロードでのみ指定できます',
       });
     }
 
@@ -470,7 +453,7 @@ const authenticatedPOST = withAuthContext(async (req, ctx) => {
       fileName: parsed.data.file_name,
       mimeType: parsed.data.mime_type,
       sizeBytes: parsed.data.size_bytes,
-      ...(parsed.data.purpose === 'prescription' ? { sha256: parsed.data.sha256 } : {}),
+      sha256: parsed.data.sha256,
       patientId:
         parsed.data.purpose === 'prescription' || parsed.data.purpose === 'consent-document'
           ? parsed.data.patient_id

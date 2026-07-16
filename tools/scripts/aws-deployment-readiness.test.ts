@@ -18,6 +18,7 @@ function baseInput(overrides: Partial<ReadinessInput> = {}): ReadinessInput {
       s3BucketPolicy: true,
       s3BucketPolicyText:
         '/prescriptions/* /consent-documents/* /visit-photos/* /reports/* /set-audits/* /contract-documents/* /bulk-exports/*',
+      s3VersioningPolicy: true,
       s3ObjectLockPolicy: true,
       s3KmsKeyPolicy: true,
       fileApiBoundaryTests: [
@@ -134,6 +135,7 @@ describe('evaluateReadiness', () => {
         files: {
           ...baseInput().files,
           s3BucketPolicy: false,
+          s3VersioningPolicy: false,
           s3BucketPolicyText: '/prescriptions/* /visit-photos/* /reports/* /bulk-exports/*',
           fileApiBoundaryTests: [
             'src/app/api/__tests__/api-conventions-static.test.ts',

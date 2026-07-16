@@ -331,6 +331,8 @@ model FileAsset {
   job_id               String?
   uploaded_by          String?
   etag                 String?
+  sha256               String?
+  storage_version_id   String?
   completed_at         DateTime?
   expires_at           DateTime?
   download_disposition String       @default("inline")

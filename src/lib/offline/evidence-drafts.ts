@@ -4,6 +4,7 @@ import { decryptOfflinePayload, encryptOfflinePayloadRequired } from '@/lib/offl
 import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { encodePathSegment } from '@/lib/http/path-segment';
+import { computeUploadSha256Hex } from '@/lib/files/upload-checksum';
 import { offlineDb, type OfflineEvidenceDraft } from '@/lib/stores/offline-db';
 import { createFetchTimeout } from '@/lib/utils/abort-timeout';
 import { normalizePositiveTimeoutMs } from '@/lib/utils/timeout';
@@ -230,6 +231,7 @@ async function uploadEvidenceDraft(
     const dataUrl = await decryptOfflinePayload(draft.payload);
     if (!dataUrl) throw new Error('写真データを復号できませんでした');
     const blob = await (await fetchEvidenceSync(dataUrl)).blob();
+    const sha256 = await computeUploadSha256Hex(blob);
 
     // 1. presigned-upload → 2. PUT → 3. complete(p0_31 残薬写真と同じ作法)
     const presignRes = await fetchEvidenceSync('/api/files/presigned-upload', {
@@ -240,6 +242,7 @@ async function uploadEvidenceDraft(
         file_name: draft.fileName,
         mime_type: draft.mimeType,
         size_bytes: draft.sizeBytes,
+        sha256,
         visit_record_id: visitRecordId,
       }),
     });

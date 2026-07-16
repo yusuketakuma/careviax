@@ -1,0 +1,24 @@
+{
+  "bucketNameEnv": "S3_BUCKET_NAME",
+  "versioningConfiguration": {
+    "Status": "Enabled"
+  },
+  "requiredRuntimeActions": ["s3:GetObjectVersion"],
+  "deploymentGate": {
+    "before": [
+      "Capture get-bucket-versioning and get-object-lock-configuration output.",
+      "Inventory FileAsset rows missing storage_version_id or sha256.",
+      "Prepare an exact VersionId and SHA-256 manifest for every legacy row."
+    ],
+    "after": [
+      "Require Status=Enabled before releasing checksum-pinned uploads.",
+      "Run the legacy identity pin migration in dry-run mode, then apply it.",
+      "Verify complete retry and download use the persisted VersionId."
+    ],
+    "rollback": [
+      "Do not suspend versioning while application records reference VersionId.",
+      "Restore FileAsset identity columns only from the migration rollback snapshot.",
+      "Roll back application code before any approved versioning suspension."
+    ]
+  }
+}

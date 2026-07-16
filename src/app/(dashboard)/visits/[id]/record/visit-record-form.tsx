@@ -40,6 +40,7 @@ import { useUnsavedChangesGuard } from '@/lib/hooks/use-unsaved-changes-guard';
 import { useStaleAfterRefetchError } from '@/lib/hooks/use-stale-after-refetch-error';
 import { createClientIdempotencyKey } from '@/lib/idempotency/client-key';
 import { downscaleImage } from '@/lib/files/downscale-image';
+import { computeUploadSha256Hex } from '@/lib/files/upload-checksum';
 import { isOfflineEncryptionUnavailableError } from '@/lib/offline/crypto';
 import { encodePathSegment } from '@/lib/http/path-segment';
 import { listEvidenceDraftSummariesForSchedule } from '@/lib/offline/evidence-drafts';
@@ -1401,6 +1402,7 @@ export function VisitRecordForm({
     // presign の size_bytes は complete 時に S3 実サイズと突合されるため、
     // 縮小後のファイルを presign 段階から一貫して使う(fail-open: 変換失敗時は元ファイル)。
     const uploadFile = await downscaleImage(attachment.file);
+    const sha256 = await computeUploadSha256Hex(uploadFile);
 
     const presignResponse = await fetch('/api/files/presigned-upload', {
       method: 'POST',
@@ -1410,6 +1412,7 @@ export function VisitRecordForm({
         file_name: uploadFile.name,
         mime_type: uploadFile.type,
         size_bytes: uploadFile.size,
+        sha256,
         visit_record_id: recordId,
       }),
     });

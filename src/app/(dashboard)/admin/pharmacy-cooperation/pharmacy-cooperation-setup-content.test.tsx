@@ -915,6 +915,7 @@ describe('PharmacyCooperationSetupContent', () => {
         file_name: 'signed-contract.pdf',
         mime_type: 'application/pdf',
         size_bytes: signedPdf.size,
+        sha256: '4a3cdfae6f291c8f544daea5b72905cf9e74c1ed427d831ad0d7ca00c73c794d',
       });
 
       const uploadCall = vi

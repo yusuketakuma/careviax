@@ -82,13 +82,22 @@ const originalDisableLegacyFileApi = process.env[PHOS_DISABLE_LEGACY_FILE_API_EN
 const PRESCRIPTION_SHA256 = 'ab'.repeat(32);
 
 function createRequest(body: unknown) {
+  const normalizedBody =
+    body &&
+    typeof body === 'object' &&
+    !Array.isArray(body) &&
+    'purpose' in body &&
+    body.purpose !== 'prescription' &&
+    !('sha256' in body)
+      ? { ...body, sha256: PRESCRIPTION_SHA256 }
+      : body;
   return new NextRequest('http://localhost/api/files/presigned-upload', {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
       'x-org-id': 'org_1',
     },
-    body: JSON.stringify(body),
+    body: JSON.stringify(normalizedBody),
   });
 }
 
@@ -382,7 +391,7 @@ describe('/api/files/presigned-upload POST', () => {
     expect(createPresignedUploadMock).not.toHaveBeenCalled();
   });
 
-  it('rejects SHA-256 on non-prescription uploads before lookup or presign', async () => {
+  it('accepts SHA-256 on non-prescription uploads and forwards it to storage', async () => {
     const response = await POST(
       createRequest({
         purpose: 'report',
@@ -395,17 +404,12 @@ describe('/api/files/presigned-upload POST', () => {
     );
 
     if (!response) throw new Error('response is required');
-    expect(response.status).toBe(400);
+    expect(response.status).toBe(201);
     expectSensitiveNoStore(response);
-    await expect(response.json()).resolves.toMatchObject({
-      code: 'VALIDATION_ERROR',
-      details: {
-        sha256: ['sha256 は処方箋アップロードでのみ指定できます'],
-      },
-    });
-    expect(assertFileUploadConstraintsMock).not.toHaveBeenCalled();
-    expect(careReportFindFirstMock).not.toHaveBeenCalled();
-    expect(createPresignedUploadMock).not.toHaveBeenCalled();
+    expect(careReportFindFirstMock).toHaveBeenCalledOnce();
+    expect(createPresignedUploadMock).toHaveBeenCalledWith(
+      expect.objectContaining({ sha256: PRESCRIPTION_SHA256 }),
+    );
   });
 
   it('normalizes padded filenames, MIME types, and entity ids before lookup or presign', async () => {
@@ -445,6 +449,7 @@ describe('/api/files/presigned-upload POST', () => {
       fileName: 'report.pdf',
       mimeType: 'application/pdf',
       sizeBytes: 1024,
+      sha256: PRESCRIPTION_SHA256,
       patientId: undefined,
       visitRecordId: undefined,
       reportId: 'report_1',
@@ -710,6 +715,7 @@ describe('/api/files/presigned-upload POST', () => {
       fileName: 'signed-contract.pdf',
       mimeType: 'application/pdf',
       sizeBytes: 1024,
+      sha256: PRESCRIPTION_SHA256,
       patientId: undefined,
       visitRecordId: undefined,
       reportId: undefined,
@@ -938,6 +944,7 @@ describe('/api/files/presigned-upload POST', () => {
       fileName: 'consent.pdf',
       mimeType: 'application/pdf',
       sizeBytes: 1024,
+      sha256: PRESCRIPTION_SHA256,
       patientId: 'patient_1',
       visitRecordId: undefined,
       reportId: undefined,
@@ -1050,6 +1057,7 @@ describe('/api/files/presigned-upload POST', () => {
       fileName: 'report.pdf',
       mimeType: 'application/pdf',
       sizeBytes: 1024,
+      sha256: PRESCRIPTION_SHA256,
       patientId: undefined,
       visitRecordId: undefined,
       reportId: 'report_1',
@@ -1136,6 +1144,7 @@ describe('/api/files/presigned-upload POST', () => {
       fileName: 'report.pdf',
       mimeType: 'application/pdf',
       sizeBytes: 1024,
+      sha256: PRESCRIPTION_SHA256,
       patientId: undefined,
       visitRecordId: undefined,
       reportId: 'report_1',

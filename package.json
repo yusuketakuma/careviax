@@ -63,6 +63,7 @@
     "pmda:onboarding:check": "tsx tools/scripts/pmda-onboarding-check.ts",
     "db:check-care-report-duplicates": "tsx tools/scripts/check-care-report-duplicates.ts",
     "db:check-visit-route-order-conflicts": "tsx tools/scripts/check-visit-route-order-conflicts.ts",
+    "db:pin-file-object-identities": "tsx tools/scripts/pin-file-asset-object-identity.ts",
     "db:explain-care-report-index-candidates": "tsx tools/scripts/explain-care-report-index-candidates.ts",
     "db:query-shape:check": "node tools/scripts/check-query-shape.mjs",
     "db:raw-read-org-guard:check": "node tools/scripts/check-raw-read-org-guard.mjs",

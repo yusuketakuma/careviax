@@ -19,6 +19,7 @@ const {
   fileAssetFindManyMock,
   fileAssetUpsertMock,
   fileAssetUpdateMock,
+  fileAssetUpdateManyMock,
   fileAssetDeleteManyMock,
   randomUuidMock,
   s3ClientInstances,
@@ -43,6 +44,7 @@ const {
   fileAssetFindManyMock: vi.fn(),
   fileAssetUpsertMock: vi.fn(),
   fileAssetUpdateMock: vi.fn(),
+  fileAssetUpdateManyMock: vi.fn(),
   fileAssetDeleteManyMock: vi.fn(),
   randomUuidMock: vi.fn(),
   s3ClientInstances: [] as unknown[],
@@ -58,6 +60,9 @@ vi.mock('@/lib/utils/logger', () => ({
 vi.mock('node:crypto', () => ({
   default: {
     randomUUID: randomUuidMock,
+    createHash: () => ({
+      update: () => ({ digest: () => 'ab'.repeat(32) }),
+    }),
   },
 }));
 
@@ -137,6 +142,7 @@ vi.mock('@/lib/db/client', () => ({
       findMany: fileAssetFindManyMock,
       upsert: fileAssetUpsertMock,
       update: fileAssetUpdateMock,
+      updateMany: fileAssetUpdateManyMock,
       deleteMany: fileAssetDeleteManyMock,
     },
   },
@@ -168,6 +174,7 @@ const unassignedAccessContext = {
 
 const PRESCRIPTION_SHA256 = 'ab'.repeat(32);
 const PRESCRIPTION_CHECKSUM_SHA256 = Buffer.from(PRESCRIPTION_SHA256, 'hex').toString('base64');
+const DEFAULT_UPLOAD_CHECKSUM = { sha256: PRESCRIPTION_SHA256 } as const;
 
 function buildStoredFileRecord(overrides: Partial<StoredFileRecord> = {}): StoredFileRecord {
   return {
@@ -186,12 +193,42 @@ function buildStoredFileRecord(overrides: Partial<StoredFileRecord> = {}): Store
     jobId: null,
     uploadedBy: null,
     etag: null,
+    sha256: PRESCRIPTION_SHA256,
+    storageVersionId: 'version-1',
     createdAt: '2026-03-28T00:00:00.000Z',
     updatedAt: '2026-03-28T00:00:00.000Z',
     completedAt: '2026-03-28T00:00:00.000Z',
     downloadDisposition: 'inline',
     ...overrides,
   } satisfies StoredFileRecord;
+}
+
+function buildFileAssetRow(overrides: Partial<StoredFileRecord> = {}) {
+  const record = buildStoredFileRecord(overrides);
+  return {
+    id: record.id,
+    org_id: record.orgId,
+    purpose: record.purpose,
+    storage_key: record.storageKey,
+    original_name: record.originalName,
+    mime_type: record.mimeType,
+    size_bytes: record.sizeBytes,
+    status: record.status,
+    patient_id: record.patientId ?? null,
+    visit_record_id: record.visitRecordId ?? null,
+    report_id: record.reportId ?? null,
+    job_id: record.jobId ?? null,
+    uploaded_by: record.uploadedBy ?? null,
+    etag: record.etag ?? null,
+    sha256: record.sha256 ?? null,
+    storage_version_id: record.storageVersionId ?? null,
+    metadata: record.sha256 ? { sha256: record.sha256 } : null,
+    completed_at: record.completedAt ? new Date(record.completedAt) : null,
+    expires_at: record.expiresAt ? new Date(record.expiresAt) : null,
+    download_disposition: record.downloadDisposition ?? 'inline',
+    created_at: new Date(record.createdAt),
+    updated_at: new Date(record.updatedAt),
+  };
 }
 
 function mockStoredFile(overrides: Record<string, unknown> = {}) {
@@ -337,11 +374,14 @@ describe('file-storage', () => {
     fileAssetFindManyMock.mockResolvedValue([]);
     fileAssetUpsertMock.mockResolvedValue({});
     fileAssetUpdateMock.mockResolvedValue({});
+    fileAssetUpdateManyMock.mockResolvedValue({ count: 1 });
     fileAssetDeleteManyMock.mockResolvedValue({ count: 1 });
     s3SendMock.mockResolvedValue({
       ETag: '"etag-123"',
       ContentLength: 2048,
       ContentType: 'application/pdf',
+      ChecksumSHA256: PRESCRIPTION_CHECKSUM_SHA256,
+      VersionId: 'version-1',
     });
   });
 
@@ -349,6 +389,7 @@ describe('file-storage', () => {
     process.env.S3_SERVER_SIDE_ENCRYPTION = 'AES256';
 
     const result = await createPresignedUpload({
+      ...DEFAULT_UPLOAD_CHECKSUM,
       orgId: 'org_1',
       purpose: 'report',
       fileName: 'report.pdf',
@@ -391,6 +432,7 @@ describe('file-storage', () => {
     expect(result.headers).toEqual({
       'Content-Type': 'application/pdf',
       'x-amz-server-side-encryption': 'AES256',
+      'x-amz-checksum-sha256': PRESCRIPTION_CHECKSUM_SHA256,
     });
   });
 
@@ -495,6 +537,7 @@ describe('file-storage', () => {
     process.env.S3_KMS_KEY_ID = 'arn:aws:kms:ap-northeast-1:123456789012:key/generic';
 
     const result = await createPresignedUpload({
+      ...DEFAULT_UPLOAD_CHECKSUM,
       orgId: 'org_1',
       purpose: 'report',
       fileName: 'report.pdf',
@@ -522,6 +565,7 @@ describe('file-storage', () => {
 
     await expect(
       createPresignedUpload({
+        ...DEFAULT_UPLOAD_CHECKSUM,
         orgId: 'org_1',
         purpose: 'report',
         fileName: 'report.pdf',
@@ -543,6 +587,7 @@ describe('file-storage', () => {
   it('creates a separate S3 client when the configured bucket region changes', async () => {
     process.env.S3_BUCKET_REGION = 'eu-central-1';
     await createPresignedUpload({
+      ...DEFAULT_UPLOAD_CHECKSUM,
       orgId: 'org_1',
       purpose: 'report',
       fileName: 'report.pdf',
@@ -554,6 +599,7 @@ describe('file-storage', () => {
     randomUuidMock.mockReturnValueOnce('file-uuid-2');
 
     await createPresignedUpload({
+      ...DEFAULT_UPLOAD_CHECKSUM,
       orgId: 'org_1',
       purpose: 'report',
       fileName: 'report-2.pdf',
@@ -604,6 +650,7 @@ describe('file-storage', () => {
   it('rejects unsupported MIME types before signing uploads or writing metadata', async () => {
     await expect(
       createPresignedUpload({
+        ...DEFAULT_UPLOAD_CHECKSUM,
         orgId: 'org_1',
         purpose: 'prescription',
         fileName: 'payload.svg',
@@ -626,6 +673,7 @@ describe('file-storage', () => {
     async (sha256) => {
       await expect(
         createPresignedUpload({
+          ...DEFAULT_UPLOAD_CHECKSUM,
           orgId: 'org_1',
           purpose: 'prescription',
           fileName: 'prescription.pdf',
@@ -646,28 +694,24 @@ describe('file-storage', () => {
     },
   );
 
-  it('rejects SHA-256 input for non-prescription uploads before signing', async () => {
-    await expect(
-      createPresignedUpload({
-        orgId: 'org_1',
-        purpose: 'report',
-        fileName: 'report.pdf',
-        mimeType: 'application/pdf',
-        sizeBytes: 1024,
-        reportId: 'report_1',
-        sha256: PRESCRIPTION_SHA256,
-      }),
-    ).rejects.toMatchObject({
-      code: 'FILE_UPLOAD_INVALID_CHECKSUM',
-      status: 400,
+  it('requires and signs SHA-256 for non-prescription uploads', async () => {
+    const result = await createPresignedUpload({
+      ...DEFAULT_UPLOAD_CHECKSUM,
+      orgId: 'org_1',
+      purpose: 'report',
+      fileName: 'report.pdf',
+      mimeType: 'application/pdf',
+      sizeBytes: 1024,
+      reportId: 'report_1',
     });
 
-    expect(randomUuidMock).not.toHaveBeenCalled();
-    expect(getSignedUrlMock).not.toHaveBeenCalled();
+    expect(result.headers['x-amz-checksum-sha256']).toBe(PRESCRIPTION_CHECKSUM_SHA256);
+    expect(getSignedUrlMock).toHaveBeenCalledOnce();
   });
 
   it('stores consent-document uploads under patient-scoped consent document keys', async () => {
     const result = await createPresignedUpload({
+      ...DEFAULT_UPLOAD_CHECKSUM,
       orgId: 'org_1',
       purpose: 'consent-document',
       fileName: 'consent.pdf',
@@ -699,6 +743,7 @@ describe('file-storage', () => {
     async (purpose, references) => {
       await expect(
         createPresignedUpload({
+          ...DEFAULT_UPLOAD_CHECKSUM,
           orgId: 'org_1',
           purpose,
           fileName: 'clinical.pdf',
@@ -719,6 +764,7 @@ describe('file-storage', () => {
 
   it('sanitizes path-like filenames before using them in storage keys and metadata', async () => {
     const result = await createPresignedUpload({
+      ...DEFAULT_UPLOAD_CHECKSUM,
       orgId: 'org_1',
       purpose: 'report',
       fileName: '../../退避/clinical report?.pdf',
@@ -911,6 +957,7 @@ describe('file-storage', () => {
     expect((s3SendMock.mock.calls[1]?.[0] as { input: Record<string, unknown> }).input).toEqual({
       Bucket: 'ph-os-files',
       Key: 'contract-documents/org_1/generated/contract-document-contract_1/file-uuid-1-contract-v1.pdf',
+      VersionId: 'version-1',
     });
     expect(settingUpsertMock).not.toHaveBeenCalled();
   });
@@ -965,6 +1012,7 @@ describe('file-storage', () => {
     expect((s3SendMock.mock.calls[1]?.[0] as { input: Record<string, unknown> }).input).toEqual({
       Bucket: 'ph-os-files',
       Key: 'bulk-exports/org_1/job_1/file-uuid-1-medication-history.zip',
+      VersionId: 'version-1',
     });
   });
 
@@ -982,6 +1030,7 @@ describe('file-storage', () => {
     expect((s3SendMock.mock.calls[0]?.[0] as { input: Record<string, unknown> }).input).toEqual({
       Bucket: 'ph-os-files',
       Key: 'bulk-exports/org_1/job_1/file_1-medication-history.zip',
+      VersionId: 'version-1',
     });
     expect(settingDeleteManyMock).toHaveBeenCalledWith({
       where: {
@@ -1140,6 +1189,8 @@ describe('file-storage', () => {
       Body: new Uint8Array([102, 105, 108, 101]),
       ContentType: 'application/pdf',
       ContentLength: 4,
+      ChecksumSHA256: PRESCRIPTION_CHECKSUM_SHA256,
+      VersionId: 'version-1',
     });
 
     const result = await createStreamedDownload({
@@ -1164,6 +1215,8 @@ describe('file-storage', () => {
         input: {
           Bucket: 'ph-os-files',
           Key: 'reports/org_1/report_1/file_1-report.pdf',
+          VersionId: 'version-1',
+          ChecksumMode: 'ENABLED',
         },
       }),
     );
@@ -1345,6 +1398,7 @@ describe('file-storage', () => {
     expect((s3SendMock.mock.calls[0]?.[0] as { input: Record<string, unknown> }).input).toEqual({
       Bucket: 'ph-os-files',
       Key: 'bulk-exports/org_1/job_1/expired_file-medication-history.zip',
+      VersionId: 'version-1',
     });
     expect(settingDeleteManyMock).toHaveBeenCalledWith({
       where: {
@@ -1505,6 +1559,7 @@ describe('file-storage', () => {
     process.env.S3_KMS_KEY_ID = 'arn:aws:kms:ap-northeast-1:123456789012:key/generic';
 
     const result = await createPresignedUpload({
+      ...DEFAULT_UPLOAD_CHECKSUM,
       orgId: 'org_1',
       purpose: 'report',
       fileName: 'report.pdf',
@@ -1533,6 +1588,7 @@ describe('file-storage', () => {
     process.env.S3_KMS_KEY_ID = 'arn:aws:kms:ap-northeast-1:123456789012:key/generic';
 
     await createPresignedUpload({
+      ...DEFAULT_UPLOAD_CHECKSUM,
       orgId: 'org_1',
       purpose: 'prescription',
       fileName: 'prescription.pdf',
@@ -1553,6 +1609,7 @@ describe('file-storage', () => {
 
   it('adds five-year Object Lock headers for prescription uploads', async () => {
     const result = await createPresignedUpload({
+      ...DEFAULT_UPLOAD_CHECKSUM,
       orgId: 'org_1',
       purpose: 'prescription',
       fileName: 'prescription.pdf',
@@ -1598,6 +1655,7 @@ describe('file-storage', () => {
 
   it('allows PDF attachments for visit records up to the document size limit', async () => {
     const result = await createPresignedUpload({
+      ...DEFAULT_UPLOAD_CHECKSUM,
       orgId: 'org_1',
       purpose: 'visit-photo',
       fileName: 'visit-note.pdf',
@@ -1619,6 +1677,7 @@ describe('file-storage', () => {
     expect(result.headers).toEqual({
       'Content-Type': 'application/pdf',
       'x-amz-server-side-encryption': 'AES256',
+      'x-amz-checksum-sha256': PRESCRIPTION_CHECKSUM_SHA256,
     });
   });
 
@@ -1628,6 +1687,7 @@ describe('file-storage', () => {
     let result!: Awaited<ReturnType<typeof createPresignedUpload>>;
     try {
       result = await createPresignedUpload({
+        ...DEFAULT_UPLOAD_CHECKSUM,
         orgId: 'org_1',
         purpose: 'contract-document',
         fileName: 'signed-contract.pdf',
@@ -1669,6 +1729,7 @@ describe('file-storage', () => {
   it('rejects non-PDF contract document uploads', async () => {
     await expect(
       createPresignedUpload({
+        ...DEFAULT_UPLOAD_CHECKSUM,
         orgId: 'org_1',
         purpose: 'contract-document',
         fileName: 'signed-contract.png',
@@ -1698,6 +1759,8 @@ describe('file-storage', () => {
         mimeType: 'application/zip',
         sizeBytes: 2048,
         status: 'uploaded',
+        sha256: PRESCRIPTION_SHA256,
+        storageVersionId: 'version-1',
         uploadedBy: 'user_1',
         createdAt: '2026-03-28T00:00:00.000Z',
         updatedAt: '2026-03-28T00:00:00.000Z',
@@ -1733,6 +1796,8 @@ describe('file-storage', () => {
         mimeType: 'application/zip',
         sizeBytes: 2048,
         status: 'uploaded',
+        sha256: PRESCRIPTION_SHA256,
+        storageVersionId: 'version-1',
         uploadedBy: 'user_1',
         createdAt: '2026-03-28T00:00:00.000Z',
         updatedAt: '2026-03-28T00:00:00.000Z',
@@ -1767,6 +1832,8 @@ describe('file-storage', () => {
         mimeType: 'application/zip',
         sizeBytes: 2048,
         status: 'uploaded',
+        sha256: PRESCRIPTION_SHA256,
+        storageVersionId: 'version-1',
         uploadedBy: 'user_1',
         createdAt: '2026-03-28T00:00:00.000Z',
         updatedAt: '2026-03-28T00:00:00.000Z',
@@ -1911,6 +1978,8 @@ describe('file-storage', () => {
         mimeType: 'application/pdf',
         sizeBytes: 1024,
         status: 'uploaded',
+        sha256: PRESCRIPTION_SHA256,
+        storageVersionId: 'version-1',
         jobId: 'contract-document-contract_1',
         uploadedBy: 'user_1',
         createdAt: '2026-03-28T00:00:00.000Z',
@@ -1989,10 +2058,11 @@ describe('file-storage', () => {
 
   it.each(fileAccessCases)(
     'allows completion for an org-wide pharmacist regardless of assignment on $purpose files',
-    async ({ purpose, record, deny }) => {
+    async ({ record, deny }) => {
       mockStoredFile({
         ...record,
         status: 'pending_upload',
+        storageVersionId: null,
         completedAt: null,
       });
       // assignment 上は未割当でも、組織内フルアクセスロールは許可される。
@@ -2001,7 +2071,8 @@ describe('file-storage', () => {
         ETag: '"etag-123"',
         ContentLength: 2048,
         ContentType: 'application/pdf',
-        ...(purpose === 'prescription' ? { ChecksumSHA256: PRESCRIPTION_CHECKSUM_SHA256 } : {}),
+        ChecksumSHA256: PRESCRIPTION_CHECKSUM_SHA256,
+        VersionId: 'version-1',
       });
 
       const result = await completeUploadedFile({
@@ -2027,10 +2098,11 @@ describe('file-storage', () => {
 
   it.each(fileAccessCases)(
     'allows completion for an authorized pharmacist on $purpose files',
-    async ({ purpose, record, authorize }) => {
+    async ({ record, authorize }) => {
       mockStoredFile({
         ...record,
         status: 'pending_upload',
+        storageVersionId: null,
         completedAt: null,
       });
       authorize();
@@ -2038,7 +2110,8 @@ describe('file-storage', () => {
         ETag: '"etag-123"',
         ContentLength: 2048,
         ContentType: 'application/pdf',
-        ...(purpose === 'prescription' ? { ChecksumSHA256: PRESCRIPTION_CHECKSUM_SHA256 } : {}),
+        ChecksumSHA256: PRESCRIPTION_CHECKSUM_SHA256,
+        VersionId: 'version-1',
       });
 
       const result = await completeUploadedFile({
@@ -2279,7 +2352,7 @@ describe('file-storage', () => {
     });
 
     expect(result.status).toBe('uploaded');
-    expect(s3SendMock).not.toHaveBeenCalled();
+    expect(s3SendMock).toHaveBeenCalledOnce();
     expect(settingUpdateMock).not.toHaveBeenCalled();
     expect(careReportUpdateManyMock).toHaveBeenCalledWith({
       where: {
@@ -2328,6 +2401,8 @@ describe('file-storage', () => {
         visitRecordId: 'visit_1',
         uploadedBy: null,
         etag: null,
+        sha256: PRESCRIPTION_SHA256,
+        storageVersionId: null,
         createdAt: '2026-03-28T00:00:00.000Z',
         updatedAt: '2026-03-28T00:00:00.000Z',
         completedAt: null,
@@ -2338,6 +2413,8 @@ describe('file-storage', () => {
       ETag: '"etag-123"',
       ContentLength: 2048,
       ContentType: 'application/pdf',
+      ChecksumSHA256: PRESCRIPTION_CHECKSUM_SHA256,
+      VersionId: 'version-1',
     });
 
     const result = await completeUploadedFile({
@@ -2355,7 +2432,7 @@ describe('file-storage', () => {
       Bucket: 'ph-os-files',
       Key: 'visit-photos/org_1/visit_1/file_1-note.pdf',
     });
-    expect(headObjectCommand.input).not.toHaveProperty('ChecksumMode');
+    expect(headObjectCommand.input).toMatchObject({ ChecksumMode: 'ENABLED' });
     expect(settingUpdateMock).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: 'setting_1' },
@@ -2369,6 +2446,59 @@ describe('file-storage', () => {
       }),
     );
     expect(result.etag).toBe('etag-123');
+    expect(result.storageVersionId).toBe('version-1');
+    expect(fileAssetUpdateManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'file_1', org_id: 'org_1', status: 'pending_upload' },
+        data: expect.objectContaining({ storage_version_id: 'version-1' }),
+      }),
+    );
+  });
+
+  it('rejects completion when bucket versioning does not return a VersionId', async () => {
+    mockStoredFile({ status: 'pending_upload', storageVersionId: null, completedAt: null });
+    s3SendMock.mockResolvedValueOnce({
+      ETag: '"etag-123"',
+      ContentLength: 2048,
+      ContentType: 'application/pdf',
+      ChecksumSHA256: PRESCRIPTION_CHECKSUM_SHA256,
+    });
+
+    await expect(
+      completeUploadedFile({
+        orgId: 'org_1',
+        fileId: 'file_1',
+        uploadedBy: 'user_1',
+        accessContext: assignedAccessContext,
+      }),
+    ).rejects.toMatchObject({ code: 'FILE_NOT_READY', status: 409 });
+    expect(fileAssetUpdateManyMock).not.toHaveBeenCalled();
+  });
+
+  it('converges concurrent completion on the first pinned object identity', async () => {
+    mockStoredFile({ status: 'pending_upload', storageVersionId: null, completedAt: null });
+    fileAssetFindFirstMock.mockResolvedValueOnce(null).mockResolvedValueOnce(
+      buildFileAssetRow({
+        status: 'uploaded',
+        uploadedBy: 'winner_user',
+        storageVersionId: 'version-1',
+      }),
+    );
+    fileAssetUpdateManyMock.mockResolvedValueOnce({ count: 0 });
+
+    const result = await completeUploadedFile({
+      orgId: 'org_1',
+      fileId: 'file_1',
+      uploadedBy: 'loser_user',
+      accessContext: assignedAccessContext,
+    });
+
+    expect(result).toMatchObject({
+      status: 'uploaded',
+      uploadedBy: 'winner_user',
+      storageVersionId: 'version-1',
+    });
+    expect(settingUpdateMock).not.toHaveBeenCalled();
   });
 
   it('reads the expected checksum from FileAsset metadata before completing a prescription', async () => {
@@ -2387,6 +2517,8 @@ describe('file-storage', () => {
       job_id: null,
       uploaded_by: null,
       etag: null,
+      sha256: null,
+      storage_version_id: null,
       metadata: { sha256: PRESCRIPTION_SHA256.toUpperCase() },
       completed_at: null,
       expires_at: null,
@@ -2399,6 +2531,7 @@ describe('file-storage', () => {
       ContentLength: 2048,
       ContentType: 'application/pdf',
       ChecksumSHA256: PRESCRIPTION_CHECKSUM_SHA256,
+      VersionId: 'version-1',
     });
 
     const result = await completeUploadedFile({
@@ -2420,11 +2553,12 @@ describe('file-storage', () => {
       status: 'uploaded',
       sha256: PRESCRIPTION_SHA256,
     });
-    expect(fileAssetUpsertMock).toHaveBeenCalledWith(
+    expect(fileAssetUpdateManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        update: expect.objectContaining({
+        data: expect.objectContaining({
           status: 'uploaded',
-          metadata: { sha256: PRESCRIPTION_SHA256 },
+          sha256: PRESCRIPTION_SHA256,
+          storage_version_id: 'version-1',
         }),
       }),
     );
@@ -2526,7 +2660,13 @@ describe('file-storage', () => {
       etag: 'etag-123',
       completedAt: '2026-03-28T00:00:00.000Z',
     });
-    expect(s3SendMock).not.toHaveBeenCalled();
+    expect(s3SendMock).toHaveBeenCalledOnce();
+    expect((s3SendMock.mock.calls[0]?.[0] as { input: Record<string, unknown> }).input).toEqual({
+      Bucket: 'ph-os-files',
+      Key: 'visit-photos/org_1/visit_1/file_1-note.pdf',
+      VersionId: 'version-1',
+      ChecksumMode: 'ENABLED',
+    });
     expect(settingUpdateMock).not.toHaveBeenCalled();
   });
 
