@@ -4,6 +4,7 @@ import { NextRequest } from 'next/server';
 import { expectSensitiveNoStore } from '@/test/api-response-assertions';
 
 const VALID_ORG_ID = 'corgabcdefghijklmnopqrstu';
+const VALID_GRANT_EXPIRES_AT = new Date('2099-01-01T00:00:00.000Z');
 
 const {
   checkAuthRateLimitMock,
@@ -12,6 +13,7 @@ const {
   getClientIpMock,
   validateExternalAccessGrantMock,
   withOrgContextMock,
+  externalAccessGrantUpdateManyMock,
   patientSelfReportFindFirstMock,
   patientSelfReportCreateMock,
   communicationEventCreateMock,
@@ -22,6 +24,7 @@ const {
   getClientIpMock: vi.fn(),
   validateExternalAccessGrantMock: vi.fn(),
   withOrgContextMock: vi.fn(),
+  externalAccessGrantUpdateManyMock: vi.fn(),
   patientSelfReportFindFirstMock: vi.fn(),
   patientSelfReportCreateMock: vi.fn(),
   communicationEventCreateMock: vi.fn(),
@@ -100,9 +103,14 @@ describe('/api/external-access/[token]/self-report', () => {
         id: 'grant_1',
         org_id: VALID_ORG_ID,
         patient_id: 'patient_1',
+        token_hash: 'token_hash_1',
+        otp_hash: 'otp_hash_1',
+        expires_at: VALID_GRANT_EXPIRES_AT,
+        revoked_at: null,
         scope: { care_reports: true },
       },
     });
+    externalAccessGrantUpdateManyMock.mockResolvedValue({ count: 1 });
     patientSelfReportCreateMock.mockResolvedValue({
       id: 'report_1',
       patient_id: 'patient_1',
@@ -113,6 +121,9 @@ describe('/api/external-access/[token]/self-report', () => {
     patientSelfReportFindFirstMock.mockResolvedValue(null);
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
+        externalAccessGrant: {
+          updateMany: externalAccessGrantUpdateManyMock,
+        },
         patientSelfReport: {
           findFirst: patientSelfReportFindFirstMock,
           create: patientSelfReportCreateMock,
@@ -152,7 +163,30 @@ describe('/api/external-access/[token]/self-report', () => {
     expect(validateExternalAccessGrantMock).toHaveBeenCalledWith('token_1', '1234');
     expect(checkExternalAccessOtpLockoutMock).toHaveBeenCalledOnce();
     expect(recordExternalAccessOtpFailureMock).not.toHaveBeenCalled();
-    expect(withOrgContextMock).toHaveBeenCalledWith(VALID_ORG_ID, expect.any(Function));
+    expect(withOrgContextMock).toHaveBeenCalledWith(VALID_ORG_ID, expect.any(Function), {
+      isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+    });
+    const lifecycleGuard = externalAccessGrantUpdateManyMock.mock.calls[0]?.[0];
+    expect(lifecycleGuard).toEqual({
+      where: {
+        id: 'grant_1',
+        org_id: VALID_ORG_ID,
+        patient_id: 'patient_1',
+        token_hash: 'token_hash_1',
+        otp_hash: 'otp_hash_1',
+        expires_at: {
+          equals: VALID_GRANT_EXPIRES_AT,
+          gte: expect.any(Date),
+        },
+        revoked_at: null,
+        scope: { equals: { care_reports: true } },
+      },
+      data: { accessed_at: expect.any(Date) },
+    });
+    expect(lifecycleGuard.where.expires_at.gte).toBe(lifecycleGuard.data.accessed_at);
+    expect(externalAccessGrantUpdateManyMock.mock.invocationCallOrder[0]).toBeLessThan(
+      patientSelfReportCreateMock.mock.invocationCallOrder[0] ?? Number.POSITIVE_INFINITY,
+    );
     expect(patientSelfReportCreateMock).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
@@ -170,6 +204,90 @@ describe('/api/external-access/[token]/self-report', () => {
         content: null,
       }),
     });
+  });
+
+  it('rejects a grant lifecycle change inside the write transaction without side effects', async () => {
+    externalAccessGrantUpdateManyMock.mockResolvedValueOnce({ count: 0 });
+
+    const response = await POST(
+      createSelfReportRequest(
+        'http://localhost/api/external-access/token_1/self-report',
+        {
+          reported_by_name: '家族A',
+          category: 'adherence',
+          subject: '飲み忘れ',
+          content: '夕食後を飲み忘れ',
+        },
+        '1234',
+        'self-report-submit-1',
+      ),
+      { params: Promise.resolve({ token: 'token_1' }) },
+    );
+
+    expect(response.status).toBe(404);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toEqual({
+      code: 'WORKFLOW_NOT_FOUND',
+      message: '共有リンクが無効または期限切れです',
+    });
+    expect(patientSelfReportFindFirstMock).not.toHaveBeenCalled();
+    expect(patientSelfReportCreateMock).not.toHaveBeenCalled();
+    expect(communicationEventCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('retries one serialization conflict before creating the self report once', async () => {
+    withOrgContextMock.mockRejectedValueOnce({ code: 'P2034' });
+
+    const response = await POST(
+      createSelfReportRequest(
+        'http://localhost/api/external-access/token_1/self-report',
+        {
+          reported_by_name: '家族A',
+          category: 'adherence',
+          subject: '飲み忘れ',
+          content: '夕食後を飲み忘れ',
+        },
+        '1234',
+        'self-report-submit-1',
+      ),
+      { params: Promise.resolve({ token: 'token_1' }) },
+    );
+
+    expect(response.status).toBe(201);
+    expect(withOrgContextMock).toHaveBeenCalledTimes(2);
+    expect(externalAccessGrantUpdateManyMock).toHaveBeenCalledOnce();
+    expect(patientSelfReportCreateMock).toHaveBeenCalledOnce();
+    expect(communicationEventCreateMock).toHaveBeenCalledOnce();
+  });
+
+  it('returns a fixed conflict after bounded serialization retries without side effects', async () => {
+    withOrgContextMock.mockRejectedValue({ code: 'P2034' });
+
+    const response = await POST(
+      createSelfReportRequest(
+        'http://localhost/api/external-access/token_1/self-report',
+        {
+          reported_by_name: '家族A',
+          category: 'adherence',
+          subject: '飲み忘れ',
+          content: '夕食後を飲み忘れ',
+        },
+        '1234',
+        'self-report-submit-1',
+      ),
+      { params: Promise.resolve({ token: 'token_1' }) },
+    );
+
+    expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toEqual({
+      code: 'WORKFLOW_CONFLICT',
+      message: '自己申告の受付状態が同時に更新されました。もう一度お試しください',
+    });
+    expect(withOrgContextMock).toHaveBeenCalledTimes(2);
+    expect(externalAccessGrantUpdateManyMock).not.toHaveBeenCalled();
+    expect(patientSelfReportCreateMock).not.toHaveBeenCalled();
+    expect(communicationEventCreateMock).not.toHaveBeenCalled();
   });
 
   it('rejects self reports for medication-only external access grants', async () => {
@@ -206,6 +324,39 @@ describe('/api/external-access/[token]/self-report', () => {
       message: 'この共有リンクでは自己申告を登録できません',
     });
     expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(patientSelfReportCreateMock).not.toHaveBeenCalled();
+    expect(communicationEventCreateMock).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['oversized', '名'.repeat(101)],
+    ['control-bearing', '家族\u0000A'],
+    ['format-control-bearing', '家族\u200bA'],
+  ])('rejects %s reporter names before grant validation or persistence', async (_label, name) => {
+    const response = await POST(
+      createSelfReportRequest(
+        'http://localhost/api/external-access/token_1/self-report',
+        {
+          reported_by_name: name,
+          category: 'adherence',
+          subject: '飲み忘れ',
+          content: '夕食後を飲み忘れ',
+        },
+        '1234',
+      ),
+      { params: Promise.resolve({ token: 'token_1' }) },
+    );
+
+    expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '入力値が不正です',
+      details: { reported_by_name: expect.any(Array) },
+    });
+    expect(validateExternalAccessGrantMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(externalAccessGrantUpdateManyMock).not.toHaveBeenCalled();
     expect(patientSelfReportCreateMock).not.toHaveBeenCalled();
     expect(communicationEventCreateMock).not.toHaveBeenCalled();
   });

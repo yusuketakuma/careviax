@@ -511,6 +511,34 @@ describe('/api/patient-self-reports', () => {
     });
   });
 
+  it.each([
+    ['oversized', '名'.repeat(101)],
+    ['control-bearing', '家族\u0000A'],
+  ])('rejects %s reporter names before patient lookup or writes', async (_label, name) => {
+    const response = (await POST(
+      createPostRequest({
+        patient_id: 'patient_1',
+        reported_by_name: name,
+        category: 'adherence',
+        subject: '飲み忘れ',
+        content: '朝食後を飲み忘れ',
+      }),
+      { params: Promise.resolve({}) },
+    ))!;
+
+    expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '入力値が不正です',
+      details: { reported_by_name: expect.any(Array) },
+    });
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(patientSelfReportCreateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+
   it('rejects non-object create payloads before resolving patient access', async () => {
     const response = (await POST(createPostRequest(['patient_1']), {
       params: Promise.resolve({}),

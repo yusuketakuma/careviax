@@ -1,20 +1,30 @@
 import { createHash } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import { NextRequest } from 'next/server';
-import { error, registeredError, success, validationError } from '@/lib/api/response';
+import {
+  conflict,
+  error,
+  notFound,
+  registeredError,
+  success,
+  validationError,
+} from '@/lib/api/response';
 import { parseOptionalIdempotencyKey } from '@/lib/api/idempotency-key';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { withOrgContext } from '@/lib/db/rls';
+import { isPrismaErrorCode } from '@/lib/db/prisma-errors';
+import { selfReportReporterNameSchema } from '@/lib/validations/self-report';
 import { z } from 'zod';
 import { prepareExternalAccessOtpRequest, validatePreparedExternalAccessGrant } from '../../shared';
 
 // OTP is intentionally accepted only via the `x-otp` header to keep the secret
 // out of POST body request logs (Sentry breadcrumbs, WAF, Next.js logger).
 const SELF_REPORT_EVENT_SUBJECT = '外部共有ポータルから自己申告を受信';
+const SELF_REPORT_SERIALIZABLE_RETRY_LIMIT = 2;
 
 const createSelfReportSchema = z.object({
-  reported_by_name: z.string().trim().min(1, '報告者氏名は必須です'),
+  reported_by_name: selfReportReporterNameSchema,
   relation: z.string().trim().max(100).optional(),
   category: z.string().trim().min(1, 'カテゴリは必須です').max(100),
   subject: z.string().trim().min(1, '件名は必須です').max(200),
@@ -74,6 +84,24 @@ function isMatchingSelfReportReplay(
   return report.request_fingerprint === requestFingerprint;
 }
 
+async function withSerializableSelfReportTransaction<T>(
+  orgId: string,
+  work: (tx: Prisma.TransactionClient) => Promise<T>,
+) {
+  for (let attempt = 0; attempt < SELF_REPORT_SERIALIZABLE_RETRY_LIMIT; attempt += 1) {
+    try {
+      return await withOrgContext(orgId, work, {
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+      });
+    } catch (cause) {
+      if (!isPrismaErrorCode(cause, 'P2034')) throw cause;
+      if (attempt === SELF_REPORT_SERIALIZABLE_RETRY_LIMIT - 1) throw cause;
+    }
+  }
+
+  throw new Error('Self-report transaction retry loop exhausted unexpectedly');
+}
+
 export async function POST(req: NextRequest, { params }: { params: Promise<{ token: string }> }) {
   const { token: rawToken } = await params;
   const prepared = await prepareExternalAccessOtpRequest(req, rawToken);
@@ -131,79 +159,117 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
       })
     : null;
 
-  const result = await withOrgContext(validation.grant.org_id, async (tx) => {
-    const findExistingReport = () =>
-      idempotencyKeyHash && requestFingerprint
-        ? tx.patientSelfReport.findFirst({
-            where: {
-              org_id: validation.grant.org_id,
-              external_access_grant_id: validation.grant.id,
-              idempotency_key_hash: idempotencyKeyHash,
-            },
-            select: {
-              id: true,
-              request_fingerprint: true,
-            },
-          })
-        : Promise.resolve(null);
-
-    const existing = await findExistingReport();
-    if (existing) {
-      return isMatchingSelfReportReplay(existing, requestFingerprint ?? '')
-        ? { kind: 'replayed' as const }
-        : { kind: 'idempotency_conflict' as const };
-    }
-
-    const createData = {
-      org_id: validation.grant.org_id,
-      patient_id: validation.grant.patient_id,
-      external_access_grant_id: validation.grant.id,
-      reported_by_name: parsed.data.reported_by_name,
-      relation: parsed.data.relation ?? null,
-      category: parsed.data.category,
-      subject: parsed.data.subject,
-      content: parsed.data.content,
-      requested_callback: parsed.data.requested_callback,
-      preferred_contact_time: parsed.data.preferred_contact_time ?? null,
-      idempotency_key_hash: idempotencyKeyHash,
-      request_fingerprint: requestFingerprint,
-    };
-
-    try {
-      await tx.patientSelfReport.create({
-        data: createData,
-        select: {
-          id: true,
-          request_fingerprint: true,
+  const result = await withSerializableSelfReportTransaction(
+    validation.grant.org_id,
+    async (tx) => {
+      const writeStartedAt = new Date();
+      const lifecycleGuard = await tx.externalAccessGrant.updateMany({
+        where: {
+          id: validation.grant.id,
+          org_id: validation.grant.org_id,
+          patient_id: validation.grant.patient_id,
+          token_hash: validation.grant.token_hash,
+          otp_hash: validation.grant.otp_hash,
+          expires_at: {
+            equals: validation.grant.expires_at,
+            gte: writeStartedAt,
+          },
+          revoked_at: null,
+          scope: { equals: validation.grant.scope as Prisma.InputJsonValue },
         },
+        data: { accessed_at: writeStartedAt },
       });
-    } catch (createError) {
-      if (!idempotencyKeyHash || !requestFingerprint || !isUniqueConstraintError(createError)) {
-        throw createError;
-      }
-      const raced = await findExistingReport();
-      if (raced && isMatchingSelfReportReplay(raced, requestFingerprint ?? '')) {
-        return { kind: 'replayed' as const };
-      }
-      return { kind: 'idempotency_conflict' as const };
-    }
 
-    await tx.communicationEvent.create({
-      data: {
+      if (lifecycleGuard.count !== 1) {
+        return { kind: 'grant_unavailable' as const };
+      }
+
+      const findExistingReport = () =>
+        idempotencyKeyHash && requestFingerprint
+          ? tx.patientSelfReport.findFirst({
+              where: {
+                org_id: validation.grant.org_id,
+                external_access_grant_id: validation.grant.id,
+                idempotency_key_hash: idempotencyKeyHash,
+              },
+              select: {
+                id: true,
+                request_fingerprint: true,
+              },
+            })
+          : Promise.resolve(null);
+
+      const existing = await findExistingReport();
+      if (existing) {
+        return isMatchingSelfReportReplay(existing, requestFingerprint ?? '')
+          ? { kind: 'replayed' as const }
+          : { kind: 'idempotency_conflict' as const };
+      }
+
+      const createData = {
         org_id: validation.grant.org_id,
         patient_id: validation.grant.patient_id,
-        event_type: 'patient_self_report',
-        channel: 'phone',
-        direction: 'inbound',
-        counterpart_name: null,
-        counterpart_contact: null,
-        subject: SELF_REPORT_EVENT_SUBJECT,
-        content: null,
-      },
-    });
+        external_access_grant_id: validation.grant.id,
+        reported_by_name: parsed.data.reported_by_name,
+        relation: parsed.data.relation ?? null,
+        category: parsed.data.category,
+        subject: parsed.data.subject,
+        content: parsed.data.content,
+        requested_callback: parsed.data.requested_callback,
+        preferred_contact_time: parsed.data.preferred_contact_time ?? null,
+        idempotency_key_hash: idempotencyKeyHash,
+        request_fingerprint: requestFingerprint,
+      };
 
-    return { kind: 'created' as const };
+      try {
+        await tx.patientSelfReport.create({
+          data: createData,
+          select: {
+            id: true,
+            request_fingerprint: true,
+          },
+        });
+      } catch (createError) {
+        if (!idempotencyKeyHash || !requestFingerprint || !isUniqueConstraintError(createError)) {
+          throw createError;
+        }
+        const raced = await findExistingReport();
+        if (raced && isMatchingSelfReportReplay(raced, requestFingerprint ?? '')) {
+          return { kind: 'replayed' as const };
+        }
+        return { kind: 'idempotency_conflict' as const };
+      }
+
+      await tx.communicationEvent.create({
+        data: {
+          org_id: validation.grant.org_id,
+          patient_id: validation.grant.patient_id,
+          event_type: 'patient_self_report',
+          channel: 'phone',
+          direction: 'inbound',
+          counterpart_name: null,
+          counterpart_contact: null,
+          subject: SELF_REPORT_EVENT_SUBJECT,
+          content: null,
+        },
+      });
+
+      return { kind: 'created' as const };
+    },
+  ).catch((cause) => {
+    if (!isPrismaErrorCode(cause, 'P2034')) throw cause;
+    return { kind: 'serialization_conflict' as const };
   });
+
+  if (result.kind === 'serialization_conflict') {
+    return withSensitiveNoStore(
+      conflict('自己申告の受付状態が同時に更新されました。もう一度お試しください'),
+    );
+  }
+
+  if (result.kind === 'grant_unavailable') {
+    return withSensitiveNoStore(notFound('共有リンクが無効または期限切れです'));
+  }
 
   if (result.kind === 'idempotency_conflict') {
     return withSensitiveNoStore(

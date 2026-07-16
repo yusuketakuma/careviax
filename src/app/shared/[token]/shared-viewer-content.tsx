@@ -26,6 +26,10 @@ import { readApiJson } from '@/lib/api/client-json';
 import { createClientIdempotencyKey } from '@/lib/idempotency/client-key';
 import { clientLog } from '@/lib/utils/client-log';
 import {
+  SELF_REPORT_REPORTER_NAME_MAX_LENGTH,
+  selfReportReporterNameSchema,
+} from '@/lib/validations/self-report';
+import {
   sharedViewerResponseSchema,
   type SharedViewerResponse,
 } from './shared-viewer-response-schema';
@@ -263,7 +267,7 @@ export function SharedViewerContent({ token }: { token: string }) {
   const selfReportMutation = useMutation({
     mutationFn: async () => {
       const body: SelfReportSubmitPayload = {
-        reported_by_name: reporterName,
+        reported_by_name: selfReportReporterNameSchema.parse(reporterName),
         relation: relation || undefined,
         category,
         subject,
@@ -380,8 +384,12 @@ export function SharedViewerContent({ token }: { token: string }) {
   function submitSelfReport() {
     if (selfReportMutation.isPending) return;
     const nextErrors: SelfReportFieldErrors = {};
+    const reporterNameResult = selfReportReporterNameSchema.safeParse(reporterName);
     if (!reporterName.trim()) {
       nextErrors.reporterName = '報告者氏名を入力してください';
+    } else if (!reporterNameResult.success) {
+      nextErrors.reporterName =
+        reporterNameResult.error.issues[0]?.message ?? '報告者氏名を確認してください';
     }
     if (!subject.trim()) {
       nextErrors.subject = '件名を入力してください';
@@ -808,6 +816,7 @@ export function SharedViewerContent({ token }: { token: string }) {
                       clearSelfReportError('reporterName');
                     }}
                     placeholder="例: 山田花子"
+                    maxLength={SELF_REPORT_REPORTER_NAME_MAX_LENGTH}
                     required
                     aria-invalid={Boolean(selfReportErrors.reporterName)}
                     aria-describedby={

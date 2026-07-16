@@ -16,7 +16,10 @@ import {
   serializePatientSelfReport,
 } from '@/lib/patient/self-report-response';
 import { z } from 'zod';
-import { selfReportStatusSchema } from '@/lib/validations/self-report';
+import {
+  selfReportReporterNameSchema,
+  selfReportStatusSchema,
+} from '@/lib/validations/self-report';
 import { trimStringOrUndefined } from '@/lib/validations/string';
 import { logger } from '@/lib/utils/logger';
 import { withRoutePerformance } from '@/lib/utils/performance';
@@ -29,7 +32,7 @@ const optionalTrimmedStringSchema = (max: number) =>
 
 const createSelfReportSchema = z.object({
   patient_id: requiredTrimmedStringSchema('患者IDは必須です'),
-  reported_by_name: requiredTrimmedStringSchema('報告者氏名は必須です'),
+  reported_by_name: selfReportReporterNameSchema,
   relation: optionalTrimmedStringSchema(100),
   category: z.string().trim().min(1, 'カテゴリは必須です').max(100),
   subject: z.string().trim().min(1, '件名は必須です').max(200),

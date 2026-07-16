@@ -344,6 +344,25 @@ describe('SharedViewerContent self report', () => {
     expect(postCalls).toHaveLength(0);
   });
 
+  it('bounds reporter names before posting a self report', async () => {
+    renderSharedViewerContent();
+    await unlockAndFillSelfReport();
+
+    const reporterNameInput = screen.getByLabelText(/報告者氏名/);
+    expect(reporterNameInput.getAttribute('maxlength')).toBe('100');
+    fireEvent.change(reporterNameInput, { target: { value: '名'.repeat(101) } });
+    fireEvent.click(screen.getByRole('button', { name: '薬局へ送信' }));
+
+    expect(screen.getByText('報告者氏名は100文字以内で入力してください')).toBeTruthy();
+    expect(reporterNameInput.getAttribute('aria-invalid')).toBe('true');
+    const postCalls = vi
+      .mocked(fetch)
+      .mock.calls.filter(
+        ([input, init]) => String(input).endsWith('/self-report') && init?.method === 'POST',
+      );
+    expect(postCalls).toHaveLength(0);
+  });
+
   it('keeps generic self report submit failures PHI-safe', async () => {
     const poisonMessage = '患者 佐藤花子 / report=服薬忘れ / token=secret';
     mockSelfReportPostFailure(500, { message: poisonMessage });
