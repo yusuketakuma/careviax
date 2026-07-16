@@ -16,6 +16,7 @@ const {
   correctionRequestGroupByMock,
   correctionRequestCreateMock,
   createAuditLogEntryMock,
+  acquireAdvisoryTxLockMock,
 } = vi.hoisted(() => ({
   authPlumbingFailureRef: { current: null as Error | null },
   withOrgContextMock: vi.fn(),
@@ -29,6 +30,7 @@ const {
   correctionRequestGroupByMock: vi.fn(),
   correctionRequestCreateMock: vi.fn(),
   createAuditLogEntryMock: vi.fn(),
+  acquireAdvisoryTxLockMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
@@ -54,6 +56,10 @@ vi.mock('@/lib/auth/context', () => ({
 
 vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
+}));
+
+vi.mock('@/lib/db/advisory-lock', () => ({
+  acquireAdvisoryTxLock: acquireAdvisoryTxLockMock,
 }));
 
 vi.mock('@/lib/audit/audit-entry', () => ({
@@ -145,6 +151,7 @@ describe('/api/patient-share-cases/[id]/correction-requests', () => {
     correctionRequestCountMock.mockResolvedValue(1);
     correctionRequestGroupByMock.mockResolvedValue([{ status: 'open', _count: { _all: 1 } }]);
     createAuditLogEntryMock.mockResolvedValue({ id: 'audit_1' });
+    acquireAdvisoryTxLockMock.mockResolvedValue(undefined);
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
         patientShareCase: {
@@ -426,6 +433,21 @@ describe('/api/patient-share-cases/[id]/correction-requests', () => {
 
     expect(response.status).toBe(201);
     expectSensitiveNoStore(response);
+    expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
+      isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+    });
+    expect(patientShareCaseFindFirstMock).toHaveBeenCalledTimes(2);
+    expect(acquireAdvisoryTxLockMock).toHaveBeenCalledWith(
+      expect.anything(),
+      'patient_share_case_consent',
+      'org_1:share_case_1',
+    );
+    expect(patientShareCaseFindFirstMock.mock.invocationCallOrder[0]).toBeLessThan(
+      acquireAdvisoryTxLockMock.mock.invocationCallOrder[0],
+    );
+    expect(acquireAdvisoryTxLockMock.mock.invocationCallOrder[0]).toBeLessThan(
+      patientShareCaseFindFirstMock.mock.invocationCallOrder[1],
+    );
     expect(partnerVisitRecordFindFirstMock).toHaveBeenCalledWith({
       where: { id: 'partner_visit_record_1', org_id: 'org_1', share_case_id: 'share_case_1' },
       select: { id: true },
@@ -654,14 +676,30 @@ describe('/api/patient-share-cases/[id]/correction-requests', () => {
     },
   );
 
-  it('rejects correction requests for inactive share cases before target lookup', async () => {
-    patientShareCaseFindFirstMock.mockResolvedValue({
-      id: 'share_case_1',
-      status: 'revoked',
-      base_patient_id: 'patient_1',
-      base_case_id: 'case_1',
-      shared_management_plan_id: 'plan_1',
-    });
+  it('hides inactive share cases before target lookup', async () => {
+    patientShareCaseFindFirstMock.mockResolvedValue(null);
+
+    const response = await rawPOST(
+      createRequest({
+        target_type: 'partner_visit_record',
+        target_id: 'partner_visit_record_1',
+        field_path: 'record_content',
+        reason: '記録の修正依頼',
+      }),
+      routeContext,
+    );
+
+    expect(response.status).toBe(404);
+    expectSensitiveNoStore(response);
+    expect(partnerVisitRecordFindFirstMock).not.toHaveBeenCalled();
+    expect(correctionRequestCreateMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects consent deactivation after locking before target or create side effects', async () => {
+    const current = await patientShareCaseFindFirstMock();
+    patientShareCaseFindFirstMock.mockClear();
+    patientShareCaseFindFirstMock.mockResolvedValueOnce(current).mockResolvedValueOnce(null);
 
     const response = await rawPOST(
       createRequest({
@@ -675,6 +713,11 @@ describe('/api/patient-share-cases/[id]/correction-requests', () => {
 
     expect(response.status).toBe(409);
     expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: '患者共有の同意状態が更新されています',
+    });
+    expect(acquireAdvisoryTxLockMock).toHaveBeenCalledOnce();
     expect(partnerVisitRecordFindFirstMock).not.toHaveBeenCalled();
     expect(correctionRequestCreateMock).not.toHaveBeenCalled();
     expect(createAuditLogEntryMock).not.toHaveBeenCalled();

@@ -9,6 +9,7 @@ import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { conflict, internalError, notFound, success, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { toPrismaJsonInput } from '@/lib/db/json';
+import { acquireAdvisoryTxLock } from '@/lib/db/advisory-lock';
 import { withOrgContext } from '@/lib/db/rls';
 import {
   correctionRequestFieldPathSchema,
@@ -18,6 +19,11 @@ import {
   toPatientShareCorrectionRequestRow,
 } from '@/lib/patient-share/correction-request-domain';
 import { resolvePatientShareCorrectionRequestPolicy } from '@/server/services/patient-share-policy';
+import {
+  buildActivePatientShareCaseMutationWhere,
+  buildPatientShareCaseConsentLockKey,
+  PATIENT_SHARE_CASE_CONSENT_LOCK_NAMESPACE,
+} from '@/server/services/patient-share-access';
 
 const correctionStatusSchema = z.enum(['open', 'responded', 'resolved', 'cancelled']);
 const correctionStatuses = correctionStatusSchema.options;
@@ -241,128 +247,150 @@ const authenticatedPOST = withAuthContext<{ id: string }>(
       return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
     }
 
-    const result = await withOrgContext(ctx.orgId, async (tx) => {
-      const shareCase = await tx.patientShareCase.findFirst({
-        where: { id, org_id: ctx.orgId },
-        select: {
-          id: true,
-          status: true,
-          base_patient_id: true,
-          base_case_id: true,
-          shared_management_plan_id: true,
-        },
-      });
+    const result = await withOrgContext(
+      ctx.orgId,
+      async (tx) => {
+        const activeShareCaseWhere = buildActivePatientShareCaseMutationWhere({
+          orgId: ctx.orgId,
+          asOf: new Date(),
+        });
+        const findActiveShareCase = () =>
+          tx.patientShareCase.findFirst({
+            where: { id, ...activeShareCaseWhere },
+            select: {
+              id: true,
+              status: true,
+              base_patient_id: true,
+              base_case_id: true,
+              shared_management_plan_id: true,
+            },
+          });
 
-      if (!shareCase) return { response: notFound('患者共有ケースが見つかりません') };
-      const correctionPolicy = resolvePatientShareCorrectionRequestPolicy({
-        shareCaseStatus: shareCase.status,
-        targetType: parsed.data.target_type,
-      });
-      if (!correctionPolicy.allowed) {
-        return { response: conflict('共有中の患者共有ケースにのみ修正依頼を作成できます') };
-      }
+        const initialShareCase = await findActiveShareCase();
+        if (!initialShareCase) return { response: notFound('患者共有ケースが見つかりません') };
 
-      const { requesterOwner, targetOwner } = correctionPolicy;
-      const targetId = parsed.data.target_id;
-      const targetValid =
-        parsed.data.target_type === 'patient_profile'
-          ? !targetId || targetId === shareCase.base_patient_id
-          : parsed.data.target_type === 'care_case'
-            ? Boolean(targetId && targetId === shareCase.base_case_id)
-            : parsed.data.target_type === 'management_plan'
-              ? Boolean(targetId && targetId === shareCase.shared_management_plan_id)
-              : parsed.data.target_type === 'visit_request'
-                ? Boolean(
-                    targetId &&
-                    (await tx.pharmacyVisitRequest.findFirst({
-                      where: { id: targetId, org_id: ctx.orgId, share_case_id: id },
-                      select: { id: true },
-                    })),
-                  )
-                : parsed.data.target_type === 'partner_visit_record'
+        await acquireAdvisoryTxLock(
+          tx,
+          PATIENT_SHARE_CASE_CONSENT_LOCK_NAMESPACE,
+          buildPatientShareCaseConsentLockKey({ orgId: ctx.orgId, shareCaseId: id }),
+        );
+
+        const shareCase = await findActiveShareCase();
+        if (!shareCase) {
+          return { response: conflict('患者共有の同意状態が更新されています') };
+        }
+
+        const correctionPolicy = resolvePatientShareCorrectionRequestPolicy({
+          shareCaseStatus: shareCase.status,
+          targetType: parsed.data.target_type,
+        });
+        if (!correctionPolicy.allowed) {
+          return { response: conflict('共有中の患者共有ケースにのみ修正依頼を作成できます') };
+        }
+
+        const { requesterOwner, targetOwner } = correctionPolicy;
+        const targetId = parsed.data.target_id;
+        const targetValid =
+          parsed.data.target_type === 'patient_profile'
+            ? !targetId || targetId === shareCase.base_patient_id
+            : parsed.data.target_type === 'care_case'
+              ? Boolean(targetId && targetId === shareCase.base_case_id)
+              : parsed.data.target_type === 'management_plan'
+                ? Boolean(targetId && targetId === shareCase.shared_management_plan_id)
+                : parsed.data.target_type === 'visit_request'
                   ? Boolean(
                       targetId &&
-                      (await tx.partnerVisitRecord.findFirst({
+                      (await tx.pharmacyVisitRequest.findFirst({
                         where: { id: targetId, org_id: ctx.orgId, share_case_id: id },
                         select: { id: true },
                       })),
                     )
-                  : parsed.data.target_type === 'claim_note'
+                  : parsed.data.target_type === 'partner_visit_record'
                     ? Boolean(
                         targetId &&
-                        (await tx.claimCooperationNote.findFirst({
-                          where: {
-                            id: targetId,
-                            org_id: ctx.orgId,
-                            partner_visit_record: {
-                              share_case_id: id,
-                              org_id: ctx.orgId,
-                            },
-                          },
+                        (await tx.partnerVisitRecord.findFirst({
+                          where: { id: targetId, org_id: ctx.orgId, share_case_id: id },
                           select: { id: true },
                         })),
                       )
-                    : Boolean(
-                        targetId &&
-                        (await tx.visitBillingCandidate.findFirst({
-                          where: {
-                            id: targetId,
-                            org_id: ctx.orgId,
-                            partner_visit_record: {
-                              share_case_id: id,
+                    : parsed.data.target_type === 'claim_note'
+                      ? Boolean(
+                          targetId &&
+                          (await tx.claimCooperationNote.findFirst({
+                            where: {
+                              id: targetId,
                               org_id: ctx.orgId,
+                              partner_visit_record: {
+                                share_case_id: id,
+                                org_id: ctx.orgId,
+                              },
                             },
-                          },
-                          select: { id: true },
-                        })),
-                      );
-      if (!targetValid) {
-        return {
-          response: validationError('入力値が不正です', {
-            target_id: ['修正依頼対象が患者共有ケースに紐づいていません'],
-          }),
-        };
-      }
+                            select: { id: true },
+                          })),
+                        )
+                      : Boolean(
+                          targetId &&
+                          (await tx.visitBillingCandidate.findFirst({
+                            where: {
+                              id: targetId,
+                              org_id: ctx.orgId,
+                              partner_visit_record: {
+                                share_case_id: id,
+                                org_id: ctx.orgId,
+                              },
+                            },
+                            select: { id: true },
+                          })),
+                        );
+        if (!targetValid) {
+          return {
+            response: validationError('入力値が不正です', {
+              target_id: ['修正依頼対象が患者共有ケースに紐づいていません'],
+            }),
+          };
+        }
 
-      const correctionRequest = await tx.patientShareCorrectionRequest.create({
-        data: {
-          org_id: ctx.orgId,
-          share_case_id: id,
-          target_owner: targetOwner,
-          target_type: parsed.data.target_type,
-          target_id: parsed.data.target_id,
-          field_path: parsed.data.field_path,
-          request_type: parsed.data.request_type,
-          reason: parsed.data.reason,
-          proposed_value:
-            parsed.data.proposed_value === undefined
-              ? undefined
-              : toPrismaJsonInput(parsed.data.proposed_value),
-          status: 'open',
-          requested_by: ctx.userId,
-        },
-      });
+        const correctionRequest = await tx.patientShareCorrectionRequest.create({
+          data: {
+            org_id: ctx.orgId,
+            share_case_id: id,
+            target_owner: targetOwner,
+            target_type: parsed.data.target_type,
+            target_id: parsed.data.target_id,
+            field_path: parsed.data.field_path,
+            request_type: parsed.data.request_type,
+            reason: parsed.data.reason,
+            proposed_value:
+              parsed.data.proposed_value === undefined
+                ? undefined
+                : toPrismaJsonInput(parsed.data.proposed_value),
+            status: 'open',
+            requested_by: ctx.userId,
+          },
+        });
 
-      await createAuditLogEntry(tx, ctx, {
-        action: 'patient_share_correction_requested',
-        targetType: 'PatientShareCorrectionRequest',
-        targetId: correctionRequest.id,
-        patientId: shareCase.base_patient_id,
-        changes: {
-          share_case_id: id,
-          requester_owner: requesterOwner,
-          target_owner: targetOwner,
-          target_type: parsed.data.target_type,
-          target_id: parsed.data.target_id ?? null,
-          field_path: parsed.data.field_path ?? null,
-          request_type: parsed.data.request_type,
-          reason_length: parsed.data.reason.length,
-          has_proposed_value: parsed.data.proposed_value !== undefined,
-        },
-      });
+        await createAuditLogEntry(tx, ctx, {
+          action: 'patient_share_correction_requested',
+          targetType: 'PatientShareCorrectionRequest',
+          targetId: correctionRequest.id,
+          patientId: shareCase.base_patient_id,
+          changes: {
+            share_case_id: id,
+            requester_owner: requesterOwner,
+            target_owner: targetOwner,
+            target_type: parsed.data.target_type,
+            target_id: parsed.data.target_id ?? null,
+            field_path: parsed.data.field_path ?? null,
+            request_type: parsed.data.request_type,
+            reason_length: parsed.data.reason.length,
+            has_proposed_value: parsed.data.proposed_value !== undefined,
+          },
+        });
 
-      return { correctionRequest };
-    });
+        return { correctionRequest };
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+    );
 
     if ('response' in result) return result.response ?? validationError('入力値が不正です');
     return success({ data: toPatientShareCorrectionRequestRow(result.correctionRequest) }, 201);
