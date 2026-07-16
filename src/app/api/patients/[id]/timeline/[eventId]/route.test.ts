@@ -8,6 +8,7 @@ const {
   fakeRunner,
   authContextMock,
   authRejectionMock,
+  withAuthContextOptions,
   recordPhiReadAuditForRequestMock,
   randomUUIDMock,
 } = vi.hoisted(() => {
@@ -22,6 +23,7 @@ const {
       userId: 'user_1',
     })),
     authRejectionMock: vi.fn<() => Response | null>(() => null),
+    withAuthContextOptions: [] as Array<{ permission?: string; message?: string }>,
     recordPhiReadAuditForRequestMock: vi.fn(),
     randomUUIDMock: vi.fn(() => 'generated-movement-request-id'),
   };
@@ -36,13 +38,17 @@ vi.mock('crypto', async (importOriginal) => {
 });
 
 vi.mock('@/lib/auth/context', () => ({
-  withAuthContext:
-    (handler: (...args: unknown[]) => Promise<Response>) =>
-    (req: Request, routeContext: { params: Promise<{ id: string; eventId: string }> }) => {
+  withAuthContext: (
+    handler: (...args: unknown[]) => Promise<Response>,
+    options?: { permission?: string; message?: string },
+  ) => {
+    withAuthContextOptions.push(options ?? {});
+    return (req: Request, routeContext: { params: Promise<{ id: string; eventId: string }> }) => {
       const rejection = authRejectionMock();
       if (rejection) return Promise.resolve(rejection);
       return handler(req, authContextMock(), routeContext);
-    },
+    };
+  },
 }));
 
 vi.mock('@/lib/db/rls', () => ({
@@ -114,6 +120,13 @@ describe('GET /api/patients/[id]/timeline/[eventId]', () => {
     authRejectionMock.mockReturnValue(null);
     createScopedTxRunnerMock.mockReturnValue(fakeRunner);
     randomUUIDMock.mockReturnValue('generated-movement-request-id');
+  });
+
+  it('keeps the audited timeline detail read behind canViewDashboard', () => {
+    expect(withAuthContextOptions).toContainEqual({
+      permission: 'canViewDashboard',
+      message: '患者情報の閲覧権限がありません',
+    });
   });
 
   it('returns a movement-safe data/meta detail after purpose/read-reason reauthorization', async () => {
