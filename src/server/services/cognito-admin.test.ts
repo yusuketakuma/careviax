@@ -1,6 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { cognitoClientMock, cognitoSendMock, adminCreateUserCommandMock } = vi.hoisted(() => ({
+const {
+  cognitoClientMock,
+  cognitoSendMock,
+  adminCreateUserCommandMock,
+  adminGlobalSignOutCommandMock,
+} = vi.hoisted(() => ({
   cognitoSendMock: vi.fn(),
   cognitoClientMock: vi.fn(function MockCognitoIdentityProviderClient() {
     return {
@@ -8,6 +13,12 @@ const { cognitoClientMock, cognitoSendMock, adminCreateUserCommandMock } = vi.ho
     };
   }),
   adminCreateUserCommandMock: vi.fn(function MockAdminCreateUserCommand(
+    this: { input?: unknown },
+    input: unknown,
+  ) {
+    this.input = input;
+  }),
+  adminGlobalSignOutCommandMock: vi.fn(function MockAdminUserGlobalSignOutCommand(
     this: { input?: unknown },
     input: unknown,
   ) {
@@ -22,10 +33,15 @@ vi.mock('@aws-sdk/client-cognito-identity-provider', async (importOriginal) => {
     ...original,
     CognitoIdentityProviderClient: cognitoClientMock,
     AdminCreateUserCommand: adminCreateUserCommandMock,
+    AdminUserGlobalSignOutCommand: adminGlobalSignOutCommandMock,
   };
 });
 
-import { buildCognitoUserAttributes, inviteCognitoUser } from './cognito-admin';
+import {
+  adminGlobalSignOutCognitoUser,
+  buildCognitoUserAttributes,
+  inviteCognitoUser,
+} from './cognito-admin';
 
 describe('buildCognitoUserAttributes', () => {
   const originalUserPoolId = process.env.NEXT_PUBLIC_COGNITO_USER_POOL_ID;
@@ -173,5 +189,17 @@ describe('buildCognitoUserAttributes', () => {
         requestHandler: expect.anything(),
       }),
     );
+  });
+
+  it('uses the IAM-authorized AdminUserGlobalSignOut operation with a normalized username', async () => {
+    process.env.AWS_REGION = 'us-west-2';
+    cognitoSendMock.mockResolvedValueOnce({});
+
+    await adminGlobalSignOutCognitoUser(' USER@example.com ');
+
+    expect(adminGlobalSignOutCommandMock).toHaveBeenCalledWith({
+      UserPoolId: 'pool_1',
+      Username: 'user@example.com',
+    });
   });
 });

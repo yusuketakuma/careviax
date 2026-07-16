@@ -230,6 +230,7 @@ const DENIED_FIELD_PATTERNS = [
   /(^|_)hash($|_)/i,
   /^cognito_/i,
   /^session_version$/i,
+  /^credential_revocation_/i,
   /^account_status$/i,
   /^email$/i,
   /^endpoint$/i,

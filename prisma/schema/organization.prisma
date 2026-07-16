@@ -198,38 +198,44 @@ model PharmacySiteInsuranceConfig {
 }
 
 model User {
-  id                   String            @id @default(cuid())
-  org_id               String
-  cognito_sub          String            @unique // Cognito User Pool の sub
-  cognito_username     String?           @unique
-  email                String            @unique
-  name                 String
-  name_kana            String?
-  phone                String?
-  default_site_id      String?
-  max_daily_visits     Int?
-  max_weekly_visits    Int?
-  max_travel_minutes   Int?
-  visit_specialties    Json?
-  coverage_area        Json?
-  can_accept_emergency Boolean           @default(true)
-  is_active            Boolean           @default(true)
-  account_status       UserAccountStatus @default(invited)
-  invited_at           DateTime?
-  invited_by           String?
-  last_invited_at      DateTime?
-  activated_at         DateTime?
-  deactivated_at       DateTime?
-  deactivation_reason  String?
-  session_version      Int               @default(0)
-  created_at           DateTime          @default(now())
-  updated_at           DateTime          @updatedAt
+  id                                          String            @id @default(cuid())
+  org_id                                      String
+  cognito_sub                                 String            @unique // Cognito User Pool の sub
+  cognito_username                            String?           @unique
+  email                                       String            @unique
+  name                                        String
+  name_kana                                   String?
+  phone                                       String?
+  default_site_id                             String?
+  max_daily_visits                            Int?
+  max_weekly_visits                           Int?
+  max_travel_minutes                          Int?
+  visit_specialties                           Json?
+  coverage_area                               Json?
+  can_accept_emergency                        Boolean           @default(true)
+  is_active                                   Boolean           @default(true)
+  account_status                              UserAccountStatus @default(invited)
+  invited_at                                  DateTime?
+  invited_by                                  String?
+  last_invited_at                             DateTime?
+  activated_at                                DateTime?
+  deactivated_at                              DateTime?
+  deactivation_reason                         String?
+  session_version                             Int               @default(0)
+  credential_revocation_id                    String?
+  credential_revocation_flow                  String?
+  credential_revocation_pending_at            DateTime?
+  credential_revocation_provider_completed_at DateTime?
+  credential_revocation_local_completed_at    DateTime?
+  created_at                                  DateTime          @default(now())
+  updated_at                                  DateTime          @updatedAt
 
   memberships     Membership[]
   credentials     PharmacistCredential[]
   shifts          PharmacistShift[]
   shift_templates PharmacistShiftTemplate[]
 
+  @@unique([org_id, credential_revocation_id])
   @@index([org_id])
   @@index([cognito_sub])
   @@index([account_status])

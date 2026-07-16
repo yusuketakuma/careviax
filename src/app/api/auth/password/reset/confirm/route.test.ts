@@ -1,11 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { confirmForgotPasswordMock } = vi.hoisted(() => ({
-  confirmForgotPasswordMock: vi.fn(),
+const { confirmForgotPasswordAndRevokeSessionsMock } = vi.hoisted(() => ({
+  confirmForgotPasswordAndRevokeSessionsMock: vi.fn(),
 }));
 
-vi.mock('@/server/services/cognito-auth', () => ({
-  confirmForgotPassword: confirmForgotPasswordMock,
+vi.mock('@/server/services/credential-revocation', () => ({
+  confirmForgotPasswordAndRevokeSessions: confirmForgotPasswordAndRevokeSessionsMock,
+  CredentialRevocationPendingError: class CredentialRevocationPendingError extends Error {},
 }));
 
 vi.mock('@/lib/api/rate-limit', () => ({
@@ -36,7 +37,7 @@ function createMalformedRequest() {
 describe('/api/auth/password/reset/confirm POST', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    confirmForgotPasswordMock.mockResolvedValue(undefined);
+    confirmForgotPasswordAndRevokeSessionsMock.mockResolvedValue(undefined);
     vi.mocked(checkAuthRateLimit).mockResolvedValue({
       allowed: true,
       remaining: 4,
@@ -55,10 +56,11 @@ describe('/api/auth/password/reset/confirm POST', () => {
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({ data: { ok: true } });
-    expect(confirmForgotPasswordMock).toHaveBeenCalledWith({
+    expect(confirmForgotPasswordAndRevokeSessionsMock).toHaveBeenCalledWith({
       email: 'user@example.com',
       code: '123456',
       newPassword: 'New-Password-12345!',
+      actor: { ipAddress: null, userAgent: undefined },
     });
   });
 
@@ -75,10 +77,11 @@ describe('/api/auth/password/reset/confirm POST', () => {
     const body = await response.json();
     expect(body).toEqual({ data: { ok: true } });
     expect(body).not.toHaveProperty('ok');
-    expect(confirmForgotPasswordMock).toHaveBeenCalledWith({
+    expect(confirmForgotPasswordAndRevokeSessionsMock).toHaveBeenCalledWith({
       email: 'user@example.com',
       code: '123456',
       newPassword: 'New-Password-12345!',
+      actor: { ipAddress: null, userAgent: undefined },
     });
   });
 
@@ -90,7 +93,7 @@ describe('/api/auth/password/reset/confirm POST', () => {
       code: 'VALIDATION_ERROR',
       message: 'リクエストボディが不正です',
     });
-    expect(confirmForgotPasswordMock).not.toHaveBeenCalled();
+    expect(confirmForgotPasswordAndRevokeSessionsMock).not.toHaveBeenCalled();
   });
 
   it('rejects malformed JSON payloads before confirming the password reset', async () => {
@@ -101,13 +104,13 @@ describe('/api/auth/password/reset/confirm POST', () => {
       code: 'VALIDATION_ERROR',
       message: 'リクエストボディが不正です',
     });
-    expect(confirmForgotPasswordMock).not.toHaveBeenCalled();
+    expect(confirmForgotPasswordAndRevokeSessionsMock).not.toHaveBeenCalled();
   });
 
   it('returns a client error when the confirmation code is incorrect', async () => {
     const error = new Error('mismatch');
     error.name = 'CodeMismatchException';
-    confirmForgotPasswordMock.mockRejectedValueOnce(error);
+    confirmForgotPasswordAndRevokeSessionsMock.mockRejectedValueOnce(error);
 
     const response = await POST(
       createRequest({
@@ -127,7 +130,7 @@ describe('/api/auth/password/reset/confirm POST', () => {
   it('returns a provider error when Cognito fails for a server-side reason', async () => {
     const error = new Error('service unavailable');
     error.name = 'InternalErrorException';
-    confirmForgotPasswordMock.mockRejectedValueOnce(error);
+    confirmForgotPasswordAndRevokeSessionsMock.mockRejectedValueOnce(error);
 
     const response = await POST(
       createRequest({
@@ -141,6 +144,26 @@ describe('/api/auth/password/reset/confirm POST', () => {
     await expect(response.json()).resolves.toMatchObject({
       code: 'EXTERNAL_PASSWORD_RESET_CONFIRM_FAILED',
       message: 'パスワードの再設定に失敗しました',
+    });
+  });
+
+  it('does not reveal whether the reset identity exists', async () => {
+    const error = new Error('unknown user');
+    error.name = 'UserNotFoundException';
+    confirmForgotPasswordAndRevokeSessionsMock.mockRejectedValueOnce(error);
+
+    const response = await POST(
+      createRequest({
+        email: 'unknown@example.com',
+        code: '123456',
+        newPassword: 'New-Password-12345!',
+      }),
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'EXTERNAL_PASSWORD_RESET_CONFIRM_FAILED',
+      message: '確認コードが正しくありません',
     });
   });
 });

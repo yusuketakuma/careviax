@@ -33,6 +33,7 @@ const {
   retryWebhookDeliveriesMock,
   drainYreseClinicalSyncQueueJobMock,
   purgeExpiredClinicalFhirRawResourceVaultJobMock,
+  reconcileCredentialRevocationIntentsMock,
   checkFacilityStandardExpiryMock,
   checkCredentialExpiryMock,
   checkConsentExpiryMock,
@@ -73,6 +74,7 @@ const {
   retryWebhookDeliveriesMock: vi.fn(),
   drainYreseClinicalSyncQueueJobMock: vi.fn(),
   purgeExpiredClinicalFhirRawResourceVaultJobMock: vi.fn(),
+  reconcileCredentialRevocationIntentsMock: vi.fn(),
   checkFacilityStandardExpiryMock: vi.fn(),
   checkCredentialExpiryMock: vi.fn(),
   checkConsentExpiryMock: vi.fn(),
@@ -125,6 +127,7 @@ vi.mock('@/server/jobs', () => ({
   retryWebhookDeliveries: retryWebhookDeliveriesMock,
   drainYreseClinicalSyncQueueJob: drainYreseClinicalSyncQueueJobMock,
   purgeExpiredClinicalFhirRawResourceVaultJob: purgeExpiredClinicalFhirRawResourceVaultJobMock,
+  reconcileCredentialRevocationIntents: reconcileCredentialRevocationIntentsMock,
   checkFacilityStandardExpiry: checkFacilityStandardExpiryMock,
   checkCredentialExpiry: checkCredentialExpiryMock,
   checkConsentExpiry: checkConsentExpiryMock,
@@ -208,6 +211,11 @@ describe('/api/jobs/[jobType] POST', () => {
       processedCount: 2,
       deletedCount: 2,
       scannedCount: 2,
+      errors: [],
+    });
+    reconcileCredentialRevocationIntentsMock.mockResolvedValue({
+      processedCount: 1,
+      scannedCount: 1,
       errors: [],
     });
     cleanupExpiredBulkExportArtifactsMock.mockResolvedValue({
@@ -299,6 +307,23 @@ describe('/api/jobs/[jobType] POST', () => {
     await expectJobSuccessData(response, {
       jobType: 'daily-medication-check',
       processedCount: 3,
+    });
+  });
+
+  it('runs the bounded credential revocation reconciler through the API-key job boundary', async () => {
+    authMock.mockResolvedValue(null);
+
+    const response = await POST(createRequest({ 'x-api-key': 'job-secret' }), {
+      params: Promise.resolve({ jobType: 'credential-revocation-reconcile' }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(reconcileCredentialRevocationIntentsMock).toHaveBeenCalledWith(undefined);
+    await expectJobSuccessData(response, {
+      jobType: 'credential-revocation-reconcile',
+      processedCount: 1,
+      scannedCount: 1,
+      errors: [],
     });
   });
 

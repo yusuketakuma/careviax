@@ -1,13 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { auth, getAuthAccessToken } from '@/lib/auth/config';
-import { externalError, unauthorized, validationError } from '@/lib/api/response';
-import { changePasswordWithAccessToken } from '@/server/services/cognito-auth';
+import { getAuthAccessToken } from '@/lib/auth/config';
+import { conflict, externalError, unauthorized, validationError } from '@/lib/api/response';
+import {
+  changePasswordAndRevokeSessions,
+  CredentialRevocationPendingError,
+} from '@/server/services/credential-revocation';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
+import { withAuthContext } from '@/lib/auth/context';
 
-export async function PATCH(req: NextRequest) {
-  const session = await auth();
+export const PATCH = withAuthContext(async (req: NextRequest, ctx) => {
   const accessToken = await getAuthAccessToken(req);
-  if (!session || !accessToken) {
+  if (!accessToken) {
     return unauthorized();
   }
 
@@ -29,20 +32,30 @@ export async function PATCH(req: NextRequest) {
   }
 
   try {
-    await changePasswordWithAccessToken({
+    await changePasswordAndRevokeSessions({
+      userId: ctx.userId,
       accessToken,
       currentPassword,
       newPassword,
+      actor: {
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+        requestId: ctx.requestId,
+        correlationId: ctx.correlationId,
+      },
     });
   } catch (error) {
+    if (error instanceof CredentialRevocationPendingError) {
+      return conflict('セッション失効処理が進行中です。再度ログインしてください');
+    }
     return externalError(
       'EXTERNAL_PASSWORD_CHANGE_FAILED',
-      (error as Error).name === 'NotAuthorizedException'
+      error instanceof Error && error.name === 'NotAuthorizedException'
         ? '現在のパスワードが正しくありません'
         : 'パスワードの変更に失敗しました',
-      400,
+      error instanceof Error && error.name === 'NotAuthorizedException' ? 400 : 502,
     );
   }
 
   return NextResponse.json({ ok: true });
-}
+});

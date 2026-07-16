@@ -47,3 +47,4 @@ export {
   purgeExpiredClinicalFhirRawResourceVaultJob,
 } from './standard-clinical-sync';
 export { runJob } from './runner';
+export { reconcileCredentialRevocationIntents } from '@/server/services/credential-revocation';

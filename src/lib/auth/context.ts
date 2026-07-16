@@ -70,7 +70,12 @@ async function resolveOrgIdFromUserId(userId: string) {
 async function resolveUserAuthMetadata(userId: string) {
   return prisma.user.findUnique({
     where: { id: userId },
-    select: { org_id: true, default_site_id: true, session_version: true },
+    select: {
+      org_id: true,
+      default_site_id: true,
+      session_version: true,
+      credential_revocation_id: true,
+    },
   });
 }
 
@@ -233,6 +238,20 @@ export async function requireAuthContext(
       });
       return { response: await sensitiveAuthFailure(unauthorized(), trace) };
     }
+  }
+  const revocationUser = resolvedUser ?? userMetadata;
+  if (revocationUser?.credential_revocation_id) {
+    logSecurityEvent({
+      event_type: 'auth_failure',
+      ip_address: ipAddress,
+      user_id: userId,
+      path,
+      method,
+      request_id: trace.requestId,
+      correlation_id: trace.correlationId,
+      details: { reason: 'credential_revocation_pending' },
+    });
+    return { response: await sensitiveAuthFailure(unauthorized(), trace) };
   }
 
   const sessionUser = session?.user as AuthSessionUserWithSite | undefined;

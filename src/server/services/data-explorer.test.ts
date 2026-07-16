@@ -98,6 +98,7 @@ describe('data explorer service hardening', () => {
         name: 'Admin User',
         account_status: 'active',
         session_version: 4,
+        credential_revocation_id: 'intent_1',
       },
       deniedFields: [
         'cognito_sub',
@@ -105,6 +106,7 @@ describe('data explorer service hardening', () => {
         'email',
         'account_status',
         'session_version',
+        'credential_revocation_id',
       ],
       visibleField: 'name',
     },

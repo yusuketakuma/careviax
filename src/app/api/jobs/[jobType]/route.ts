@@ -47,6 +47,7 @@ import {
   retryWebhookDeliveries,
   drainYreseClinicalSyncQueueJob,
   purgeExpiredClinicalFhirRawResourceVaultJob,
+  reconcileCredentialRevocationIntents,
 } from '@/server/jobs';
 
 type JobExecutionContext = {
@@ -127,6 +128,10 @@ const JOB_HANDLERS: Record<string, JobHandler> = {
     ),
   'clinical-fhir-raw-vault-retention-purge': (context) =>
     purgeExpiredClinicalFhirRawResourceVaultJob(
+      context.authType === 'auth' && context.orgId ? { orgId: context.orgId } : undefined,
+    ),
+  'credential-revocation-reconcile': (context) =>
+    reconcileCredentialRevocationIntents(
       context.authType === 'auth' && context.orgId ? { orgId: context.orgId } : undefined,
     ),
   'daily-facility-standard-expiry': checkFacilityStandardExpiry,

@@ -18,6 +18,7 @@ type LocalUserIdentity = {
     | 'cognito_failed';
   activated_at: Date | null;
   session_version: number;
+  credential_revocation_id: string | null;
 };
 
 export async function resolveLocalUserByIdentity(args: {
@@ -41,6 +42,7 @@ export async function resolveLocalUserByIdentity(args: {
         account_status: true,
         activated_at: true,
         session_version: true,
+        credential_revocation_id: true,
       },
     });
     if (user) return user;
@@ -62,6 +64,7 @@ export async function resolveLocalUserByIdentity(args: {
       account_status: true,
       activated_at: true,
       session_version: true,
+      credential_revocation_id: true,
     },
   });
 }
@@ -102,6 +105,7 @@ export async function markLocalUserActive(user: LocalUserIdentity) {
       account_status: true,
       activated_at: true,
       session_version: true,
+      credential_revocation_id: true,
     },
   });
 }

@@ -3,7 +3,10 @@ import { externalError, registeredError, success, validationError } from '@/lib/
 import { checkAuthRateLimit } from '@/lib/api/rate-limit';
 import { getClientIp } from '@/lib/api/request-ip';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
-import { confirmForgotPassword } from '@/server/services/cognito-auth';
+import {
+  confirmForgotPasswordAndRevokeSessions,
+  CredentialRevocationPendingError,
+} from '@/server/services/credential-revocation';
 
 const schema = z.object({
   email: z.string().trim().email(),
@@ -73,12 +76,30 @@ export async function POST(req: Request) {
   const { email, code, newPassword } = parsed.data;
 
   try {
-    await confirmForgotPassword({
+    await confirmForgotPasswordAndRevokeSessions({
       email,
       code,
       newPassword,
+      actor: {
+        ipAddress: ip === 'unknown' ? null : ip,
+        userAgent: req.headers.get('user-agent') ?? undefined,
+      },
     });
   } catch (error) {
+    if (error instanceof CredentialRevocationPendingError) {
+      return externalError(
+        'EXTERNAL_PASSWORD_RESET_CONFIRM_FAILED',
+        'パスワードの再設定処理を完了できませんでした',
+        503,
+      );
+    }
+    if (error instanceof Error && error.name === 'UserNotFoundException') {
+      return externalError(
+        'EXTERNAL_PASSWORD_RESET_CONFIRM_FAILED',
+        '確認コードが正しくありません',
+        400,
+      );
+    }
     const classified = classifyPasswordResetConfirmError(error);
     return externalError(
       'EXTERNAL_PASSWORD_RESET_CONFIRM_FAILED',

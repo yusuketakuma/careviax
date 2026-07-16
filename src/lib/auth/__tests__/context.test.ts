@@ -195,6 +195,31 @@ describe('requireAuthContext', () => {
     );
   });
 
+  it('rejects every request while a durable credential revocation intent is pending', async () => {
+    authMock.mockResolvedValue({
+      user: { id: 'user_1', orgId: 'org_1', sessionVersion: 4 },
+    });
+    userFindUniqueMock.mockResolvedValue({
+      org_id: 'org_1',
+      default_site_id: null,
+      session_version: 4,
+      credential_revocation_id: 'intent_1',
+    });
+
+    const result = await requireAuthContext(createRequest({ 'x-org-id': 'org_1' }));
+
+    expect('response' in result).toBe(true);
+    if (!('response' in result)) throw new Error('response is required');
+    expect(result.response.status).toBe(401);
+    expect(membershipFindFirstMock).not.toHaveBeenCalled();
+    expect(logSecurityEventMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event_type: 'auth_failure',
+        details: { reason: 'credential_revocation_pending' },
+      }),
+    );
+  });
+
   it('returns 403 when role lacks the requested permission', async () => {
     authMock.mockResolvedValue({ user: { id: 'user_1' } });
     membershipFindFirstMock.mockResolvedValue({ role: 'clerk' });

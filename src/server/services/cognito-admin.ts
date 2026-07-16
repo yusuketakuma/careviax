@@ -5,6 +5,7 @@ import {
   AdminEnableUserCommand,
   AdminGetUserCommand,
   AdminSetUserMFAPreferenceCommand,
+  AdminUserGlobalSignOutCommand,
   AdminUpdateUserAttributesCommand,
   CognitoIdentityProviderClient,
   type AttributeType,
@@ -196,6 +197,16 @@ export async function disableCognitoTotpForUser(username: string) {
         Enabled: false,
         PreferredMfa: false,
       },
+    }),
+  );
+}
+
+export async function adminGlobalSignOutCognitoUser(username: string) {
+  const { userPoolId } = getRequiredCognitoConfig();
+  await getClient().send(
+    new AdminUserGlobalSignOutCommand({
+      UserPoolId: userPoolId,
+      Username: normalizeCognitoUsername(username),
     }),
   );
 }
