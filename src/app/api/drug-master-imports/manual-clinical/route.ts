@@ -1,13 +1,8 @@
 import { NextRequest } from 'next/server';
-import { unstable_rethrow } from 'next/navigation';
-import { internalError, success, validationError } from '@/lib/api/response';
-import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
-import { requireAuthContext } from '@/lib/auth/context';
-import { runWithRequestAuthContext } from '@/lib/auth/request-context';
+import { success, validationError } from '@/lib/api/response';
+import { withAuthContext, type AuthContext } from '@/lib/auth/context';
 import { readOptionalJsonObjectRequestBody } from '@/lib/api/request-body';
 import { withOrgContext } from '@/lib/db/rls';
-import { logger } from '@/lib/utils/logger';
-import { withRoutePerformance } from '@/lib/utils/performance';
 import {
   importManualClinicalRules,
   manualClinicalRuleBundleSchema,
@@ -16,16 +11,7 @@ import { invalidateDrugMasterSearchCache } from '@/server/services/drug-master-s
 import { invalidateDrugMasterDetailCache } from '@/server/services/drug-master-detail-cache';
 import { projectDrugMasterImportLogMetadata } from '../import-log-response';
 
-const ROUTE = '/api/drug-master-imports/manual-clinical';
-
-async function authenticatedPOST(req: NextRequest) {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canAdmin',
-    message: '医薬品マスター取込は管理者のみ実行できます',
-  });
-  if ('response' in authResult) return authResult.response;
-  const { ctx } = authResult;
-
+async function authenticatedPOST(req: NextRequest, ctx: AuthContext) {
   const payload = await readOptionalJsonObjectRequestBody(req);
   if (!payload) return validationError('リクエストボディが不正です');
 
@@ -34,12 +20,14 @@ async function authenticatedPOST(req: NextRequest) {
     return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
   }
 
-  const result = await runWithRequestAuthContext(ctx, () =>
-    withOrgContext(ctx.orgId, (tx) => importManualClinicalRules(tx, parsed.data), {
+  const result = await withOrgContext(
+    ctx.orgId,
+    (tx) => importManualClinicalRules(tx, parsed.data),
+    {
       requestContext: ctx,
       maxWaitMs: 10_000,
       timeoutMs: 30_000,
-    }),
+    },
   );
   invalidateDrugMasterSearchCache();
   invalidateDrugMasterDetailCache();
@@ -60,22 +48,7 @@ async function authenticatedPOST(req: NextRequest) {
   );
 }
 
-export async function POST(req: NextRequest) {
-  return withRoutePerformance(req, async () => {
-    try {
-      return withSensitiveNoStore(await authenticatedPOST(req));
-    } catch (err) {
-      unstable_rethrow(err);
-      logger.error(
-        {
-          event: 'drug_master_imports_manual_clinical_post_unhandled_error',
-          route: ROUTE,
-          method: req.method,
-          status: 500,
-        },
-        err,
-      );
-      return withSensitiveNoStore(internalError());
-    }
-  });
-}
+export const POST = withAuthContext(authenticatedPOST, {
+  permission: 'canAdmin',
+  message: '医薬品マスター取込は管理者のみ実行できます',
+});
