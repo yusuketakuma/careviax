@@ -8,12 +8,25 @@ const {
   dispenseTaskFindManyMock,
   withOrgContextMock,
   loggerErrorMock,
+  clearRequestAuthContextMock,
+  runWithRequestAuthContextMock,
+  unstableRethrowMock,
 } = vi.hoisted(() => ({
   authMock: vi.fn(),
   membershipFindFirstMock: vi.fn(),
   dispenseTaskFindManyMock: vi.fn(),
   withOrgContextMock: vi.fn(),
   loggerErrorMock: vi.fn(),
+  clearRequestAuthContextMock: vi.fn(),
+  runWithRequestAuthContextMock: vi.fn((_ctx, callback: () => unknown) => callback()),
+  unstableRethrowMock: vi.fn(),
+}));
+
+vi.mock('next/navigation', () => ({ unstable_rethrow: unstableRethrowMock }));
+
+vi.mock('@/lib/auth/request-context', () => ({
+  clearRequestAuthContext: clearRequestAuthContextMock,
+  runWithRequestAuthContext: runWithRequestAuthContextMock,
 }));
 
 vi.mock('@/lib/auth/config', () => ({
@@ -54,6 +67,8 @@ describe('/api/dispense-queue', () => {
     resetPerformanceMetrics();
     authMock.mockResolvedValue({ user: { id: 'user_1' } });
     membershipFindFirstMock.mockResolvedValue({ role: 'pharmacist' });
+    runWithRequestAuthContextMock.mockImplementation((_ctx, callback) => callback());
+    unstableRethrowMock.mockImplementation(() => undefined);
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
         dispenseTask: {
@@ -122,6 +137,12 @@ describe('/api/dispense-queue', () => {
     expect(response.status).toBe(200);
     expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
     expect(response.headers.get('Pragma')).toBe('no-cache');
+    expect(response.headers.get('X-Request-Id')).toBeTruthy();
+    expect(response.headers.get('X-Correlation-Id')).toBeTruthy();
+    expect(runWithRequestAuthContextMock).toHaveBeenCalledTimes(2);
+    expect(runWithRequestAuthContextMock.mock.calls[0]?.[0]).toBe(
+      runWithRequestAuthContextMock.mock.calls[1]?.[0],
+    );
     expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
       requestContext: expect.objectContaining({
         orgId: 'org_1',
@@ -167,6 +188,68 @@ describe('/api/dispense-queue', () => {
     );
   });
 
+  it('rejects insufficient permission before request context or RLS work', async () => {
+    membershipFindFirstMock.mockResolvedValueOnce({ role: 'clerk' });
+
+    const response = (await GET(createRequest(), emptyRouteContext))!;
+
+    expect(response.status).toBe(403);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    await expect(response.json()).resolves.toMatchObject({
+      message: '調剤キューの閲覧権限がありません',
+    });
+    expect(runWithRequestAuthContextMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(dispenseTaskFindManyMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects missing authentication before membership or RLS work', async () => {
+    authMock.mockResolvedValueOnce(null);
+
+    const response = (await GET(createRequest(), emptyRouteContext))!;
+
+    expect(response.status).toBe(401);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(membershipFindFirstMock).not.toHaveBeenCalled();
+    expect(runWithRequestAuthContextMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a generated-trace safe 500 when authentication dependencies throw', async () => {
+    const unsafeError = new Error('患者 山田花子 raw dispense queue auth secret');
+    unsafeError.name = 'DispenseQueueAuthSecretError';
+    authMock.mockRejectedValueOnce(unsafeError);
+
+    const response = (await GET(createRequest(), emptyRouteContext))!;
+    const requestId = response.headers.get('X-Request-Id');
+    const correlationId = response.headers.get('X-Correlation-Id');
+
+    expect(response.status).toBe(500);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(requestId).toBeTruthy();
+    expect(correlationId).toBe(requestId);
+    await expect(response.json()).resolves.toEqual({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    expect(runWithRequestAuthContextMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(loggerErrorMock).toHaveBeenCalledOnce();
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      {
+        event: 'route_auth_unhandled_error',
+        route: '/api/dispense-queue',
+        method: 'GET',
+        requestId,
+        correlationId,
+      },
+      unsafeError,
+    );
+    const loggedContext = JSON.stringify(loggerErrorMock.mock.calls[0]?.[0]);
+    expect(loggedContext).not.toContain('山田花子');
+    expect(loggedContext).not.toContain('DispenseQueueAuthSecretError');
+  });
+
   it('returns a sanitized no-store 500 when queue lookup fails unexpectedly', async () => {
     const unsafeError = new Error(
       '患者 山田花子 東京都千代田区1-1-1 raw dispense queue drug inquiry',
@@ -179,6 +262,10 @@ describe('/api/dispense-queue', () => {
     expect(response.status).toBe(500);
     expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
     expect(response.headers.get('Pragma')).toBe('no-cache');
+    const requestId = response.headers.get('X-Request-Id');
+    const correlationId = response.headers.get('X-Correlation-Id');
+    expect(requestId).toBeTruthy();
+    expect(correlationId).toBeTruthy();
     const body = await response.json();
     expect(body).toMatchObject({
       code: 'INTERNAL_ERROR',
@@ -190,10 +277,11 @@ describe('/api/dispense-queue', () => {
     expect(loggerErrorMock).toHaveBeenCalledOnce();
     expect(loggerErrorMock).toHaveBeenCalledWith(
       {
-        event: 'dispense_queue_get_unhandled_error',
+        event: 'route_handler_unhandled_error',
         route: '/api/dispense-queue',
         method: 'GET',
-        status: 500,
+        requestId,
+        correlationId,
       },
       unsafeError,
     );
@@ -206,5 +294,31 @@ describe('/api/dispense-queue', () => {
     expect(loggedContext).not.toContain('patient');
     expect(loggedContext).not.toContain('drug');
     expect(loggedContext).not.toContain('inquiry');
+  });
+
+  it('rethrows authentication control flow without logging or query work', async () => {
+    const controlFlowError = new Error('NEXT_REDIRECT');
+    authMock.mockRejectedValueOnce(controlFlowError);
+    unstableRethrowMock.mockImplementationOnce((error) => {
+      throw error;
+    });
+
+    await expect(GET(createRequest(), emptyRouteContext)).rejects.toBe(controlFlowError);
+
+    expect(loggerErrorMock).not.toHaveBeenCalled();
+    expect(runWithRequestAuthContextMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+  });
+
+  it('rethrows handler control flow without shared logging', async () => {
+    const controlFlowError = new Error('NEXT_NOT_FOUND');
+    dispenseTaskFindManyMock.mockRejectedValueOnce(controlFlowError);
+    unstableRethrowMock.mockImplementationOnce((error) => {
+      throw error;
+    });
+
+    await expect(GET(createRequest(), emptyRouteContext)).rejects.toBe(controlFlowError);
+
+    expect(loggerErrorMock).not.toHaveBeenCalled();
   });
 });

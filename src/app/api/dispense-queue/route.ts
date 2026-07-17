@@ -1,25 +1,12 @@
-import { unstable_rethrow } from 'next/navigation';
 import { NextRequest } from 'next/server';
-import { requireAuthContext } from '@/lib/auth/context';
+import { withAuthContext, type AuthContext } from '@/lib/auth/context';
 import { runWithRequestAuthContext } from '@/lib/auth/request-context';
-import { internalError, successWithMeasuredJsonPayload } from '@/lib/api/response';
-import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
+import { successWithMeasuredJsonPayload } from '@/lib/api/response';
 import { withOrgContext } from '@/lib/db/rls';
 import { annotateDispenseTask, sortDispenseTasks } from '@/server/services/dispense-task-list';
 import { buildMedicationCycleAssignmentWhere } from '@/server/services/prescription-access';
-import { logger } from '@/lib/utils/logger';
-import { withRoutePerformance } from '@/lib/utils/performance';
 
-const ROUTE = '/api/dispense-queue';
-
-async function authenticatedGET(req: NextRequest) {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canDispense',
-    message: '調剤キューの閲覧権限がありません',
-  });
-  if ('response' in authResult) return authResult.response;
-  const { ctx } = authResult;
-
+async function authenticatedGET(_req: NextRequest, ctx: AuthContext) {
   return runWithRequestAuthContext(ctx, async () => {
     const now = new Date();
     const cycleAssignmentWhere = buildMedicationCycleAssignmentWhere(ctx);
@@ -137,23 +124,7 @@ async function authenticatedGET(req: NextRequest) {
   });
 }
 
-export async function GET(req: NextRequest, routeContext?: unknown) {
-  void routeContext;
-  return withRoutePerformance(req, async () => {
-    try {
-      return withSensitiveNoStore(await authenticatedGET(req));
-    } catch (err) {
-      unstable_rethrow(err);
-      logger.error(
-        {
-          event: 'dispense_queue_get_unhandled_error',
-          route: ROUTE,
-          method: req.method,
-          status: 500,
-        },
-        err,
-      );
-      return withSensitiveNoStore(internalError());
-    }
-  });
-}
+export const GET = withAuthContext(authenticatedGET, {
+  permission: 'canDispense',
+  message: '調剤キューの閲覧権限がありません',
+});
