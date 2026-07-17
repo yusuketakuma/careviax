@@ -238,7 +238,7 @@ const routes: RouteEntry[] = [
     name: 'business-holidays POST',
     handler: (req) => businessHolidaysPost(req, emptyRouteContext),
   },
-  { name: 'cds/check POST', handler: (req) => cdsCheckPost(req) },
+  { name: 'cds/check POST', handler: (req) => cdsCheckPost(req, emptyRouteContext) },
   { name: 'pharmacists POST', handler: (req) => pharmacistsPost(req, emptyRouteContext) },
   {
     name: 'visit-schedule-proposals POST',
