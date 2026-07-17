@@ -1,12 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { createHmac } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import { EMAIL_DELIVERY_FAILURE_REASON } from '@/lib/reports/delivery-failure-reasons';
 import { expectSensitiveNoStore } from '@/test/api-response-assertions';
 
 const {
+  authContext,
   requireAuthContextMock,
+  runWithRequestAuthContextMock,
+  withRoutePerformanceMock,
+  unstableRethrowMock,
   withOrgContextMock,
   careReportFindFirstMock,
   visitRecordFindFirstMock,
@@ -25,7 +29,17 @@ const {
   loggerErrorMock,
   txMock,
 } = vi.hoisted(() => ({
+  authContext: {
+    userId: 'user_1',
+    orgId: 'org_1',
+    role: 'admin',
+    requestId: 'request_care_report_send_1',
+    correlationId: 'correlation_care_report_send_1',
+  },
   requireAuthContextMock: vi.fn(),
+  runWithRequestAuthContextMock: vi.fn((_ctx, callback) => callback()),
+  withRoutePerformanceMock: vi.fn((_req, handler) => handler()),
+  unstableRethrowMock: vi.fn(),
   withOrgContextMock: vi.fn(),
   careReportFindFirstMock: vi.fn(),
   visitRecordFindFirstMock: vi.fn(),
@@ -89,6 +103,78 @@ const {
 
 vi.mock('@/lib/auth/context', () => ({
   requireAuthContext: requireAuthContextMock,
+  withAuthContext:
+    (
+      handler: (
+        req: NextRequest,
+        ctx: typeof authContext,
+        routeContext: { params: Promise<{ id: string }> },
+      ) => Promise<Response>,
+      options: unknown,
+    ) =>
+    async (req: NextRequest, routeContext: { params: Promise<{ id: string }> }) =>
+      withRoutePerformanceMock(req, async () => {
+        let response: Response;
+        let trace = authContext;
+        try {
+          const authResult = await requireAuthContextMock(req, options);
+          if ('response' in authResult) {
+            response = authResult.response;
+            response.headers.set('Cache-Control', 'private, no-store, max-age=0');
+            response.headers.set('Pragma', 'no-cache');
+            return response;
+          }
+          trace = authResult.ctx;
+          try {
+            response = await runWithRequestAuthContextMock(authResult.ctx, () =>
+              handler(req, authResult.ctx, routeContext),
+            );
+          } catch (error) {
+            unstableRethrowMock(error);
+            loggerErrorMock(
+              {
+                event: 'route_handler_unhandled_error',
+                route: req.nextUrl.pathname,
+                method: req.method,
+                requestId: trace.requestId,
+                correlationId: trace.correlationId,
+              },
+              error,
+            );
+            response = NextResponse.json(
+              { code: 'INTERNAL_ERROR', message: 'サーバー内部でエラーが発生しました' },
+              { status: 500 },
+            );
+          }
+        } catch (error) {
+          unstableRethrowMock(error);
+          trace = {
+            ...authContext,
+            requestId: 'generated_request_care_report_send_1',
+            correlationId:
+              req.headers.get('x-correlation-id') ?? 'generated_request_care_report_send_1',
+          };
+          loggerErrorMock(
+            {
+              event: 'route_auth_unhandled_error',
+              route: req.nextUrl.pathname,
+              method: req.method,
+              requestId: trace.requestId,
+              correlationId: trace.correlationId,
+            },
+            error,
+          );
+          response = NextResponse.json(
+            { code: 'INTERNAL_ERROR', message: 'サーバー内部でエラーが発生しました' },
+            { status: 500 },
+          );
+        }
+        response.headers.set('Cache-Control', 'private, no-store, max-age=0');
+        response.headers.set('Pragma', 'no-cache');
+        response.headers.set('X-Request-Id', trace.requestId);
+        response.headers.set('X-Correlation-Id', trace.correlationId);
+        return response;
+      }),
 }));
 
 vi.mock('@/lib/db/rls', () => ({
@@ -174,6 +260,8 @@ function createRequest(body: unknown, headers: Record<string, string> = {}) {
     headers: {
       'content-type': 'application/json',
       'x-org-id': 'org_1',
+      'x-request-id': 'inbound_request_should_be_ignored',
+      'x-correlation-id': 'correlation_care_report_send_1',
       ...headers,
     },
     body: JSON.stringify(effectiveBody),
@@ -186,6 +274,8 @@ function createMalformedRequest() {
     headers: {
       'content-type': 'application/json',
       'x-org-id': 'org_1',
+      'x-request-id': 'inbound_request_should_be_ignored',
+      'x-correlation-id': 'correlation_care_report_send_1',
     },
     body: '{"channel":',
   });
@@ -219,13 +309,18 @@ describe('/api/care-reports/[id]/send POST', () => {
   beforeEach(() => {
     vi.stubEnv('CARE_REPORT_IDEMPOTENCY_HASH_SECRET', TEST_IDEMPOTENCY_HASH_SECRET);
     vi.clearAllMocks();
-    requireAuthContextMock.mockResolvedValue({
-      ctx: {
-        userId: 'user_1',
-        orgId: 'org_1',
-        role: 'admin',
-      },
+    unstableRethrowMock.mockImplementation((error) => {
+      if (
+        error instanceof Error &&
+        typeof (error as Error & { digest?: unknown }).digest === 'string' &&
+        (error as Error & { digest: string }).digest.startsWith('NEXT_REDIRECT')
+      ) {
+        throw error;
+      }
     });
+    runWithRequestAuthContextMock.mockImplementation((_ctx, callback) => callback());
+    withRoutePerformanceMock.mockImplementation((_req, handler) => handler());
+    requireAuthContextMock.mockResolvedValue({ ctx: authContext });
     careReportFindFirstMock.mockResolvedValue({
       id: 'report_1',
       patient_id: 'patient_1',
@@ -1111,6 +1206,11 @@ describe('/api/care-reports/[id]/send POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    expect(response.headers.get('X-Request-Id')).toBe('request_care_report_send_1');
+    expect(response.headers.get('X-Correlation-Id')).toBe('correlation_care_report_send_1');
+    expect(withRoutePerformanceMock).toHaveBeenCalledOnce();
+    expect(runWithRequestAuthContextMock).toHaveBeenCalledWith(authContext, expect.any(Function));
     expect(partnerVisitRecordFindFirstMock).toHaveBeenCalledWith({
       where: { id: 'partner_visit_record_1', org_id: 'org_1' },
       select: {
@@ -1353,10 +1453,73 @@ describe('/api/care-reports/[id]/send POST', () => {
     expect(learnContactProfileFromCommunicationMock).not.toHaveBeenCalled();
   });
 
-  it('returns a sanitized no-store 500 when report lookup fails unexpectedly', async () => {
-    careReportFindFirstMock.mockRejectedValueOnce(
-      new Error('患者 山田花子 report send lookup token=secret raw failure'),
+  it('rejects wrapper authorization before reading the request or starting delivery work', async () => {
+    requireAuthContextMock.mockResolvedValueOnce({
+      response: NextResponse.json(
+        { code: 'FORBIDDEN', message: '報告書送信の権限がありません' },
+        { status: 403 },
+      ),
+    });
+    const request = createRequest({
+      channel: 'email',
+      recipient_name: '山田 太郎',
+      recipient_contact: 'doctor@example.com',
+      recipient_role: 'physician',
+      safety_ack: true,
+    });
+
+    const response = await POST(request, {
+      params: Promise.resolve({ id: 'report_1' }),
+    });
+
+    expect(response.status).toBe(403);
+    expectSensitiveNoStore(response);
+    expect(request.bodyUsed).toBe(false);
+    expect(runWithRequestAuthContextMock).not.toHaveBeenCalled();
+    expect(careReportFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(sendCareReportEmailMock).not.toHaveBeenCalled();
+    expect(txMock.auditLog.create).not.toHaveBeenCalled();
+  });
+
+  it('returns a generated traced 500 when the auth dependency throws', async () => {
+    const thrownError = new Error('session provider unavailable');
+    requireAuthContextMock.mockRejectedValueOnce(thrownError);
+    const request = createRequest({
+      channel: 'email',
+      recipient_name: '山田 太郎',
+      recipient_contact: 'doctor@example.com',
+      recipient_role: 'physician',
+      safety_ack: true,
+    });
+
+    const response = await POST(request, {
+      params: Promise.resolve({ id: 'report_1' }),
+    });
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    expect(response.headers.get('X-Request-Id')).toBe('generated_request_care_report_send_1');
+    expect(response.headers.get('X-Correlation-Id')).toBe('correlation_care_report_send_1');
+    expect(request.bodyUsed).toBe(false);
+    expect(careReportFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(sendCareReportEmailMock).not.toHaveBeenCalled();
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      {
+        event: 'route_auth_unhandled_error',
+        route: '/api/care-reports/report_1/send',
+        method: 'POST',
+        requestId: 'generated_request_care_report_send_1',
+        correlationId: 'correlation_care_report_send_1',
+      },
+      thrownError,
     );
+  });
+
+  it('returns a sanitized no-store 500 when report lookup fails unexpectedly', async () => {
+    const thrownError = new Error('患者 山田花子 report send lookup token=secret raw failure');
+    careReportFindFirstMock.mockRejectedValueOnce(thrownError);
 
     const response = await POST(
       createRequest({
@@ -1372,6 +1535,8 @@ describe('/api/care-reports/[id]/send POST', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(500);
     expectSensitiveNoStore(response);
+    expect(response.headers.get('X-Request-Id')).toBe('request_care_report_send_1');
+    expect(response.headers.get('X-Correlation-Id')).toBe('correlation_care_report_send_1');
     const body = await response.json();
     expect(body).toMatchObject({
       code: 'INTERNAL_ERROR',
@@ -1383,6 +1548,41 @@ describe('/api/care-reports/[id]/send POST', () => {
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(txMock.deliveryRecord.create).not.toHaveBeenCalled();
     expect(sendCareReportEmailMock).not.toHaveBeenCalled();
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      {
+        event: 'route_handler_unhandled_error',
+        route: '/api/care-reports/report_1/send',
+        method: 'POST',
+        requestId: 'request_care_report_send_1',
+        correlationId: 'correlation_care_report_send_1',
+      },
+      thrownError,
+    );
+  });
+
+  it('rethrows Next control-flow errors without delivery, audit, or logging side effects', async () => {
+    const controlFlowError = Object.assign(new Error('redirect'), {
+      digest: 'NEXT_REDIRECT;replace;/reports/report_1;307;',
+    });
+    careReportFindFirstMock.mockRejectedValueOnce(controlFlowError);
+
+    await expect(
+      POST(
+        createRequest({
+          channel: 'email',
+          recipient_name: '山田 太郎',
+          recipient_contact: 'doctor@example.com',
+          recipient_role: 'physician',
+          safety_ack: true,
+        }),
+        { params: Promise.resolve({ id: 'report_1' }) },
+      ),
+    ).rejects.toBe(controlFlowError);
+
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(sendCareReportEmailMock).not.toHaveBeenCalled();
+    expect(txMock.auditLog.create).not.toHaveBeenCalled();
+    expect(loggerErrorMock).not.toHaveBeenCalled();
   });
 
   it('returns 400 when the safety acknowledgement is missing', async () => {
@@ -2883,6 +3083,8 @@ describe('/api/care-reports/[id]/send POST', () => {
         userId: 'user_1',
         orgId: 'org_1',
         role: 'pharmacist',
+        requestId: 'request_care_report_send_1',
+        correlationId: 'correlation_care_report_send_1',
       },
     });
     careReportFindFirstMock.mockResolvedValue({
@@ -3330,6 +3532,8 @@ describe('/api/care-reports/[id]/send POST', () => {
         userId: 'user_1',
         orgId: 'org_1',
         role: 'admin',
+        requestId: 'request_care_report_send_1',
+        correlationId: 'correlation_care_report_send_1',
       },
     });
     careReportFindFirstMock.mockResolvedValue({

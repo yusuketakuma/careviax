@@ -1,4 +1,3 @@
-import { unstable_rethrow } from 'next/navigation';
 import { NextRequest, NextResponse } from 'next/server';
 import { createHash, createHmac, randomUUID } from 'node:crypto';
 import {
@@ -7,14 +6,13 @@ import {
   type MemberRole,
   type ReportStatus,
 } from '@prisma/client';
-import { requireAuthContext, type AuthContext } from '@/lib/auth/context';
+import { withAuthContext, type AuthContext, type AuthRouteContext } from '@/lib/auth/context';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { parseOptionalIdempotencyKey } from '@/lib/api/idempotency-key';
 import { withOrgContext } from '@/lib/db/rls';
 import {
   conflict,
   forbiddenResponse,
-  internalError,
   notFound,
   registeredError,
   validationError,
@@ -51,7 +49,6 @@ import {
   type CareReportSendRecipient as SendRecipient,
 } from '@/lib/reports/care-report-send-validation';
 import { logCareReportEmailDeliveryFailure } from '@/server/services/care-report-send-observability';
-import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 
 function toPrimaryCommunicationEventType(reportType: string) {
   switch (reportType) {
@@ -1735,17 +1732,11 @@ async function markCareReportSendFailed(args: {
   );
 }
 
-async function authenticatedPOST(
+async function careReportSendPOST(
   req: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
+  ctx: AuthContext,
+  { params }: AuthRouteContext<{ id: string }>,
 ) {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canSendCareReport',
-    message: '報告書送信の権限がありません',
-  });
-  if ('response' in authResult) return authResult.response;
-  const ctx = authResult.ctx;
-
   const { id: rawId } = await params;
   const id = normalizeRequiredRouteParam(rawId);
   if (!id) return validationError('報告書IDが不正です');
@@ -2054,11 +2045,7 @@ async function authenticatedPOST(
   );
 }
 
-export const POST: typeof authenticatedPOST = async (req, routeContext) => {
-  try {
-    return withSensitiveNoStore(await authenticatedPOST(req, routeContext));
-  } catch (err) {
-    unstable_rethrow(err);
-    return withSensitiveNoStore(internalError());
-  }
-};
+export const POST = withAuthContext(careReportSendPOST, {
+  permission: 'canSendCareReport',
+  message: '報告書送信の権限がありません',
+});
