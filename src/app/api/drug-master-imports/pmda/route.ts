@@ -1,14 +1,9 @@
 import { NextRequest } from 'next/server';
-import { unstable_rethrow } from 'next/navigation';
 import { z } from 'zod';
-import { internalError, success, validationError } from '@/lib/api/response';
-import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
-import { requireAuthContext } from '@/lib/auth/context';
-import { runWithRequestAuthContext } from '@/lib/auth/request-context';
+import { success, validationError } from '@/lib/api/response';
+import { withAuthContext } from '@/lib/auth/context';
 import { readOptionalJsonObjectRequestBody } from '@/lib/api/request-body';
 import { prisma } from '@/lib/db/client';
-import { logger } from '@/lib/utils/logger';
-import { withRoutePerformance } from '@/lib/utils/performance';
 import {
   importPmdaPackageInserts,
   previewPmdaPackageInserts,
@@ -35,16 +30,7 @@ const requestSchema = z.object({
   previewLimit: z.number().int().min(0).max(100).optional(),
 });
 
-const ROUTE = '/api/drug-master-imports/pmda';
-
 async function authenticatedPOST(req: NextRequest) {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canAdmin',
-    message: '医薬品マスター取込は管理者のみ実行できます',
-  });
-  if ('response' in authResult) return authResult.response;
-  const { ctx } = authResult;
-
   const payload = await readOptionalJsonObjectRequestBody(req);
   if (!payload) return validationError('リクエストボディが不正です');
 
@@ -56,15 +42,11 @@ async function authenticatedPOST(req: NextRequest) {
   const { dryRun, previewLimit, ...importOptions } = parsed.data;
 
   if (dryRun) {
-    const preview = await runWithRequestAuthContext(ctx, () =>
-      previewPmdaPackageInserts(prisma, { ...importOptions, previewLimit }),
-    );
+    const preview = await previewPmdaPackageInserts(prisma, { ...importOptions, previewLimit });
     return success({ data: preview });
   }
 
-  const result = await runWithRequestAuthContext(ctx, () =>
-    importPmdaPackageInserts(prisma, importOptions),
-  );
+  const result = await importPmdaPackageInserts(prisma, importOptions);
   invalidateDrugMasterSearchCache();
   invalidateDrugMasterDetailCache();
   return success(
@@ -82,22 +64,7 @@ async function authenticatedPOST(req: NextRequest) {
   );
 }
 
-export async function POST(req: NextRequest) {
-  return withRoutePerformance(req, async () => {
-    try {
-      return withSensitiveNoStore(await authenticatedPOST(req));
-    } catch (err) {
-      unstable_rethrow(err);
-      logger.error(
-        {
-          event: 'drug_master_imports_pmda_post_unhandled_error',
-          route: ROUTE,
-          method: req.method,
-          status: 500,
-        },
-        err,
-      );
-      return withSensitiveNoStore(internalError());
-    }
-  });
-}
+export const POST = withAuthContext(authenticatedPOST, {
+  permission: 'canAdmin',
+  message: '医薬品マスター取込は管理者のみ実行できます',
+});

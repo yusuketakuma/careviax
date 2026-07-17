@@ -9,6 +9,10 @@ const {
   importPmdaPackageInsertsMock,
   previewPmdaPackageInsertsMock,
   loggerErrorMock,
+  invalidateSearchCacheMock,
+  invalidateDetailCacheMock,
+  runWithRequestAuthContextMock,
+  unstableRethrowMock,
 } = vi.hoisted(() => {
   const membershipFindFirstMock = vi.fn();
   return {
@@ -22,8 +26,18 @@ const {
     importPmdaPackageInsertsMock: vi.fn(),
     previewPmdaPackageInsertsMock: vi.fn(),
     loggerErrorMock: vi.fn(),
+    invalidateSearchCacheMock: vi.fn(),
+    invalidateDetailCacheMock: vi.fn(),
+    runWithRequestAuthContextMock: vi.fn((_ctx, callback: () => unknown) => callback()),
+    unstableRethrowMock: vi.fn(),
   };
 });
+
+vi.mock('next/navigation', () => ({ unstable_rethrow: unstableRethrowMock }));
+vi.mock('@/lib/auth/request-context', () => ({
+  clearRequestAuthContext: vi.fn(),
+  runWithRequestAuthContext: runWithRequestAuthContextMock,
+}));
 
 vi.mock('@/lib/auth/config', () => ({
   auth: authMock,
@@ -41,8 +55,16 @@ vi.mock('@/server/services/drug-master-import/pmda', () => ({
   importPmdaPackageInserts: importPmdaPackageInsertsMock,
   previewPmdaPackageInserts: previewPmdaPackageInsertsMock,
 }));
+vi.mock('@/server/services/drug-master-search-cache', () => ({
+  invalidateDrugMasterSearchCache: invalidateSearchCacheMock,
+}));
+vi.mock('@/server/services/drug-master-detail-cache', () => ({
+  invalidateDrugMasterDetailCache: invalidateDetailCacheMock,
+}));
 
-import { POST } from './route';
+import { POST as rawPOST } from './route';
+const emptyRouteContext = { params: Promise.resolve({}) };
+const POST = (req: NextRequest) => rawPOST(req, emptyRouteContext);
 
 function createJsonRequest(body: unknown) {
   return new NextRequest('http://localhost/api/drug-master-imports/pmda', {
@@ -78,7 +100,7 @@ describe('/api/drug-master-imports/pmda', () => {
         status: 'success',
         source_file_hash: 'pmda_source_hash',
         source_published_at: new Date('2026-06-12T00:00:00.000Z'),
-        import_mode: 'delta',
+        import_mode: 'partial',
         change_summary: {
           mode: 'delta',
           parsed_records: 88,
@@ -155,6 +177,8 @@ describe('/api/drug-master-imports/pmda', () => {
 
     expect(response.status).toBe(201);
     expectNoStore(response);
+    expect(response.headers.get('X-Request-Id')).toBeTruthy();
+    expect(runWithRequestAuthContextMock).toHaveBeenCalledOnce();
     expect(importPmdaPackageInsertsMock).toHaveBeenCalledWith(prismaMock, { mode: 'full' });
   });
 
@@ -173,14 +197,25 @@ describe('/api/drug-master-imports/pmda', () => {
       mode: 'delta',
     });
     expect(previewPmdaPackageInsertsMock).not.toHaveBeenCalled();
+    expect(invalidateSearchCacheMock).toHaveBeenCalledOnce();
+    expect(invalidateDetailCacheMock).toHaveBeenCalledOnce();
+    expect(importPmdaPackageInsertsMock.mock.invocationCallOrder[0]).toBeLessThan(
+      invalidateSearchCacheMock.mock.invocationCallOrder[0]!,
+    );
+    expect(invalidateSearchCacheMock.mock.invocationCallOrder[0]).toBeLessThan(
+      invalidateDetailCacheMock.mock.invocationCallOrder[0]!,
+    );
     const payload = await response.json();
     expect(payload).toMatchObject({
       data: {
         logId: 'log_1',
+        status: 'success',
+        importedCount: 88,
+        zipUrl: 'https://www.pmda.go.jp/pmda.zip',
         mode: 'delta',
         sourceFileHash: 'pmda_source_hash',
         sourcePublishedAt: '2026-06-12T00:00:00.000Z',
-        importMode: 'delta',
+        importMode: 'partial',
         changeSummary: {
           mode: 'delta',
           parsed_records: 88,
@@ -214,9 +249,14 @@ describe('/api/drug-master-imports/pmda', () => {
       previewLimit: 1,
     });
     expect(importPmdaPackageInsertsMock).not.toHaveBeenCalled();
+    expect(runWithRequestAuthContextMock).toHaveBeenCalledOnce();
+    expect(invalidateSearchCacheMock).not.toHaveBeenCalled();
+    expect(invalidateDetailCacheMock).not.toHaveBeenCalled();
     await expect(response.json()).resolves.toMatchObject({
       data: {
         dryRun: true,
+        zipUrl: 'https://www.pmda.go.jp/pmda.zip',
+        mode: 'delta',
         sourceFileHash: 'pmda_source_hash',
         preview: {
           summary: {
@@ -239,6 +279,14 @@ describe('/api/drug-master-imports/pmda', () => {
   });
 
   it('accepts previewLimit zero for dry-run previews', async () => {
+    previewPmdaPackageInsertsMock.mockResolvedValueOnce({
+      dryRun: true,
+      zipUrl: 'https://www.pmda.go.jp/pmda.zip',
+      mode: 'full',
+      sourceFileHash: 'pmda_source_hash',
+      sourcePublishedAt: '2026-06-12T00:00:00.000Z',
+      preview: { summary: { sampled_rows: 0 }, rows: [] },
+    });
     const response = await POST(
       createJsonRequest({
         dryRun: true,
@@ -253,6 +301,9 @@ describe('/api/drug-master-imports/pmda', () => {
       previewLimit: 0,
     });
     expect(importPmdaPackageInsertsMock).not.toHaveBeenCalled();
+    await expect(response.json()).resolves.toMatchObject({
+      data: { mode: 'full', preview: { rows: [] } },
+    });
   });
 
   it('keeps normal import behavior when dryRun is explicitly false', async () => {
@@ -271,6 +322,7 @@ describe('/api/drug-master-imports/pmda', () => {
   });
 
   it.each([
+    ['invalid mode', { mode: 'incremental' }],
     ['non-boolean dryRun', { dryRun: 'true' }],
     ['negative previewLimit', { dryRun: true, previewLimit: -1 }],
     ['too large previewLimit', { dryRun: true, previewLimit: 101 }],
@@ -283,6 +335,17 @@ describe('/api/drug-master-imports/pmda', () => {
     expectNoStore(response);
     expect(importPmdaPackageInsertsMock).not.toHaveBeenCalled();
     expect(previewPmdaPackageInsertsMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects private ZIP URLs before import execution', async () => {
+    const response = await POST(createJsonRequest({ zipUrl: 'https://127.0.0.1/pmda.zip' }));
+
+    expect(response.status).toBe(400);
+    expectNoStore(response);
+    expect(importPmdaPackageInsertsMock).not.toHaveBeenCalled();
+    expect(previewPmdaPackageInsertsMock).not.toHaveBeenCalled();
+    expect(invalidateSearchCacheMock).not.toHaveBeenCalled();
+    expect(invalidateDetailCacheMock).not.toHaveBeenCalled();
   });
 
   it('rejects credential-bearing ZIP URLs without echoing credentials', async () => {
@@ -301,18 +364,70 @@ describe('/api/drug-master-imports/pmda', () => {
   });
 
   it('returns no-store 403 before reading the body when admin permission is denied', async () => {
-    membershipFindFirstMock.mockResolvedValueOnce({ role: 'viewer', site_id: null });
+    membershipFindFirstMock.mockResolvedValueOnce({ role: 'pharmacist', site_id: null });
+    const request = createMalformedJsonRequest();
 
-    const response = await POST(
-      createJsonRequest({
-        zipUrl: 'https://importer:secret@www.pmda.go.jp/pmda.zip',
-        mode: 'delta',
-      }),
-    );
+    const response = await POST(request);
 
     expect(response.status).toBe(403);
     expectNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '医薬品マスター取込は管理者のみ実行できます',
+    });
+    expect(request.bodyUsed).toBe(false);
+    expect(runWithRequestAuthContextMock).not.toHaveBeenCalled();
     expect(importPmdaPackageInsertsMock).not.toHaveBeenCalled();
+    expect(previewPmdaPackageInsertsMock).not.toHaveBeenCalled();
+    expect(invalidateSearchCacheMock).not.toHaveBeenCalled();
+    expect(invalidateDetailCacheMock).not.toHaveBeenCalled();
+  });
+
+  it('returns no-store 401 before reading the body when unauthenticated', async () => {
+    authMock.mockResolvedValueOnce(null);
+    const request = createMalformedJsonRequest();
+
+    const response = await POST(request);
+
+    expect(response.status).toBe(401);
+    expectNoStore(response);
+    expect(request.bodyUsed).toBe(false);
+    expect(runWithRequestAuthContextMock).not.toHaveBeenCalled();
+    expect(importPmdaPackageInsertsMock).not.toHaveBeenCalled();
+    expect(previewPmdaPackageInsertsMock).not.toHaveBeenCalled();
+    expect(invalidateSearchCacheMock).not.toHaveBeenCalled();
+    expect(invalidateDetailCacheMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a generated-trace safe 500 when authentication dependencies throw', async () => {
+    const unsafeError = new Error('raw PMDA ZIP auth token secret');
+    unsafeError.name = 'PmdaAuthSecretError';
+    authMock.mockRejectedValueOnce(unsafeError);
+    const request = createMalformedJsonRequest();
+
+    const response = await POST(request);
+    const requestId = response.headers.get('X-Request-Id');
+    const correlationId = response.headers.get('X-Correlation-Id');
+
+    expect(response.status).toBe(500);
+    expectNoStore(response);
+    expect(requestId).toBeTruthy();
+    expect(correlationId).toBe(requestId);
+    expect(request.bodyUsed).toBe(false);
+    expect(runWithRequestAuthContextMock).not.toHaveBeenCalled();
+    expect(importPmdaPackageInsertsMock).not.toHaveBeenCalled();
+    expect(previewPmdaPackageInsertsMock).not.toHaveBeenCalled();
+    expect(invalidateSearchCacheMock).not.toHaveBeenCalled();
+    expect(invalidateDetailCacheMock).not.toHaveBeenCalled();
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      {
+        event: 'route_auth_unhandled_error',
+        route: '/api/drug-master-imports/pmda',
+        method: 'POST',
+        requestId,
+        correlationId,
+      },
+      unsafeError,
+    );
   });
 
   it('returns a sanitized no-store 500 when PMDA import fails unexpectedly', async () => {
@@ -327,12 +442,15 @@ describe('/api/drug-master-imports/pmda', () => {
     const body = await response.json();
     expect(body).toMatchObject({ code: 'INTERNAL_ERROR' });
     expect(JSON.stringify(body)).not.toContain('pmda import secret');
+    expect(invalidateSearchCacheMock).not.toHaveBeenCalled();
+    expect(invalidateDetailCacheMock).not.toHaveBeenCalled();
     expect(loggerErrorMock).toHaveBeenCalledWith(
       {
-        event: 'drug_master_imports_pmda_post_unhandled_error',
+        event: 'route_handler_unhandled_error',
         route: '/api/drug-master-imports/pmda',
         method: 'POST',
-        status: 500,
+        requestId: response.headers.get('X-Request-Id'),
+        correlationId: response.headers.get('X-Correlation-Id'),
       },
       unsafeError,
     );
@@ -357,12 +475,15 @@ describe('/api/drug-master-imports/pmda', () => {
     expect(body).toMatchObject({ code: 'INTERNAL_ERROR' });
     expect(JSON.stringify(body)).not.toContain('pmda preview secret');
     expect(importPmdaPackageInsertsMock).not.toHaveBeenCalled();
+    expect(invalidateSearchCacheMock).not.toHaveBeenCalled();
+    expect(invalidateDetailCacheMock).not.toHaveBeenCalled();
     expect(loggerErrorMock).toHaveBeenCalledWith(
       {
-        event: 'drug_master_imports_pmda_post_unhandled_error',
+        event: 'route_handler_unhandled_error',
         route: '/api/drug-master-imports/pmda',
         method: 'POST',
-        status: 500,
+        requestId: response.headers.get('X-Request-Id'),
+        correlationId: response.headers.get('X-Correlation-Id'),
       },
       unsafeError,
     );
@@ -372,5 +493,38 @@ describe('/api/drug-master-imports/pmda', () => {
     const logged = JSON.stringify(logContext);
     expect(logged).not.toContain('pmda preview secret');
     expect(logged).not.toContain('PmdaPreviewSecretError');
+  });
+
+  it('rethrows authentication control flow without logging or side effects', async () => {
+    const controlFlowError = new Error('NEXT_REDIRECT');
+    authMock.mockRejectedValueOnce(controlFlowError);
+    unstableRethrowMock.mockImplementationOnce((error) => {
+      throw error;
+    });
+    const request = createMalformedJsonRequest();
+
+    await expect(POST(request)).rejects.toBe(controlFlowError);
+
+    expect(request.bodyUsed).toBe(false);
+    expect(loggerErrorMock).not.toHaveBeenCalled();
+    expect(runWithRequestAuthContextMock).not.toHaveBeenCalled();
+    expect(importPmdaPackageInsertsMock).not.toHaveBeenCalled();
+    expect(invalidateSearchCacheMock).not.toHaveBeenCalled();
+    expect(invalidateDetailCacheMock).not.toHaveBeenCalled();
+  });
+
+  it('rethrows import control flow without shared logging or cache invalidation', async () => {
+    const controlFlowError = new Error('NEXT_NOT_FOUND');
+    importPmdaPackageInsertsMock.mockRejectedValueOnce(controlFlowError);
+    unstableRethrowMock.mockImplementationOnce((error) => {
+      throw error;
+    });
+
+    await expect(POST(createJsonRequest({ mode: 'delta' }))).rejects.toBe(controlFlowError);
+
+    expect(loggerErrorMock).not.toHaveBeenCalled();
+    expect(runWithRequestAuthContextMock).toHaveBeenCalledOnce();
+    expect(invalidateSearchCacheMock).not.toHaveBeenCalled();
+    expect(invalidateDetailCacheMock).not.toHaveBeenCalled();
   });
 });
