@@ -1,20 +1,13 @@
 import { NextRequest } from 'next/server';
-import { unstable_rethrow } from 'next/navigation';
-import { requireAuthContext } from '@/lib/auth/context';
-import { runWithRequestAuthContext } from '@/lib/auth/request-context';
+import { withAuthContext, type AuthContext, type AuthRouteContext } from '@/lib/auth/context';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
-import { internalError, success, notFound, validationError } from '@/lib/api/response';
-import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
+import { success, notFound, validationError } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
-import { logger } from '@/lib/utils/logger';
-import { withRoutePerformance } from '@/lib/utils/performance';
 import {
   buildDrugMasterDetailCacheKey,
   DRUG_MASTER_DETAIL_CACHE_TTL_MS,
   drugMasterDetailCache,
 } from '@/server/services/drug-master-detail-cache';
-
-const ROUTE = '/api/drug-masters/[id]';
 
 const INTERACTION_SEVERITY_PRIORITY: Record<string, number> = {
   contraindicated: 0,
@@ -75,47 +68,27 @@ async function fetchDrugMasterDetail(id: string) {
 
 type DrugMasterDetail = NonNullable<Awaited<ReturnType<typeof fetchDrugMasterDetail>>>;
 
-async function authenticatedGET(req: NextRequest, params: Promise<{ id: string }>) {
-  const authResult = await requireAuthContext(req);
-  if ('response' in authResult) return authResult.response;
-  const { ctx } = authResult;
+async function authenticatedGET(
+  _req: NextRequest,
+  _ctx: AuthContext,
+  { params }: AuthRouteContext<{ id: string }>,
+) {
+  const { id: rawId } = await params;
+  const id = normalizeRequiredRouteParam(rawId);
+  if (!id) return validationError('医薬品IDが不正です');
 
-  return runWithRequestAuthContext(ctx, async () => {
-    const { id: rawId } = await params;
-    const id = normalizeRequiredRouteParam(rawId);
-    if (!id) return validationError('医薬品IDが不正です');
+  const cacheKey = buildDrugMasterDetailCacheKey(id);
+  const cached = drugMasterDetailCache.get<DrugMasterDetail>(cacheKey);
+  if (cached !== undefined) {
+    return success({ data: cached });
+  }
 
-    const cacheKey = buildDrugMasterDetailCacheKey(id);
-    const cached = drugMasterDetailCache.get<DrugMasterDetail>(cacheKey);
-    if (cached !== undefined) {
-      return success({ data: cached });
-    }
+  const drug = await fetchDrugMasterDetail(id);
+  if (!drug) return notFound('医薬品が見つかりません');
 
-    const drug = await fetchDrugMasterDetail(id);
-    if (!drug) return notFound('医薬品が見つかりません');
+  drugMasterDetailCache.set(cacheKey, drug, DRUG_MASTER_DETAIL_CACHE_TTL_MS);
 
-    drugMasterDetailCache.set(cacheKey, drug, DRUG_MASTER_DETAIL_CACHE_TTL_MS);
-
-    return success({ data: drug });
-  });
+  return success({ data: drug });
 }
 
-export async function GET(req: NextRequest, routeContext: { params: Promise<{ id: string }> }) {
-  return withRoutePerformance(req, async () => {
-    try {
-      return withSensitiveNoStore(await authenticatedGET(req, routeContext.params));
-    } catch (err) {
-      unstable_rethrow(err);
-      logger.error(
-        {
-          event: 'drug_masters_detail_get_unhandled_error',
-          route: ROUTE,
-          method: req.method,
-          status: 500,
-        },
-        err,
-      );
-      return withSensitiveNoStore(internalError());
-    }
-  });
-}
+export const GET = withAuthContext<{ id: string }>(authenticatedGET);
