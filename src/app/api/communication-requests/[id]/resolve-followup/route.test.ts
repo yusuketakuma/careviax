@@ -1,8 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 
 const {
+  authContext,
   requireAuthContextMock,
+  runWithRequestAuthContextMock,
+  withRoutePerformanceMock,
+  loggerErrorMock,
+  unstableRethrowMock,
   communicationRequestFindFirstMock,
   communicationRequestUpdateManyMock,
   communicationRequestTxFindFirstMock,
@@ -16,7 +21,18 @@ const {
   patientFindFirstMock,
   withOrgContextMock,
 } = vi.hoisted(() => ({
+  authContext: {
+    orgId: 'org_1',
+    userId: 'user_1',
+    role: 'pharmacist',
+    requestId: 'request_1',
+    correlationId: 'correlation_1',
+  },
   requireAuthContextMock: vi.fn(),
+  runWithRequestAuthContextMock: vi.fn((_ctx, callback: () => unknown) => callback()),
+  withRoutePerformanceMock: vi.fn((_req, callback: () => unknown) => callback()),
+  loggerErrorMock: vi.fn(),
+  unstableRethrowMock: vi.fn(),
   communicationRequestFindFirstMock: vi.fn(),
   communicationRequestUpdateManyMock: vi.fn(),
   communicationRequestTxFindFirstMock: vi.fn(),
@@ -31,8 +47,89 @@ const {
   withOrgContextMock: vi.fn(),
 }));
 
+vi.mock('next/navigation', () => ({ unstable_rethrow: unstableRethrowMock }));
+
 vi.mock('@/lib/auth/context', () => ({
   requireAuthContext: requireAuthContextMock,
+  withAuthContext:
+    (
+      handler: (
+        req: NextRequest,
+        ctx: typeof authContext,
+        routeContext: { params: Promise<{ id: string }> },
+      ) => Promise<Response>,
+      options: unknown,
+    ) =>
+    async (req: NextRequest, routeContext: { params: Promise<{ id: string }> }) =>
+      withRoutePerformanceMock(req, async () => {
+        let authResult: { ctx: typeof authContext } | { response: Response };
+        try {
+          authResult = await requireAuthContextMock(req, options);
+        } catch (error) {
+          unstableRethrowMock(error);
+          const trace = {
+            requestId: 'generated_request_1',
+            correlationId: req.headers.get('x-correlation-id') ?? 'generated_request_1',
+          };
+          loggerErrorMock(
+            {
+              event: 'route_auth_unhandled_error',
+              route: req.nextUrl.pathname,
+              method: req.method,
+              requestId: trace.requestId,
+              correlationId: trace.correlationId,
+            },
+            error,
+          );
+          const response = NextResponse.json(
+            { code: 'INTERNAL_ERROR', message: 'サーバー内部でエラーが発生しました' },
+            { status: 500 },
+          );
+          response.headers.set('Cache-Control', 'private, no-store, max-age=0');
+          response.headers.set('Pragma', 'no-cache');
+          response.headers.set('X-Request-Id', trace.requestId);
+          response.headers.set('X-Correlation-Id', trace.correlationId);
+          return response;
+        }
+
+        if ('response' in authResult) {
+          authResult.response.headers.set('Cache-Control', 'private, no-store, max-age=0');
+          authResult.response.headers.set('Pragma', 'no-cache');
+          return authResult.response;
+        }
+
+        return runWithRequestAuthContextMock(authResult.ctx, async () => {
+          try {
+            const response = await handler(req, authResult.ctx, routeContext);
+            response.headers.set('Cache-Control', 'private, no-store, max-age=0');
+            response.headers.set('Pragma', 'no-cache');
+            response.headers.set('X-Request-Id', authResult.ctx.requestId);
+            response.headers.set('X-Correlation-Id', authResult.ctx.correlationId);
+            return response;
+          } catch (error) {
+            unstableRethrowMock(error);
+            loggerErrorMock(
+              {
+                event: 'route_handler_unhandled_error',
+                route: req.nextUrl.pathname,
+                method: req.method,
+                requestId: authResult.ctx.requestId,
+                correlationId: authResult.ctx.correlationId,
+              },
+              error,
+            );
+            const response = NextResponse.json(
+              { code: 'INTERNAL_ERROR', message: 'サーバー内部でエラーが発生しました' },
+              { status: 500 },
+            );
+            response.headers.set('Cache-Control', 'private, no-store, max-age=0');
+            response.headers.set('Pragma', 'no-cache');
+            response.headers.set('X-Request-Id', authResult.ctx.requestId);
+            response.headers.set('X-Correlation-Id', authResult.ctx.correlationId);
+            return response;
+          }
+        });
+      }),
 }));
 
 vi.mock('@/lib/db/client', () => ({
@@ -67,7 +164,11 @@ const HOSTILE_TRACING_REPORT_PDF_URL =
 function createRequest(body: unknown) {
   return new NextRequest('http://localhost/api/communication-requests/request_1/resolve-followup', {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: {
+      'content-type': 'application/json',
+      'x-request-id': 'untrusted_request_id',
+      'x-correlation-id': 'correlation_1',
+    },
     body: JSON.stringify(body),
   });
 }
@@ -92,13 +193,10 @@ async function expectNeutralLinkedTracingReportValidationError(response: Respons
 describe('/api/communication-requests/[id]/resolve-followup POST', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    requireAuthContextMock.mockResolvedValue({
-      ctx: {
-        orgId: 'org_1',
-        userId: 'user_1',
-        role: 'pharmacist',
-      },
-    });
+    requireAuthContextMock.mockResolvedValue({ ctx: authContext });
+    runWithRequestAuthContextMock.mockImplementation((_ctx, callback) => callback());
+    withRoutePerformanceMock.mockImplementation((_req, callback) => callback());
+    unstableRethrowMock.mockImplementation(() => undefined);
     communicationRequestFindFirstMock.mockResolvedValue({
       id: 'request_1',
       patient_id: 'patient_1',
@@ -170,6 +268,17 @@ describe('/api/communication-requests/[id]/resolve-followup POST', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
+    expect(response.headers.get('X-Request-Id')).toBe('request_1');
+    expect(response.headers.get('X-Correlation-Id')).toBe('correlation_1');
+    expect(withRoutePerformanceMock).toHaveBeenCalledOnce();
+    expect(requireAuthContextMock).toHaveBeenCalledWith(expect.any(NextRequest), {
+      permission: 'canReport',
+      message: '連携依頼の更新権限がありません',
+    });
+    expect(runWithRequestAuthContextMock).toHaveBeenCalledWith(authContext, expect.any(Function));
+    expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
+      requestContext: authContext,
+    });
     expect(communicationRequestUpdateManyMock).toHaveBeenCalledWith({
       where: {
         id: 'request_1',
@@ -739,10 +848,77 @@ describe('/api/communication-requests/[id]/resolve-followup POST', () => {
     });
   });
 
-  it('returns a sanitized no-store 500 when auth context fails before request loading', async () => {
-    requireAuthContextMock.mockRejectedValueOnce(
-      new Error('raw communication followup auth patient 山田 花子 token secret'),
+  it('rejects auth before resolving params or consuming malformed follow-up input', async () => {
+    const request = new NextRequest(
+      'http://localhost/api/communication-requests/request_1/resolve-followup',
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: '{',
+      },
     );
+    const paramsThenMock = vi.fn();
+    const params = { then: paramsThenMock } as unknown as Promise<{ id: string }>;
+    requireAuthContextMock.mockResolvedValueOnce({
+      response: NextResponse.json(
+        { code: 'FORBIDDEN', message: '連携依頼の更新権限がありません' },
+        { status: 403 },
+      ),
+    });
+
+    const response = await POST(request, { params });
+
+    expect(response.status).toBe(403);
+    expectSensitiveNoStore(response);
+    expect(request.bodyUsed).toBe(false);
+    expect(paramsThenMock).not.toHaveBeenCalled();
+    expect(runWithRequestAuthContextMock).not.toHaveBeenCalled();
+    expect(communicationRequestFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rethrows auth control-flow errors before params, body, or persistence', async () => {
+    const controlFlowError = new Error('NEXT_REDIRECT');
+    const request = createRequest({ expected_updated_at: CURRENT_UPDATED_AT });
+    requireAuthContextMock.mockRejectedValueOnce(controlFlowError);
+    unstableRethrowMock.mockImplementation((error) => {
+      if (error === controlFlowError) throw error;
+    });
+
+    await expect(POST(request, { params: Promise.resolve({ id: 'request_1' }) })).rejects.toBe(
+      controlFlowError,
+    );
+
+    expect(request.bodyUsed).toBe(false);
+    expect(runWithRequestAuthContextMock).not.toHaveBeenCalled();
+    expect(communicationRequestFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(loggerErrorMock).not.toHaveBeenCalled();
+  });
+
+  it('rethrows handler control-flow errors without transaction or logging', async () => {
+    const controlFlowError = new Error('NEXT_NOT_FOUND');
+    communicationRequestFindFirstMock.mockRejectedValueOnce(controlFlowError);
+    unstableRethrowMock.mockImplementation((error) => {
+      if (error === controlFlowError) throw error;
+    });
+
+    await expect(
+      POST(createRequest({ expected_updated_at: CURRENT_UPDATED_AT }), {
+        params: Promise.resolve({ id: 'request_1' }),
+      }),
+    ).rejects.toBe(controlFlowError);
+
+    expect(runWithRequestAuthContextMock).toHaveBeenCalledWith(authContext, expect.any(Function));
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(loggerErrorMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a sanitized no-store 500 when auth context fails before request loading', async () => {
+    const unsafeError = new Error('raw communication followup auth patient 山田 花子 token secret');
+    requireAuthContextMock.mockRejectedValueOnce(unsafeError);
 
     const response = await POST(
       createRequest({
@@ -754,6 +930,8 @@ describe('/api/communication-requests/[id]/resolve-followup POST', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(500);
     expectSensitiveNoStore(response);
+    expect(response.headers.get('X-Request-Id')).toBe('generated_request_1');
+    expect(response.headers.get('X-Correlation-Id')).toBe('correlation_1');
     const body = await response.json();
     expect(body).toMatchObject({
       code: 'INTERNAL_ERROR',
@@ -766,12 +944,23 @@ describe('/api/communication-requests/[id]/resolve-followup POST', () => {
     expect(communicationRequestFindFirstMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      {
+        event: 'route_auth_unhandled_error',
+        route: '/api/communication-requests/request_1/resolve-followup',
+        method: 'POST',
+        requestId: 'generated_request_1',
+        correlationId: 'correlation_1',
+      },
+      unsafeError,
+    );
   });
 
   it('returns a sanitized no-store 500 when follow-up transaction fails unexpectedly', async () => {
-    withOrgContextMock.mockRejectedValueOnce(
-      new Error('raw followup transaction patient 山田 花子 token secret 夕食後薬'),
+    const unsafeError = new Error(
+      'raw followup transaction patient 山田 花子 token secret 夕食後薬',
     );
+    withOrgContextMock.mockRejectedValueOnce(unsafeError);
 
     const response = await POST(
       createRequest({
@@ -784,6 +973,8 @@ describe('/api/communication-requests/[id]/resolve-followup POST', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(500);
     expectSensitiveNoStore(response);
+    expect(response.headers.get('X-Request-Id')).toBe('request_1');
+    expect(response.headers.get('X-Correlation-Id')).toBe('correlation_1');
     const body = await response.json();
     expect(body).toMatchObject({
       code: 'INTERNAL_ERROR',
@@ -797,5 +988,17 @@ describe('/api/communication-requests/[id]/resolve-followup POST', () => {
     expect(communicationRequestUpdateManyMock).not.toHaveBeenCalled();
     expect(taskUpsertMock).not.toHaveBeenCalled();
     expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(loggerErrorMock).toHaveBeenCalledOnce();
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      {
+        event: 'route_handler_unhandled_error',
+        route: '/api/communication-requests/request_1/resolve-followup',
+        method: 'POST',
+        requestId: 'request_1',
+        correlationId: 'correlation_1',
+      },
+      unsafeError,
+    );
+    expect(JSON.stringify(loggerErrorMock.mock.calls[0]?.[0])).not.toContain('夕食後薬');
   });
 });

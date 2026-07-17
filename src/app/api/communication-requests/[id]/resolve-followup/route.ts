@@ -1,18 +1,10 @@
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { hasPermission } from '@/lib/auth/permissions';
-import { requireAuthContext } from '@/lib/auth/context';
+import { withAuthContext, type AuthContext, type AuthRouteContext } from '@/lib/auth/context';
 import { getAuthSecret } from '@/lib/auth/secret';
-import {
-  conflict,
-  forbidden,
-  internalError,
-  notFound,
-  success,
-  validationError,
-} from '@/lib/api/response';
+import { conflict, forbidden, notFound, success, validationError } from '@/lib/api/response';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
-import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { prisma } from '@/lib/db/client';
 import { withOrgContext } from '@/lib/db/rls';
 import { buildTracingReportPdfPath } from '@/lib/reports/tracing-report-pdf-path';
@@ -31,7 +23,6 @@ import {
   resolveTracingReportCommunicationScope,
 } from '@/server/services/communication-request-access';
 import { NextRequest } from 'next/server';
-import { unstable_rethrow } from 'next/navigation';
 import { createHmac } from 'node:crypto';
 import { z } from 'zod';
 
@@ -137,16 +128,11 @@ class ResolveFollowupRollback extends Error {
   }
 }
 
-type ResolveFollowupRouteContext = { params: Promise<{ id: string }> };
-
-async function authenticatedPOST(req: NextRequest, { params }: ResolveFollowupRouteContext) {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canReport',
-    message: '連携依頼の更新権限がありません',
-  });
-  if ('response' in authResult) return authResult.response;
-  const { ctx } = authResult;
-
+async function resolveFollowupPOST(
+  req: NextRequest,
+  ctx: AuthContext,
+  { params }: AuthRouteContext<{ id: string }>,
+) {
   const { id: rawId } = await params;
   const id = normalizeRequiredRouteParam(rawId);
   if (!id) return validationError('連携依頼IDが不正です');
@@ -422,11 +408,7 @@ async function authenticatedPOST(req: NextRequest, { params }: ResolveFollowupRo
   return success({ data: result });
 }
 
-export async function POST(req: NextRequest, routeContext: ResolveFollowupRouteContext) {
-  try {
-    return withSensitiveNoStore(await authenticatedPOST(req, routeContext));
-  } catch (err) {
-    unstable_rethrow(err);
-    return withSensitiveNoStore(internalError());
-  }
-}
+export const POST = withAuthContext(resolveFollowupPOST, {
+  permission: 'canReport',
+  message: '連携依頼の更新権限がありません',
+});
