@@ -62,7 +62,7 @@ vi.mock('@/server/services/dashboard-assignment-scope', () => ({
 vi.mock('@/server/services/operational-tasks', () => ({
   resolveOperationalTasks: resolveOperationalTasksMock,
 }));
-vi.mock('@/modules/pharmacy/medication-stock/application/apply-prescription-supply', () => ({
+vi.mock('@/modules/pharmacy', () => ({
   applyPrescriptionSupplyForIntake: applyPrescriptionSupplyForIntakeMock,
   createPrescriptionSupplyStockItemForReview: createPrescriptionSupplyStockItemForReviewMock,
   previewPrescriptionSupplyReview: previewPrescriptionSupplyReviewMock,

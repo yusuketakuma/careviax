@@ -45,7 +45,7 @@ vi.mock('@/server/services/patient-write-guard', () => ({
 vi.mock('@/server/services/prescription-access', () => ({
   buildPrescriptionIntakeAssignmentWhere: buildPrescriptionIntakeAssignmentWhereMock,
 }));
-vi.mock('@/modules/pharmacy/medication-stock/application/apply-prescription-supply', () => ({
+vi.mock('@/modules/pharmacy', () => ({
   applyPrescriptionSupplyForIntake: applyPrescriptionSupplyForIntakeMock,
 }));
 

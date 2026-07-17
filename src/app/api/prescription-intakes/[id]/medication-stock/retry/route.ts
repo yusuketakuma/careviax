@@ -8,7 +8,7 @@ import { withOrgContext } from '@/lib/db/rls';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { buildPrescriptionIntakeAssignmentWhere } from '@/server/services/prescription-access';
 import { requireWritablePatient } from '@/server/services/patient-write-guard';
-import { applyPrescriptionSupplyForIntake } from '@/modules/pharmacy/medication-stock/application/apply-prescription-supply';
+import { applyPrescriptionSupplyForIntake } from '@/modules/pharmacy';
 
 export const dynamic = 'force-dynamic';
 

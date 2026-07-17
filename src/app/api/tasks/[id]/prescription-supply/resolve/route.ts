@@ -15,7 +15,7 @@ import {
   applyPrescriptionSupplyForIntake,
   createPrescriptionSupplyStockItemForReview,
   previewPrescriptionSupplyReview,
-} from '@/modules/pharmacy/medication-stock/application/apply-prescription-supply';
+} from '@/modules/pharmacy';
 import {
   buildDashboardTaskAssignmentWhere,
   resolveDashboardAssignmentScope,
