@@ -1,19 +1,10 @@
 import { NextRequest } from 'next/server';
-import { unstable_rethrow } from 'next/navigation';
-import { requireAuthContext } from '@/lib/auth/context';
+import { withAuthContext, type AuthContext, type AuthRouteContext } from '@/lib/auth/context';
 import { hasPermission } from '@/lib/auth/permissions';
 import { withOrgContext } from '@/lib/db/rls';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
-import {
-  success,
-  validationError,
-  notFound,
-  conflict,
-  internalError,
-  forbidden,
-} from '@/lib/api/response';
-import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
+import { success, validationError, notFound, conflict, forbidden } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
 import {
   transitionCycleStatus,
@@ -75,10 +66,11 @@ function touchesDispenseResultSafetyFields(data: z.infer<typeof updateDispenseRe
   );
 }
 
-async function authenticatedGET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const authResult = await requireAuthContext(req);
-  if ('response' in authResult) return authResult.response;
-  const ctx = authResult.ctx;
+async function authenticatedGET(
+  _req: NextRequest,
+  ctx: AuthContext,
+  { params }: AuthRouteContext<{ id: string }>,
+) {
   if (
     !hasPermission(ctx.role, 'canDispense') &&
     !hasPermission(ctx.role, 'canAuditDispense') &&
@@ -109,23 +101,13 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
   return success({ data: result });
 }
 
-export async function GET(req: NextRequest, routeContext: { params: Promise<{ id: string }> }) {
-  try {
-    return withSensitiveNoStore(await authenticatedGET(req, routeContext));
-  } catch (err) {
-    unstable_rethrow(err);
-    return withSensitiveNoStore(internalError());
-  }
-}
+export const GET = withAuthContext(authenticatedGET);
 
-export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canDispense',
-    message: '調剤実績の更新権限がありません',
-  });
-  if ('response' in authResult) return authResult.response;
-  const ctx = authResult.ctx;
-
+async function authenticatedPATCH(
+  req: NextRequest,
+  ctx: AuthContext,
+  { params }: AuthRouteContext<{ id: string }>,
+) {
   const { id: rawId } = await params;
   const id = normalizeRequiredRouteParam(rawId);
   if (!id) return validationError('調剤実績IDが不正です');
@@ -442,3 +424,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   return success({ data: updated });
 }
+
+export const PATCH = withAuthContext(authenticatedPATCH, {
+  permission: 'canDispense',
+  message: '調剤実績の更新権限がありません',
+});

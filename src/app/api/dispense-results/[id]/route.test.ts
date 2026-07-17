@@ -18,6 +18,10 @@ const {
   cycleTransitionLogCreateMock,
   withOrgContextMock,
   notifyWorkflowMutationMock,
+  loggerErrorMock,
+  clearRequestAuthContextMock,
+  runWithRequestAuthContextMock,
+  unstableRethrowMock,
 } = vi.hoisted(() => ({
   authMock: vi.fn(),
   membershipFindFirstMock: vi.fn(),
@@ -35,6 +39,17 @@ const {
   cycleTransitionLogCreateMock: vi.fn(),
   withOrgContextMock: vi.fn(),
   notifyWorkflowMutationMock: vi.fn(),
+  loggerErrorMock: vi.fn(),
+  clearRequestAuthContextMock: vi.fn(),
+  runWithRequestAuthContextMock: vi.fn((_ctx, callback: () => unknown) => callback()),
+  unstableRethrowMock: vi.fn(),
+}));
+
+vi.mock('next/navigation', () => ({ unstable_rethrow: unstableRethrowMock }));
+
+vi.mock('@/lib/auth/request-context', () => ({
+  clearRequestAuthContext: clearRequestAuthContextMock,
+  runWithRequestAuthContext: runWithRequestAuthContextMock,
 }));
 
 vi.mock('@/lib/auth/config', () => ({
@@ -58,6 +73,10 @@ vi.mock('@/lib/db/rls', () => ({
 
 vi.mock('@/server/services/workflow-dashboard-cache', () => ({
   notifyWorkflowMutation: notifyWorkflowMutationMock,
+}));
+
+vi.mock('@/lib/utils/logger', () => ({
+  logger: { error: loggerErrorMock },
 }));
 
 import { GET, PATCH } from './route';
@@ -129,6 +148,8 @@ describe('/api/dispense-results/[id]', () => {
     vi.clearAllMocks();
     authMock.mockResolvedValue({ user: { id: 'user_1' } });
     membershipFindFirstMock.mockResolvedValue({ role: 'pharmacist' });
+    runWithRequestAuthContextMock.mockImplementation((_ctx, callback) => callback());
+    unstableRethrowMock.mockImplementation(() => undefined);
     dispenseResultFindFirstMock.mockResolvedValue(createExistingDispenseResult());
     dispenseResultFindManyMock.mockResolvedValue([
       {
@@ -202,6 +223,9 @@ describe('/api/dispense-results/[id]', () => {
     expect(response.status).toBe(200);
     expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
     expect(response.headers.get('Pragma')).toBe('no-cache');
+    expect(response.headers.get('X-Request-Id')).toBeTruthy();
+    expect(response.headers.get('X-Correlation-Id')).toBeTruthy();
+    expect(runWithRequestAuthContextMock).toHaveBeenCalledOnce();
     await expect(response.json()).resolves.toMatchObject({
       data: {
         id: 'result_1',
@@ -224,6 +248,100 @@ describe('/api/dispense-results/[id]', () => {
         line: true,
       },
     });
+  });
+
+  it.each([
+    { role: 'owner' as const },
+    { role: 'admin' as const },
+    { role: 'pharmacist_trainee' as const },
+    { role: 'clerk' as const },
+  ])('allows $role to read through the existing purpose-based permission set', async ({ role }) => {
+    membershipFindFirstMock.mockResolvedValueOnce({ role });
+
+    const response = (await GET(createRequest('http://localhost/api/dispense-results/result_1'), {
+      params: Promise.resolve({ id: 'result_1' }),
+    }))!;
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(dispenseResultFindFirstMock).toHaveBeenCalledOnce();
+    expect(runWithRequestAuthContextMock).toHaveBeenCalledOnce();
+  });
+
+  it.each([{ role: 'driver' as const }, { role: 'external_viewer' as const }])(
+    'denies $role before params or result lookup',
+    async ({ role }) => {
+      membershipFindFirstMock.mockResolvedValueOnce({ role });
+      let paramsAwaited = false;
+      const params = {
+        then: () => {
+          paramsAwaited = true;
+          throw new Error('params must not be awaited');
+        },
+      } as unknown as Promise<{ id: string }>;
+
+      const response = (await GET(createRequest('http://localhost/api/dispense-results/result_1'), {
+        params,
+      }))!;
+
+      expect(response.status).toBe(403);
+      expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+      await expect(response.json()).resolves.toMatchObject({
+        message: '調剤実績の閲覧権限がありません',
+      });
+      expect(paramsAwaited).toBe(false);
+      expect(dispenseResultFindFirstMock).not.toHaveBeenCalled();
+      expect(runWithRequestAuthContextMock).toHaveBeenCalledOnce();
+    },
+  );
+
+  it('rejects unauthenticated GET before params or result lookup', async () => {
+    authMock.mockResolvedValueOnce(null);
+
+    const response = (await GET(createRequest('http://localhost/api/dispense-results/result_1'), {
+      params: Promise.resolve({ id: 'result_1' }),
+    }))!;
+
+    expect(response.status).toBe(401);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(runWithRequestAuthContextMock).not.toHaveBeenCalled();
+    expect(dispenseResultFindFirstMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a generated-trace safe 500 when GET authentication dependencies throw', async () => {
+    const unsafeError = new Error('患者 山田花子 raw dispense result auth secret');
+    unsafeError.name = 'DispenseResultAuthSecretError';
+    authMock.mockRejectedValueOnce(unsafeError);
+
+    const response = (await GET(createRequest('http://localhost/api/dispense-results/result_1'), {
+      params: Promise.resolve({ id: 'result_1' }),
+    }))!;
+    const requestId = response.headers.get('X-Request-Id');
+    const correlationId = response.headers.get('X-Correlation-Id');
+
+    expect(response.status).toBe(500);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(requestId).toBeTruthy();
+    expect(correlationId).toBe(requestId);
+    await expect(response.json()).resolves.toEqual({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    expect(runWithRequestAuthContextMock).not.toHaveBeenCalled();
+    expect(dispenseResultFindFirstMock).not.toHaveBeenCalled();
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      {
+        event: 'route_auth_unhandled_error',
+        route: '/api/dispense-results/result_1',
+        method: 'GET',
+        requestId,
+        correlationId,
+      },
+      unsafeError,
+    );
+    const loggedContext = JSON.stringify(loggerErrorMock.mock.calls[0]?.[0]);
+    expect(loggedContext).not.toContain('山田花子');
+    expect(loggedContext).not.toContain('DispenseResultAuthSecretError');
   });
 
   it('rejects blank route params before result lookup', async () => {
@@ -253,9 +371,9 @@ describe('/api/dispense-results/[id]', () => {
   });
 
   it('returns a sanitized no-store 500 when result lookup fails unexpectedly', async () => {
-    dispenseResultFindFirstMock.mockRejectedValueOnce(
-      new Error('患者 山田花子 アムロジピン 14錠 raw dispense result detail'),
-    );
+    const unsafeError = new Error('患者 山田花子 アムロジピン 14錠 raw dispense result detail');
+    unsafeError.name = 'DispenseResultDetailSecretError';
+    dispenseResultFindFirstMock.mockRejectedValueOnce(unsafeError);
 
     const response = (await GET(createRequest('http://localhost/api/dispense-results/result_1'), {
       params: Promise.resolve({ id: 'result_1' }),
@@ -273,11 +391,41 @@ describe('/api/dispense-results/[id]', () => {
     expect(JSON.stringify(body)).not.toContain('アムロジピン');
     expect(JSON.stringify(body)).not.toContain('14錠');
     expect(JSON.stringify(body)).not.toContain('raw dispense result detail');
+    expect(loggerErrorMock).toHaveBeenCalledOnce();
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      {
+        event: 'route_handler_unhandled_error',
+        route: '/api/dispense-results/result_1',
+        method: 'GET',
+        requestId: response.headers.get('X-Request-Id'),
+        correlationId: response.headers.get('X-Correlation-Id'),
+      },
+      unsafeError,
+    );
+    const loggedContext = JSON.stringify(loggerErrorMock.mock.calls[0]?.[0]);
+    expect(loggedContext).not.toContain('山田花子');
+    expect(loggedContext).not.toContain('DispenseResultDetailSecretError');
   });
 
   // POST /api/dispense-results と同一の canDispense ゲートを PATCH にも必須化した
   // (F-20260625-dispense-results-patch-authz)。canDispense を持たないロールは、
   // たとえ組織横断参照(clerk 等)であっても算定/臨床フィールドの修正を 403 で拒否する。
+  it('rejects unauthenticated PATCH before params, body parsing, or RLS work', async () => {
+    authMock.mockResolvedValueOnce(null);
+    const request = createMalformedJsonPatchRequest();
+
+    const response = (await PATCH(request, {
+      params: Promise.resolve({ id: 'result_1' }),
+    }))!;
+
+    expect(response.status).toBe(401);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(request.bodyUsed).toBe(false);
+    expect(runWithRequestAuthContextMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
   it.each([
     // clerk は ORG_WIDE_ACCESS_ROLES に属し担当割当スコープを迂回するため、
     // 権限ゲートだけがこの編集を止められる回帰の要。
@@ -286,54 +434,168 @@ describe('/api/dispense-results/[id]', () => {
     { role: 'external_viewer' as const },
   ])('rejects result updates when %s lacks dispense permission', async ({ role }) => {
     membershipFindFirstMock.mockResolvedValueOnce({ role });
+    const request = createRequest('http://localhost/api/dispense-results/result_1', {
+      actual_drug_name: 'Drug B',
+    });
+
+    const response = (await PATCH(request, {
+      params: Promise.resolve({ id: 'result_1' }),
+    }))!;
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '調剤実績の更新権限がありません',
+    });
+    expect(request.bodyUsed).toBe(false);
+    expect(runWithRequestAuthContextMock).not.toHaveBeenCalled();
+    expect(dispenseResultFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { role: 'owner' as const },
+    { role: 'admin' as const },
+    { role: 'pharmacist_trainee' as const },
+  ])('allows %s with dispense permission to patch after a rejected audit', async ({ role }) => {
+    membershipFindFirstMock.mockResolvedValueOnce({ role });
 
     const response = (await PATCH(
       createRequest('http://localhost/api/dispense-results/result_1', {
-        actual_drug_name: 'Drug B',
+        special_notes: '再調剤メモ',
       }),
       {
         params: Promise.resolve({ id: 'result_1' }),
       },
     ))!;
 
-    expect(response.status).toBe(403);
-    await expect(response.json()).resolves.toMatchObject({
-      message: '調剤実績の更新権限がありません',
+    expect(response.status).toBe(200);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('X-Request-Id')).toBeTruthy();
+    expect(response.headers.get('X-Correlation-Id')).toBeTruthy();
+    expect(runWithRequestAuthContextMock).toHaveBeenCalledOnce();
+    expect(withOrgContextMock).toHaveBeenCalled();
+    expect(dispenseResultUpdateManyMock).toHaveBeenCalledWith({
+      where: { id: 'result_1', org_id: 'org_1', version: 1 },
+      data: expect.objectContaining({
+        special_notes: '再調剤メモ',
+        version: { increment: 1 },
+      }),
     });
-    expect(dispenseResultFindFirstMock).not.toHaveBeenCalled();
-    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).toHaveBeenCalledWith({
+      orgId: 'org_1',
+      eventType: 'cycle_transition',
+      payload: { source: 'dispense_results_rework', result_id: 'result_1' },
+    });
   });
 
-  it.each([{ role: 'owner' as const }, { role: 'admin' as const }])(
-    'allows %s with dispense permission to patch after a rejected audit',
-    async ({ role }) => {
-      membershipFindFirstMock.mockResolvedValueOnce({ role });
+  it('returns a generated-trace safe 500 when PATCH authentication dependencies throw', async () => {
+    const unsafeError = new Error('患者 山田花子 raw dispense result patch auth secret');
+    unsafeError.name = 'DispenseResultPatchAuthSecretError';
+    authMock.mockRejectedValueOnce(unsafeError);
+    const request = createMalformedJsonPatchRequest();
 
-      const response = (await PATCH(
+    const response = (await PATCH(request, {
+      params: Promise.resolve({ id: 'result_1' }),
+    }))!;
+    const requestId = response.headers.get('X-Request-Id');
+    const correlationId = response.headers.get('X-Correlation-Id');
+
+    expect(response.status).toBe(500);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(requestId).toBeTruthy();
+    expect(correlationId).toBe(requestId);
+    expect(request.bodyUsed).toBe(false);
+    await expect(response.json()).resolves.toEqual({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    expect(runWithRequestAuthContextMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      {
+        event: 'route_auth_unhandled_error',
+        route: '/api/dispense-results/result_1',
+        method: 'PATCH',
+        requestId,
+        correlationId,
+      },
+      unsafeError,
+    );
+    expect(JSON.stringify(loggerErrorMock.mock.calls[0]?.[0])).not.toContain('山田花子');
+  });
+
+  it('returns an authenticated-trace safe 500 when PATCH transaction work throws', async () => {
+    const unsafeError = new Error('患者 山田花子 raw dispense result patch transaction secret');
+    unsafeError.name = 'DispenseResultPatchTransactionSecretError';
+    withOrgContextMock.mockRejectedValueOnce(unsafeError);
+
+    const response = (await PATCH(
+      createRequest('http://localhost/api/dispense-results/result_1', {
+        special_notes: '再調剤メモ',
+      }),
+      { params: Promise.resolve({ id: 'result_1' }) },
+    ))!;
+
+    expect(response.status).toBe(500);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    await expect(response.json()).resolves.toEqual({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      {
+        event: 'route_handler_unhandled_error',
+        route: '/api/dispense-results/result_1',
+        method: 'PATCH',
+        requestId: response.headers.get('X-Request-Id'),
+        correlationId: response.headers.get('X-Correlation-Id'),
+      },
+      unsafeError,
+    );
+    const loggedContext = JSON.stringify(loggerErrorMock.mock.calls[0]?.[0]);
+    expect(loggedContext).not.toContain('山田花子');
+    expect(loggedContext).not.toContain('DispenseResultPatchTransactionSecretError');
+  });
+
+  it('rethrows GET authentication control flow without logging or query work', async () => {
+    const controlFlowError = new Error('NEXT_REDIRECT');
+    authMock.mockRejectedValueOnce(controlFlowError);
+    unstableRethrowMock.mockImplementationOnce((error) => {
+      throw error;
+    });
+
+    await expect(
+      GET(createRequest('http://localhost/api/dispense-results/result_1'), {
+        params: Promise.resolve({ id: 'result_1' }),
+      }),
+    ).rejects.toBe(controlFlowError);
+
+    expect(loggerErrorMock).not.toHaveBeenCalled();
+    expect(runWithRequestAuthContextMock).not.toHaveBeenCalled();
+    expect(dispenseResultFindFirstMock).not.toHaveBeenCalled();
+  });
+
+  it('rethrows PATCH handler control flow without shared logging or notification', async () => {
+    const controlFlowError = new Error('NEXT_NOT_FOUND');
+    withOrgContextMock.mockRejectedValueOnce(controlFlowError);
+    unstableRethrowMock.mockImplementationOnce((error) => {
+      throw error;
+    });
+
+    await expect(
+      PATCH(
         createRequest('http://localhost/api/dispense-results/result_1', {
           special_notes: '再調剤メモ',
         }),
-        {
-          params: Promise.resolve({ id: 'result_1' }),
-        },
-      ))!;
+        { params: Promise.resolve({ id: 'result_1' }) },
+      ),
+    ).rejects.toBe(controlFlowError);
 
-      expect(response.status).toBe(200);
-      expect(withOrgContextMock).toHaveBeenCalled();
-      expect(dispenseResultUpdateManyMock).toHaveBeenCalledWith({
-        where: { id: 'result_1', org_id: 'org_1', version: 1 },
-        data: expect.objectContaining({
-          special_notes: '再調剤メモ',
-          version: { increment: 1 },
-        }),
-      });
-      expect(notifyWorkflowMutationMock).toHaveBeenCalledWith({
-        orgId: 'org_1',
-        eventType: 'cycle_transition',
-        payload: { source: 'dispense_results_rework', result_id: 'result_1' },
-      });
-    },
-  );
+    expect(loggerErrorMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
 
   it('patches a dispense result only after a rejected audit and resets statuses', async () => {
     visitScheduleFindManyMock.mockResolvedValue([
