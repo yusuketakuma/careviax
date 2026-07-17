@@ -10,6 +10,9 @@ const {
   parseGS1BarcodeMock,
   isExpiredMock,
   loggerErrorMock,
+  clearRequestAuthContextMock,
+  runWithRequestAuthContextMock,
+  unstableRethrowMock,
 } = vi.hoisted(() => ({
   authMock: vi.fn(),
   membershipFindFirstMock: vi.fn(),
@@ -19,6 +22,16 @@ const {
   parseGS1BarcodeMock: vi.fn(),
   isExpiredMock: vi.fn(),
   loggerErrorMock: vi.fn(),
+  clearRequestAuthContextMock: vi.fn(),
+  runWithRequestAuthContextMock: vi.fn((_ctx, callback: () => unknown) => callback()),
+  unstableRethrowMock: vi.fn(),
+}));
+
+vi.mock('next/navigation', () => ({ unstable_rethrow: unstableRethrowMock }));
+
+vi.mock('@/lib/auth/request-context', () => ({
+  clearRequestAuthContext: clearRequestAuthContextMock,
+  runWithRequestAuthContext: runWithRequestAuthContextMock,
 }));
 
 vi.mock('@/lib/auth/config', () => ({
@@ -111,6 +124,17 @@ describe('/api/dispense-tasks/[id]/verify-barcode', () => {
     expect(response.status).toBe(200);
     expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
     expect(response.headers.get('Pragma')).toBe('no-cache');
+    expect(response.headers.get('X-Request-Id')).toBeTruthy();
+    expect(response.headers.get('X-Correlation-Id')).toBeTruthy();
+    expect(runWithRequestAuthContextMock).toHaveBeenCalledOnce();
+    expect(runWithRequestAuthContextMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: 'user_1',
+        orgId: 'org_1',
+        role: 'pharmacist',
+      }),
+      expect.any(Function),
+    );
     expect(dispenseTaskFindFirstMock).toHaveBeenCalledWith({
       where: {
         id: 'task_1',
@@ -142,23 +166,82 @@ describe('/api/dispense-tasks/[id]/verify-barcode', () => {
 
   it('requires dispense permission before task lookup', async () => {
     membershipFindFirstMock.mockResolvedValue({ role: 'clerk' });
+    const request = createMalformedJsonRequest('task_1');
 
-    const response = (await POST(
-      createVerifyBarcodeRequest('task_1', {
-        barcode: '0101234567890123',
-        line_id: 'line_1',
-      }),
-      {
-        params: Promise.resolve({ id: 'task_1' }),
-      },
-    ))!;
+    const response = (await POST(request, {
+      params: Promise.resolve({ id: 'task_1' }),
+    }))!;
 
     expect(response.status).toBe(403);
     expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
     expect(response.headers.get('Pragma')).toBe('no-cache');
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'バーコード照合権限がありません',
+    });
+    expect(request.bodyUsed).toBe(false);
+    expect(runWithRequestAuthContextMock).not.toHaveBeenCalled();
     expect(dispenseTaskFindFirstMock).not.toHaveBeenCalled();
     expect(prescriptionLineFindFirstMock).not.toHaveBeenCalled();
     expect(parseGS1BarcodeMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects unauthenticated requests before params, body, or barcode work', async () => {
+    authMock.mockResolvedValueOnce(null);
+    const request = createMalformedJsonRequest('task_1');
+    const paramsThenMock = vi.fn();
+
+    const response = (await POST(request, {
+      params: { then: paramsThenMock } as unknown as Promise<{ id: string }>,
+    }))!;
+
+    expect(response.status).toBe(401);
+    expect(request.bodyUsed).toBe(false);
+    expect(paramsThenMock).not.toHaveBeenCalled();
+    expect(runWithRequestAuthContextMock).not.toHaveBeenCalled();
+    expect(dispenseTaskFindFirstMock).not.toHaveBeenCalled();
+    expect(prescriptionLineFindFirstMock).not.toHaveBeenCalled();
+    expect(parseGS1BarcodeMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a generated-trace safe 500 when authentication dependencies throw', async () => {
+    const err = new Error('患者 山田太郎 barcode auth secret GTIN');
+    err.name = 'VerifyBarcodeAuthSecretError';
+    authMock.mockRejectedValueOnce(err);
+    const request = createMalformedJsonRequest('task_1');
+    const paramsThenMock = vi.fn();
+
+    const response = (await POST(request, {
+      params: { then: paramsThenMock } as unknown as Promise<{ id: string }>,
+    }))!;
+    const requestId = response.headers.get('X-Request-Id');
+    const correlationId = response.headers.get('X-Correlation-Id');
+
+    expect(response.status).toBe(500);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(requestId).toBeTruthy();
+    expect(correlationId).toBe(requestId);
+    expect(request.bodyUsed).toBe(false);
+    expect(paramsThenMock).not.toHaveBeenCalled();
+    await expect(response.json()).resolves.toEqual({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    expect(runWithRequestAuthContextMock).not.toHaveBeenCalled();
+    expect(dispenseTaskFindFirstMock).not.toHaveBeenCalled();
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      {
+        event: 'route_auth_unhandled_error',
+        route: '/api/dispense-tasks/task_1/verify-barcode',
+        method: 'POST',
+        requestId,
+        correlationId,
+      },
+      err,
+    );
+    expect(JSON.stringify(loggerErrorMock.mock.calls[0]?.[0])).not.toContain('山田太郎');
+    expect(JSON.stringify(loggerErrorMock.mock.calls[0]?.[0])).not.toContain(
+      'VerifyBarcodeAuthSecretError',
+    );
   });
 
   it('rejects blank route params before body parsing, task lookup, or barcode parsing', async () => {
@@ -250,7 +333,7 @@ describe('/api/dispense-tasks/[id]/verify-barcode', () => {
     expect(parseGS1BarcodeMock).not.toHaveBeenCalled();
   });
 
-  it('returns a sanitized no-store 500 and PHI-safe log metadata on unexpected failures', async () => {
+  it('returns an authenticated-trace safe 500 and PHI-safe shared log metadata', async () => {
     const err = new Error('患者 山田太郎 verify barcode raw SQL stack GTIN');
     err.name = 'DispenseTaskVerifyBarcodeSecretError';
     dispenseTaskFindFirstMock.mockRejectedValueOnce(err);
@@ -277,12 +360,13 @@ describe('/api/dispense-tasks/[id]/verify-barcode', () => {
     expect(JSON.stringify(body)).not.toContain('raw SQL');
     expect(JSON.stringify(body)).not.toContain('GTIN');
     expect(loggerErrorMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        event: 'dispense_task_verify_barcode_unhandled_error',
-        route: '/api/dispense-tasks/[id]/verify-barcode',
+      {
+        event: 'route_handler_unhandled_error',
+        route: '/api/dispense-tasks/task_1/verify-barcode',
         method: 'POST',
-        status: 500,
-      }),
+        requestId: response.headers.get('X-Request-Id'),
+        correlationId: response.headers.get('X-Correlation-Id'),
+      },
       err,
     );
     const [logContext, logError] = loggerErrorMock.mock.calls[0] ?? [];
@@ -293,6 +377,51 @@ describe('/api/dispense-tasks/[id]/verify-barcode', () => {
     expect(logContextText).not.toContain('raw SQL');
     expect(logContextText).not.toContain('GTIN');
     expect(logContextText).not.toContain('DispenseTaskVerifyBarcodeSecretError');
+    expect(parseGS1BarcodeMock).not.toHaveBeenCalled();
+  });
+
+  it('rethrows authentication control flow without logging or request work', async () => {
+    const controlFlowError = new Error('NEXT_REDIRECT');
+    authMock.mockRejectedValueOnce(controlFlowError);
+    unstableRethrowMock.mockImplementationOnce((error) => {
+      throw error;
+    });
+    const request = createMalformedJsonRequest('task_1');
+    const paramsThenMock = vi.fn();
+
+    await expect(
+      POST(request, {
+        params: { then: paramsThenMock } as unknown as Promise<{ id: string }>,
+      }),
+    ).rejects.toBe(controlFlowError);
+
+    expect(request.bodyUsed).toBe(false);
+    expect(paramsThenMock).not.toHaveBeenCalled();
+    expect(loggerErrorMock).not.toHaveBeenCalled();
+    expect(runWithRequestAuthContextMock).not.toHaveBeenCalled();
+    expect(dispenseTaskFindFirstMock).not.toHaveBeenCalled();
+  });
+
+  it('rethrows handler control flow without shared logging or barcode work', async () => {
+    const controlFlowError = new Error('NEXT_NOT_FOUND');
+    dispenseTaskFindFirstMock.mockRejectedValueOnce(controlFlowError);
+    unstableRethrowMock.mockImplementationOnce((error) => {
+      throw error;
+    });
+
+    await expect(
+      POST(
+        createVerifyBarcodeRequest('task_1', {
+          barcode: '0101234567890123',
+          line_id: 'line_1',
+        }),
+        { params: Promise.resolve({ id: 'task_1' }) },
+      ),
+    ).rejects.toBe(controlFlowError);
+
+    expect(loggerErrorMock).not.toHaveBeenCalled();
+    expect(runWithRequestAuthContextMock).toHaveBeenCalledOnce();
+    expect(prescriptionLineFindFirstMock).not.toHaveBeenCalled();
     expect(parseGS1BarcodeMock).not.toHaveBeenCalled();
   });
 });
