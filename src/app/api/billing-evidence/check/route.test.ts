@@ -5,6 +5,7 @@ import { expectSensitiveNoStore } from '@/test/api-response-assertions';
 const {
   authContext,
   requireAuthContextMock,
+  runWithRequestAuthContextMock,
   loggerErrorMock,
   withRoutePerformanceMock,
   withOrgContextMock,
@@ -17,11 +18,14 @@ const {
     userId: 'user_1',
     orgId: 'org_1',
     role: 'manager',
+    requestId: 'request_1',
+    correlationId: 'correlation_1',
   };
 
   return {
     authContext,
     requireAuthContextMock: vi.fn(),
+    runWithRequestAuthContextMock: vi.fn((_ctx, callback) => callback()),
     loggerErrorMock: vi.fn(),
     withRoutePerformanceMock: vi.fn((_req, handler) => handler()),
     withOrgContextMock: vi.fn(),
@@ -58,6 +62,73 @@ const {
 
 vi.mock('@/lib/auth/context', () => ({
   requireAuthContext: requireAuthContextMock,
+  withAuthContext:
+    (
+      handler: (
+        req: NextRequest,
+        ctx: typeof authContext,
+        routeContext: { params: Promise<Record<string, string>> },
+      ) => Promise<Response>,
+      options: unknown,
+    ) =>
+    async (req: NextRequest, routeContext: { params: Promise<Record<string, string>> }) =>
+      withRoutePerformanceMock(req, async () => {
+        let response: Response;
+        let trace = authContext;
+        try {
+          const authResult = await requireAuthContextMock(req, options);
+          if ('response' in authResult) {
+            response = authResult.response;
+          } else {
+            trace = authResult.ctx;
+            try {
+              response = await runWithRequestAuthContextMock(authResult.ctx, () =>
+                handler(req, authResult.ctx, routeContext),
+              );
+            } catch (error) {
+              loggerErrorMock(
+                {
+                  event: 'route_handler_unhandled_error',
+                  route: req.nextUrl.pathname,
+                  method: req.method,
+                  requestId: authResult.ctx.requestId,
+                  correlationId: authResult.ctx.correlationId,
+                },
+                error,
+              );
+              response = NextResponse.json(
+                { code: 'INTERNAL_ERROR', message: 'サーバー内部でエラーが発生しました' },
+                { status: 500 },
+              );
+            }
+          }
+        } catch (error) {
+          trace = {
+            ...authContext,
+            requestId: 'generated_request_1',
+            correlationId: req.headers.get('x-correlation-id') ?? 'generated_request_1',
+          };
+          loggerErrorMock(
+            {
+              event: 'route_auth_unhandled_error',
+              route: req.nextUrl.pathname,
+              method: req.method,
+              requestId: trace.requestId,
+              correlationId: trace.correlationId,
+            },
+            error,
+          );
+          response = NextResponse.json(
+            { code: 'INTERNAL_ERROR', message: 'サーバー内部でエラーが発生しました' },
+            { status: 500 },
+          );
+        }
+        response.headers.set('Cache-Control', 'private, no-store, max-age=0');
+        response.headers.set('Pragma', 'no-cache');
+        response.headers.set('X-Request-Id', trace.requestId);
+        response.headers.set('X-Correlation-Id', trace.correlationId);
+        return response;
+      }),
 }));
 
 vi.mock('@/lib/db/rls', () => ({
@@ -80,11 +151,9 @@ vi.mock('@/lib/utils/logger', () => ({
   logger: { error: loggerErrorMock, warn: vi.fn(), info: vi.fn(), debug: vi.fn() },
 }));
 
-vi.mock('@/lib/utils/performance', () => ({
-  withRoutePerformance: withRoutePerformanceMock,
-}));
-
 import { GET } from './route';
+
+const emptyRouteContext = { params: Promise.resolve({}) };
 
 const currentMonthStart = new Date('2026-03-01T00:00:00.000Z');
 const previousMonthStart = new Date('2026-02-01T00:00:00.000Z');
@@ -97,6 +166,8 @@ function createRequest(search = '') {
   return new NextRequest(`http://localhost/api/billing-evidence/check${search}`, {
     headers: {
       'x-org-id': 'org_1',
+      'x-request-id': 'request_1',
+      'x-correlation-id': 'correlation_1',
     },
   });
 }
@@ -107,6 +178,7 @@ describe('/api/billing-evidence/check GET', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-02-28T15:30:00.000Z'));
     requireAuthContextMock.mockResolvedValue({ ctx: authContext });
+    runWithRequestAuthContextMock.mockImplementation((_ctx, callback) => callback());
     withOrgContextMock.mockImplementation(async (_orgId, callback) => callback(txMock));
     billingMonthForJapanTimestampMock.mockReturnValue(currentMonthStart);
     todayUtcRangeMock.mockReturnValue(todayRange);
@@ -150,7 +222,7 @@ describe('/api/billing-evidence/check GET', () => {
   });
 
   it('returns the current monthly billing check dashboard contract', async () => {
-    const response = await GET(createRequest());
+    const response = await GET(createRequest(), emptyRouteContext);
 
     expect(response.status).toBe(200);
     expect(withRoutePerformanceMock).toHaveBeenCalledTimes(1);
@@ -232,7 +304,7 @@ describe('/api/billing-evidence/check GET', () => {
     ]);
     txMock.patient.findMany.mockResolvedValue([{ id: rawPatientId, name: '山田太郎' }]);
 
-    const response = await GET(createRequest());
+    const response = await GET(createRequest(), emptyRouteContext);
     const json = await response.json();
 
     expect(response.status).toBe(200);
@@ -270,7 +342,7 @@ describe('/api/billing-evidence/check GET', () => {
     ]);
     txMock.patient.findMany.mockResolvedValue([{ id: rawPatientId, name: '山田太郎' }]);
 
-    const response = await GET(createRequest());
+    const response = await GET(createRequest(), emptyRouteContext);
     const json = await response.json();
 
     expect(response.status).toBe(200);
@@ -293,7 +365,7 @@ describe('/api/billing-evidence/check GET', () => {
   });
 
   it('uses the previous billing month when requested', async () => {
-    const response = await GET(createRequest('?month=previous'));
+    const response = await GET(createRequest('?month=previous'), emptyRouteContext);
 
     expect(response.status).toBe(200);
     expect(txMock.billingEvidence.count).toHaveBeenCalledWith({
@@ -309,7 +381,7 @@ describe('/api/billing-evidence/check GET', () => {
   });
 
   it('scopes the 返戻 (rejection) count to the selected billing month, not all months', async () => {
-    const response = await GET(createRequest());
+    const response = await GET(createRequest(), emptyRouteContext);
 
     expect(response.status).toBe(200);
     // 返戻件数は当月(records)指標。全月合算しないよう billing_month で絞ること。
@@ -324,7 +396,7 @@ describe('/api/billing-evidence/check GET', () => {
   });
 
   it('scopes the 返戻 count to the previous billing month when requested', async () => {
-    const response = await GET(createRequest('?month=previous'));
+    const response = await GET(createRequest('?month=previous'), emptyRouteContext);
 
     expect(response.status).toBe(200);
     expect(txMock.billingCandidate.count).toHaveBeenCalledWith({
@@ -338,7 +410,7 @@ describe('/api/billing-evidence/check GET', () => {
   });
 
   it('rejects invalid month before opening the org-scoped transaction', async () => {
-    const response = await GET(createRequest('?month=next'));
+    const response = await GET(createRequest('?month=next'), emptyRouteContext);
 
     expect(response.status).toBe(400);
     expectSensitiveNoStore(response);
@@ -350,7 +422,7 @@ describe('/api/billing-evidence/check GET', () => {
       response: NextResponse.json({ code: 'AUTH_FORBIDDEN' }, { status: 403 }),
     });
 
-    const response = await GET(createRequest());
+    const response = await GET(createRequest(), emptyRouteContext);
 
     expect(response.status).toBe(403);
     expect(withRoutePerformanceMock).toHaveBeenCalledTimes(1);
@@ -362,7 +434,7 @@ describe('/api/billing-evidence/check GET', () => {
     const thrownError = new Error('PHI leak candidate: patient 山田太郎 billing evidence failed');
     txMock.billingCandidate.findMany.mockRejectedValueOnce(thrownError);
 
-    const response = await GET(createRequest());
+    const response = await GET(createRequest(), emptyRouteContext);
 
     expect(response.status).toBe(500);
     expect(withRoutePerformanceMock).toHaveBeenCalledTimes(1);
@@ -374,10 +446,11 @@ describe('/api/billing-evidence/check GET', () => {
     expect(loggerErrorMock).toHaveBeenCalledTimes(1);
     expect(loggerErrorMock).toHaveBeenCalledWith(
       {
-        event: 'billing_evidence_check_unhandled_error',
+        event: 'route_handler_unhandled_error',
         route: '/api/billing-evidence/check',
         method: 'GET',
-        status: 500,
+        requestId: 'request_1',
+        correlationId: 'correlation_1',
       },
       thrownError,
     );
@@ -388,5 +461,28 @@ describe('/api/billing-evidence/check GET', () => {
     expect(logged).not.toContain('PHI leak candidate');
     expect(logged).not.toContain('山田太郎');
     expect(logged).not.toContain('stack');
+  });
+
+  it('returns a traced no-store error when the auth dependency throws', async () => {
+    const thrownError = new Error('session provider unavailable');
+    requireAuthContextMock.mockRejectedValueOnce(thrownError);
+
+    const response = await GET(createRequest(), emptyRouteContext);
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    expect(response.headers.get('X-Request-Id')).toBe('generated_request_1');
+    expect(response.headers.get('X-Correlation-Id')).toBe('correlation_1');
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      {
+        event: 'route_auth_unhandled_error',
+        route: '/api/billing-evidence/check',
+        method: 'GET',
+        requestId: 'generated_request_1',
+        correlationId: 'correlation_1',
+      },
+      thrownError,
+    );
   });
 });

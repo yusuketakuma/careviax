@@ -22,6 +22,8 @@ const {
     orgId: 'org_1',
     userId: 'report_1',
     role: 'clerk',
+    requestId: 'request_1',
+    correlationId: 'correlation_1',
   };
 
   return {
@@ -44,10 +46,73 @@ const {
 
 vi.mock('@/lib/auth/context', () => ({
   requireAuthContext: requireAuthContextMock,
-}));
-
-vi.mock('@/lib/auth/request-context', () => ({
-  runWithRequestAuthContext: runWithRequestAuthContextMock,
+  withAuthContext:
+    (
+      handler: (
+        req: NextRequest,
+        ctx: typeof authContext,
+        routeContext: { params: Promise<Record<string, string>> },
+      ) => Promise<Response>,
+      options: unknown,
+    ) =>
+    async (req: NextRequest, routeContext: { params: Promise<Record<string, string>> }) =>
+      withRoutePerformanceMock(req, async () => {
+        let response: Response;
+        let trace = authContext;
+        try {
+          const authResult = await requireAuthContextMock(req, options);
+          if ('response' in authResult) {
+            response = authResult.response;
+          } else {
+            trace = authResult.ctx;
+            try {
+              response = await runWithRequestAuthContextMock(authResult.ctx, () =>
+                handler(req, authResult.ctx, routeContext),
+              );
+            } catch (error) {
+              loggerErrorMock(
+                {
+                  event: 'route_handler_unhandled_error',
+                  route: req.nextUrl.pathname,
+                  method: req.method,
+                  requestId: authResult.ctx.requestId,
+                  correlationId: authResult.ctx.correlationId,
+                },
+                error,
+              );
+              response = NextResponse.json(
+                { code: 'INTERNAL_ERROR', message: 'サーバー内部でエラーが発生しました' },
+                { status: 500 },
+              );
+            }
+          }
+        } catch (error) {
+          trace = {
+            ...authContext,
+            requestId: 'generated_request_1',
+            correlationId: req.headers.get('x-correlation-id') ?? 'generated_request_1',
+          };
+          loggerErrorMock(
+            {
+              event: 'route_auth_unhandled_error',
+              route: req.nextUrl.pathname,
+              method: req.method,
+              requestId: trace.requestId,
+              correlationId: trace.correlationId,
+            },
+            error,
+          );
+          response = NextResponse.json(
+            { code: 'INTERNAL_ERROR', message: 'サーバー内部でエラーが発生しました' },
+            { status: 500 },
+          );
+        }
+        response.headers.set('Cache-Control', 'private, no-store, max-age=0');
+        response.headers.set('Pragma', 'no-cache');
+        response.headers.set('X-Request-Id', trace.requestId);
+        response.headers.set('X-Correlation-Id', trace.correlationId);
+        return response;
+      }),
 }));
 
 vi.mock('@/lib/db/client', () => ({
@@ -84,16 +149,16 @@ vi.mock('@/lib/utils/logger', () => ({
   logger: { error: loggerErrorMock, warn: vi.fn(), info: vi.fn(), debug: vi.fn() },
 }));
 
-vi.mock('@/lib/utils/performance', () => ({
-  withRoutePerformance: withRoutePerformanceMock,
-}));
-
 import { GET } from './route';
+
+const emptyRouteContext = { params: Promise.resolve({}) };
 
 function createRequest() {
   return new NextRequest('http://localhost/api/billing-evidence/stats', {
     headers: {
       'x-org-id': 'org_1',
+      'x-request-id': 'request_1',
+      'x-correlation-id': 'correlation_1',
     },
   });
 }
@@ -162,7 +227,7 @@ describe('/api/billing-evidence/stats GET', () => {
   });
 
   it('returns SSOT-aware billing evidence stats', async () => {
-    const response = await GET(createRequest());
+    const response = await GET(createRequest(), emptyRouteContext);
 
     if (!response) throw new Error('response is required');
     const resolvedResponse = response as Response;
@@ -234,7 +299,7 @@ describe('/api/billing-evidence/stats GET', () => {
       response: NextResponse.json({ code: 'AUTH_FORBIDDEN' }, { status: 403 }),
     });
 
-    const response = await GET(createRequest());
+    const response = await GET(createRequest(), emptyRouteContext);
 
     expect(response.status).toBe(403);
     expect(withRoutePerformanceMock).toHaveBeenCalledTimes(1);
@@ -251,7 +316,7 @@ describe('/api/billing-evidence/stats GET', () => {
     billingEvidenceCountMock.mockReset();
     billingEvidenceCountMock.mockRejectedValueOnce(thrownError);
 
-    const response = await GET(createRequest());
+    const response = await GET(createRequest(), emptyRouteContext);
 
     expect(response.status).toBe(500);
     expect(withRoutePerformanceMock).toHaveBeenCalledTimes(1);
@@ -263,10 +328,11 @@ describe('/api/billing-evidence/stats GET', () => {
     expect(loggerErrorMock).toHaveBeenCalledTimes(1);
     expect(loggerErrorMock).toHaveBeenCalledWith(
       {
-        event: 'billing_evidence_stats_unhandled_error',
+        event: 'route_handler_unhandled_error',
         route: '/api/billing-evidence/stats',
         method: 'GET',
-        status: 500,
+        requestId: 'request_1',
+        correlationId: 'correlation_1',
       },
       thrownError,
     );
@@ -277,5 +343,28 @@ describe('/api/billing-evidence/stats GET', () => {
     expect(logged).not.toContain('patient 山田太郎');
     expect(logged).not.toContain('billing stats failed');
     expect(logged).not.toContain('stack');
+  });
+
+  it('returns a traced no-store error when the auth dependency throws', async () => {
+    const thrownError = new Error('session provider unavailable');
+    requireAuthContextMock.mockRejectedValueOnce(thrownError);
+
+    const response = await GET(createRequest(), emptyRouteContext);
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    expect(response.headers.get('X-Request-Id')).toBe('generated_request_1');
+    expect(response.headers.get('X-Correlation-Id')).toBe('correlation_1');
+    expect(billingEvidenceCountMock).not.toHaveBeenCalled();
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      {
+        event: 'route_auth_unhandled_error',
+        route: '/api/billing-evidence/stats',
+        method: 'GET',
+        requestId: 'generated_request_1',
+        correlationId: 'correlation_1',
+      },
+      thrownError,
+    );
   });
 });
