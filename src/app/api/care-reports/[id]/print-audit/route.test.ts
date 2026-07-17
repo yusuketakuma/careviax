@@ -1,16 +1,35 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { expectSensitiveNoStore } from '@/test/api-response-assertions';
 
 const {
+  authContext,
   requireAuthContextMock,
+  runWithRequestAuthContextMock,
+  loggerErrorMock,
+  withRoutePerformanceMock,
+  unstableRethrowMock,
   careReportFindFirstMock,
   recordCareReportPrintAuditMock,
   canAccessCareReportSourceMock,
   successMock,
   prismaMock,
 } = vi.hoisted(() => ({
+  authContext: {
+    orgId: 'org_1',
+    userId: 'user_1',
+    role: 'pharmacist',
+    actorSiteId: 'site_1',
+    ipAddress: '127.0.0.1',
+    userAgent: 'Vitest',
+    requestId: 'request_care_report_print_audit_1',
+    correlationId: 'correlation_care_report_print_audit_1',
+  },
   requireAuthContextMock: vi.fn(),
+  runWithRequestAuthContextMock: vi.fn((_ctx, callback) => callback()),
+  loggerErrorMock: vi.fn(),
+  withRoutePerformanceMock: vi.fn((_req, handler) => handler()),
+  unstableRethrowMock: vi.fn(),
   careReportFindFirstMock: vi.fn(),
   recordCareReportPrintAuditMock: vi.fn(),
   canAccessCareReportSourceMock: vi.fn(),
@@ -22,8 +41,84 @@ const {
   },
 }));
 
+vi.mock('next/navigation', () => ({
+  unstable_rethrow: unstableRethrowMock,
+}));
+
 vi.mock('@/lib/auth/context', () => ({
   requireAuthContext: requireAuthContextMock,
+  withAuthContext:
+    (
+      handler: (
+        req: NextRequest,
+        ctx: typeof authContext,
+        routeContext: { params: Promise<{ id: string }> },
+      ) => Promise<Response>,
+      options: unknown,
+    ) =>
+    async (req: NextRequest, routeContext: { params: Promise<{ id: string }> }) =>
+      withRoutePerformanceMock(req, async () => {
+        let response: Response;
+        let trace = authContext;
+        try {
+          const authResult = await requireAuthContextMock(req, options);
+          if ('response' in authResult) {
+            response = authResult.response;
+            response.headers.set('Cache-Control', 'private, no-store, max-age=0');
+            response.headers.set('Pragma', 'no-cache');
+            return response;
+          }
+          trace = authResult.ctx;
+          try {
+            response = await runWithRequestAuthContextMock(authResult.ctx, () =>
+              handler(req, authResult.ctx, routeContext),
+            );
+          } catch (error) {
+            unstableRethrowMock(error);
+            loggerErrorMock(
+              {
+                event: 'route_handler_unhandled_error',
+                route: req.nextUrl.pathname,
+                method: req.method,
+                requestId: trace.requestId,
+                correlationId: trace.correlationId,
+              },
+              error,
+            );
+            response = NextResponse.json(
+              { code: 'INTERNAL_ERROR', message: 'サーバー内部でエラーが発生しました' },
+              { status: 500 },
+            );
+          }
+        } catch (error) {
+          unstableRethrowMock(error);
+          trace = {
+            ...authContext,
+            requestId: 'generated_request_care_report_print_audit_1',
+            correlationId:
+              req.headers.get('x-correlation-id') ?? 'generated_request_care_report_print_audit_1',
+          };
+          loggerErrorMock(
+            {
+              event: 'route_auth_unhandled_error',
+              route: req.nextUrl.pathname,
+              method: req.method,
+              requestId: trace.requestId,
+              correlationId: trace.correlationId,
+            },
+            error,
+          );
+          response = NextResponse.json(
+            { code: 'INTERNAL_ERROR', message: 'サーバー内部でエラーが発生しました' },
+            { status: 500 },
+          );
+        }
+        response.headers.set('Cache-Control', 'private, no-store, max-age=0');
+        response.headers.set('Pragma', 'no-cache');
+        response.headers.set('X-Request-Id', trace.requestId);
+        response.headers.set('X-Correlation-Id', trace.correlationId);
+        return response;
+      }),
 }));
 
 vi.mock('@/lib/api/response', async (importOriginal) => {
@@ -62,7 +157,11 @@ function createRequest(
 ) {
   return new NextRequest('http://localhost/api/care-reports/report_1/print-audit', {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: {
+      'content-type': 'application/json',
+      'x-request-id': 'inbound_request_should_be_ignored',
+      'x-correlation-id': CORRELATION_ID,
+    },
     body: JSON.stringify(body),
   });
 }
@@ -144,19 +243,19 @@ function expectNoRequestTrace(response: Response) {
 describe('/api/care-reports/[id]/print-audit', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    prismaMock.careReport.findFirst = careReportFindFirstMock;
-    requireAuthContextMock.mockResolvedValue({
-      ctx: {
-        orgId: 'org_1',
-        userId: 'user_1',
-        role: 'pharmacist',
-        actorSiteId: 'site_1',
-        ipAddress: '127.0.0.1',
-        userAgent: 'Vitest',
-        requestId: REQUEST_ID,
-        correlationId: CORRELATION_ID,
-      },
+    unstableRethrowMock.mockImplementation((error) => {
+      if (
+        error instanceof Error &&
+        typeof (error as Error & { digest?: unknown }).digest === 'string' &&
+        (error as Error & { digest: string }).digest.startsWith('NEXT_REDIRECT')
+      ) {
+        throw error;
+      }
     });
+    runWithRequestAuthContextMock.mockImplementation((_ctx, callback) => callback());
+    withRoutePerformanceMock.mockImplementation((_req, handler) => handler());
+    prismaMock.careReport.findFirst = careReportFindFirstMock;
+    requireAuthContextMock.mockResolvedValue({ ctx: authContext });
     careReportFindFirstMock.mockResolvedValue({
       id: 'report_1',
       status: 'confirmed',
@@ -179,6 +278,8 @@ describe('/api/care-reports/[id]/print-audit', () => {
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
     expectRequestTrace(response);
+    expect(withRoutePerformanceMock).toHaveBeenCalledOnce();
+    expect(runWithRequestAuthContextMock).toHaveBeenCalledWith(authContext, expect.any(Function));
     const body = await response.json();
     expect(careReportPrintAuditResponseSchema.safeParse(body).success).toBe(true);
     expect(body).not.toHaveProperty('audited');
@@ -219,6 +320,21 @@ describe('/api/care-reports/[id]/print-audit', () => {
         correlationId: CORRELATION_ID,
       }),
     );
+    expect(careReportFindFirstMock.mock.invocationCallOrder[0]!).toBeLessThan(
+      canAccessCareReportSourceMock.mock.invocationCallOrder[0]!,
+    );
+    expect(canAccessCareReportSourceMock.mock.invocationCallOrder[0]!).toBeLessThan(
+      careReportFindFirstMock.mock.invocationCallOrder[1]!,
+    );
+    expect(careReportFindFirstMock.mock.invocationCallOrder[1]!).toBeLessThan(
+      canAccessCareReportSourceMock.mock.invocationCallOrder[1]!,
+    );
+    expect(canAccessCareReportSourceMock.mock.invocationCallOrder[1]!).toBeLessThan(
+      recordCareReportPrintAuditMock.mock.invocationCallOrder[0]!,
+    );
+    expect(recordCareReportPrintAuditMock.mock.invocationCallOrder[0]!).toBeLessThan(
+      successMock.mock.invocationCallOrder[0]!,
+    );
   });
 
   it('returns a traced sanitized 500 when response creation fails after the audit', async () => {
@@ -242,6 +358,16 @@ describe('/api/care-reports/[id]/print-audit', () => {
     expect(JSON.stringify(body)).not.toContain('山田花子');
     expect(JSON.stringify(body)).not.toContain('090-1234-5678');
     expect(JSON.stringify(body)).not.toContain('print response detail');
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      {
+        event: 'route_handler_unhandled_error',
+        route: '/api/care-reports/report_1/print-audit',
+        method: 'POST',
+        requestId: REQUEST_ID,
+        correlationId: CORRELATION_ID,
+      },
+      expect.any(Error),
+    );
   });
 
   it('records preview-rendered audits without conflating them with print requests', async () => {
@@ -437,7 +563,9 @@ describe('/api/care-reports/[id]/print-audit', () => {
       message: '報告書が更新されています。再読み込みしてから印刷してください',
     });
     expect(careReportFindFirstMock).toHaveBeenCalledTimes(2);
+    expect(canAccessCareReportSourceMock).toHaveBeenCalledTimes(1);
     expect(recordCareReportPrintAuditMock).not.toHaveBeenCalled();
+    expect(successMock).not.toHaveBeenCalled();
   });
 
   it('requires report send permission before loading or auditing the report', async () => {
@@ -448,13 +576,16 @@ describe('/api/care-reports/[id]/print-audit', () => {
       ),
     });
 
-    const response = (await POST(createRequest(), {
+    const request = createRequest();
+    const response = (await POST(request, {
       params: Promise.resolve({ id: 'report_1' }),
     }))!;
 
     expect(response.status).toBe(403);
     expectSensitiveNoStore(response);
     expectNoRequestTrace(response);
+    expect(request.bodyUsed).toBe(false);
+    expect(runWithRequestAuthContextMock).not.toHaveBeenCalled();
     expect(careReportFindFirstMock).not.toHaveBeenCalled();
     expect(recordCareReportPrintAuditMock).not.toHaveBeenCalled();
   });
@@ -470,7 +601,10 @@ describe('/api/care-reports/[id]/print-audit', () => {
 
     expect(response.status).toBe(500);
     expectSensitiveNoStore(response);
-    expectNoRequestTrace(response);
+    expect(response.headers.get('X-Request-Id')).toBe(
+      'generated_request_care_report_print_audit_1',
+    );
+    expect(response.headers.get('X-Correlation-Id')).toBe(CORRELATION_ID);
     const body = await response.json();
     expect(body).toEqual({
       code: 'INTERNAL_ERROR',
@@ -482,6 +616,16 @@ describe('/api/care-reports/[id]/print-audit', () => {
     expect(bodyText).not.toContain('token secret');
     expect(careReportFindFirstMock).not.toHaveBeenCalled();
     expect(recordCareReportPrintAuditMock).not.toHaveBeenCalled();
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      {
+        event: 'route_auth_unhandled_error',
+        route: '/api/care-reports/report_1/print-audit',
+        method: 'POST',
+        requestId: 'generated_request_care_report_print_audit_1',
+        correlationId: CORRELATION_ID,
+      },
+      expect.any(Error),
+    );
   });
 
   it('rejects blank ids before loading or auditing the report', async () => {
@@ -493,6 +637,7 @@ describe('/api/care-reports/[id]/print-audit', () => {
     expectSensitiveNoStore(response);
     expect(careReportFindFirstMock).not.toHaveBeenCalled();
     expect(recordCareReportPrintAuditMock).not.toHaveBeenCalled();
+    expect(loggerErrorMock).not.toHaveBeenCalled();
   });
 
   it('does not audit missing or unconfirmed reports', async () => {
@@ -548,6 +693,16 @@ describe('/api/care-reports/[id]/print-audit', () => {
     expect(bodyText).not.toContain('印刷本文');
     expect(bodyText).not.toContain('token secret');
     expect(recordCareReportPrintAuditMock).not.toHaveBeenCalled();
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      {
+        event: 'route_handler_unhandled_error',
+        route: '/api/care-reports/report_1/print-audit',
+        method: 'POST',
+        requestId: REQUEST_ID,
+        correlationId: CORRELATION_ID,
+      },
+      expect.any(Error),
+    );
   });
 
   it('does not audit inaccessible reports', async () => {
@@ -676,5 +831,22 @@ describe('/api/care-reports/[id]/print-audit', () => {
         where: { id: 'report_1', org_id: 'org_1', status: 'confirmed' },
       }),
     );
+  });
+
+  it('rethrows Next control-flow errors without auditing, logging, or returning content', async () => {
+    const controlFlowError = Object.assign(new Error('redirect'), {
+      digest: 'NEXT_REDIRECT;replace;/reports/report_1;307;',
+    });
+    careReportFindFirstMock.mockRejectedValueOnce(controlFlowError);
+
+    await expect(
+      POST(createRequest(), {
+        params: Promise.resolve({ id: 'report_1' }),
+      }),
+    ).rejects.toBe(controlFlowError);
+
+    expect(recordCareReportPrintAuditMock).not.toHaveBeenCalled();
+    expect(successMock).not.toHaveBeenCalled();
+    expect(loggerErrorMock).not.toHaveBeenCalled();
   });
 });
