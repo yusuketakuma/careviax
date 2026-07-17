@@ -5,16 +5,14 @@ import { expectSensitiveNoStore } from '@/test/api-response-assertions';
 const {
   loggerErrorMock,
   requireAuthContextMock,
-  runWithRequestAuthContextMock,
-  withRoutePerformanceMock,
+  withAuthContextOptions,
   withOrgContextMock,
   inquiryRecordFindManyMock,
   upsertOperationalTaskMock,
 } = vi.hoisted(() => ({
   loggerErrorMock: vi.fn(),
   requireAuthContextMock: vi.fn(),
-  runWithRequestAuthContextMock: vi.fn((_ctx, callback: () => unknown) => callback()),
-  withRoutePerformanceMock: vi.fn((_req, callback: () => unknown) => callback()),
+  withAuthContextOptions: [] as unknown[],
   withOrgContextMock: vi.fn(),
   inquiryRecordFindManyMock: vi.fn(),
   upsertOperationalTaskMock: vi.fn(),
@@ -29,21 +27,27 @@ const authContext = {
 };
 
 vi.mock('@/lib/auth/context', () => ({
-  requireAuthContext: requireAuthContextMock,
-}));
-
-vi.mock('@/lib/auth/request-context', () => ({
-  runWithRequestAuthContext: runWithRequestAuthContextMock,
+  withAuthContext: (handler: (...args: unknown[]) => Promise<Response>, options?: unknown) => {
+    withAuthContextOptions.push(options);
+    return async (req: NextRequest, routeContext: unknown) => {
+      const authResult = await requireAuthContextMock(req, options);
+      if ('response' in authResult) {
+        authResult.response.headers.set('Cache-Control', 'private, no-store, max-age=0');
+        authResult.response.headers.set('Pragma', 'no-cache');
+        return authResult.response;
+      }
+      const response = await handler(req, authResult.ctx, routeContext);
+      response.headers.set('Cache-Control', 'private, no-store, max-age=0');
+      response.headers.set('Pragma', 'no-cache');
+      return response;
+    };
+  },
 }));
 
 vi.mock('@/lib/utils/logger', () => ({
   logger: {
     error: loggerErrorMock,
   },
-}));
-
-vi.mock('@/lib/utils/performance', () => ({
-  withRoutePerformance: withRoutePerformanceMock,
 }));
 
 vi.mock('@/lib/db/client', () => ({
@@ -68,6 +72,19 @@ const emptyRouteContext = { params: Promise.resolve({}) };
 
 const GET = (req: NextRequest) => rawGET(req, emptyRouteContext);
 const POST = (req: NextRequest) => rawPOST(req, emptyRouteContext);
+
+it('registers GET and POST with their exact visit permission contracts', () => {
+  expect(withAuthContextOptions).toEqual([
+    {
+      permission: 'canVisit',
+      message: '問い合わせ記録の閲覧権限がありません',
+    },
+    {
+      permission: 'canVisit',
+      message: '問い合わせ記録の作成権限がありません',
+    },
+  ]);
+});
 
 type NextRequestInit = ConstructorParameters<typeof NextRequest>[1];
 
@@ -95,8 +112,6 @@ describe('/api/inquiry-records GET', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     requireAuthContextMock.mockResolvedValue({ ctx: authContext });
-    runWithRequestAuthContextMock.mockImplementation((_ctx, callback) => callback());
-    withRoutePerformanceMock.mockImplementation((_req, callback) => callback());
     inquiryRecordFindManyMock.mockResolvedValue([]);
   });
 
@@ -107,15 +122,10 @@ describe('/api/inquiry-records GET', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
-    expect(withRoutePerformanceMock).toHaveBeenCalledWith(
-      expect.any(NextRequest),
-      expect.any(Function),
-    );
     expect(requireAuthContextMock).toHaveBeenCalledWith(expect.any(NextRequest), {
       permission: 'canVisit',
       message: '問い合わせ記録の閲覧権限がありません',
     });
-    expect(runWithRequestAuthContextMock).toHaveBeenCalledWith(authContext, expect.any(Function));
     expect(inquiryRecordFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         where: {
@@ -161,34 +171,13 @@ describe('/api/inquiry-records GET', () => {
     expectSensitiveNoStore(response);
   });
 
-  it('returns a sanitized no-store 500 without raw logging when inquiry listing fails', async () => {
+  it('lets inquiry listing failures reach the shared wrapper error boundary', async () => {
     const err = new Error('raw patient inquiry list secret');
     err.name = 'PatientInquiryListSecretError';
     inquiryRecordFindManyMock.mockRejectedValueOnce(err);
 
-    const response = await GET(createRequest('http://localhost/api/inquiry-records'));
-
-    if (!response) throw new Error('response is required');
-    expect(response.status).toBe(500);
-    expectSensitiveNoStore(response);
-    const bodyText = await response.text();
-    expect(bodyText).toContain('INTERNAL_ERROR');
-    expect(bodyText).not.toContain('raw patient inquiry list secret');
-    expect(loggerErrorMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        event: 'inquiry_records_get_unhandled_error',
-        route: '/api/inquiry-records',
-        method: 'GET',
-        status: 500,
-      }),
-      err,
-    );
-    const [logContext, logError] = loggerErrorMock.mock.calls[0] ?? [];
-    expect(logError).toBe(err);
-    expect(logContext).not.toHaveProperty('error_name');
-    const logContextText = JSON.stringify(logContext);
-    expect(logContextText).not.toContain('raw patient inquiry list secret');
-    expect(logContextText).not.toContain('PatientInquiryListSecretError');
+    await expect(GET(createRequest('http://localhost/api/inquiry-records'))).rejects.toBe(err);
+    expect(loggerErrorMock).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -309,8 +298,6 @@ describe('/api/inquiry-records POST', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     requireAuthContextMock.mockResolvedValue({ ctx: authContext });
-    runWithRequestAuthContextMock.mockImplementation((_ctx, callback) => callback());
-    withRoutePerformanceMock.mockImplementation((_req, callback) => callback());
     upsertOperationalTaskMock.mockResolvedValue({ id: 'operational_task_1' });
   });
 
@@ -665,15 +652,10 @@ describe('/api/inquiry-records POST', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(201);
     expectSensitiveNoStore(response);
-    expect(withRoutePerformanceMock).toHaveBeenCalledWith(
-      expect.any(NextRequest),
-      expect.any(Function),
-    );
     expect(requireAuthContextMock).toHaveBeenCalledWith(expect.any(NextRequest), {
       permission: 'canVisit',
       message: '問い合わせ記録の作成権限がありません',
     });
-    expect(runWithRequestAuthContextMock).toHaveBeenCalledWith(authContext, expect.any(Function));
     expect(communicationRequestCreateMock).toHaveBeenCalledWith({
       data: expect.objectContaining({
         org_id: 'org_1',
@@ -728,42 +710,23 @@ describe('/api/inquiry-records POST', () => {
     });
   });
 
-  it('returns a sanitized no-store 500 without raw logging when inquiry creation fails', async () => {
+  it('lets inquiry creation failures reach the shared wrapper error boundary', async () => {
     const err = new Error('raw patient inquiry create secret');
     err.name = 'PatientInquiryCreateSecretError';
     withOrgContextMock.mockRejectedValueOnce(err);
 
-    const response = await POST(
-      createPostRequest({
-        cycle_id: 'cycle_1',
-        reason: '用量疑義',
-        inquiry_to_physician: '在宅医',
-        inquiry_content: '用量をご確認ください',
-        inquired_at: '2026-03-29',
-      }),
-    );
-
-    if (!response) throw new Error('response is required');
-    expect(response.status).toBe(500);
-    expectSensitiveNoStore(response);
-    const bodyText = await response.text();
-    expect(bodyText).toContain('INTERNAL_ERROR');
-    expect(bodyText).not.toContain('raw patient inquiry create secret');
-    expect(loggerErrorMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        event: 'inquiry_records_post_unhandled_error',
-        route: '/api/inquiry-records',
-        method: 'POST',
-        status: 500,
-      }),
-      err,
-    );
-    const [logContext, logError] = loggerErrorMock.mock.calls[0] ?? [];
-    expect(logError).toBe(err);
-    expect(logContext).not.toHaveProperty('error_name');
-    const logContextText = JSON.stringify(logContext);
-    expect(logContextText).not.toContain('raw patient inquiry create secret');
-    expect(logContextText).not.toContain('PatientInquiryCreateSecretError');
+    await expect(
+      POST(
+        createPostRequest({
+          cycle_id: 'cycle_1',
+          reason: '用量疑義',
+          inquiry_to_physician: '在宅医',
+          inquiry_content: '用量をご確認ください',
+          inquired_at: '2026-03-29',
+        }),
+      ),
+    ).rejects.toBe(err);
+    expect(loggerErrorMock).not.toHaveBeenCalled();
     expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
   });
 });
