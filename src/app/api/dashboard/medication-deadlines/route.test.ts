@@ -217,7 +217,7 @@ describe('/api/dashboard/medication-deadlines', () => {
   });
 
   it('remains compatible with protected direct calls that omit routeContext', async () => {
-    const response = (await rawGET(createRequest()))!;
+    const response = (await rawGET(createRequest(), emptyRouteContext))!;
 
     expect(response.status).toBe(200);
     expect(withRoutePerformanceMock).toHaveBeenCalledWith(

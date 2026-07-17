@@ -311,7 +311,7 @@ describe('/api/dashboard/overdue GET', () => {
   });
 
   it('remains compatible with direct calls that omit routeContext', async () => {
-    const response = await rawGET(createRequest({ 'x-org-id': 'org_1' }));
+    const response = await rawGET(createRequest({ 'x-org-id': 'org_1' }), emptyRouteContext);
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);

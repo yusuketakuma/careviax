@@ -60,6 +60,10 @@ import {
   syncVisitRecordLabObservations,
 } from '@/server/services/visit-record-derived-data';
 import { validatePreviousVisitReuseSource } from '@/server/services/visit-record-source-validation';
+import {
+  claimFirstVisitDocumentVersion,
+  FirstVisitDocumentVersionConflictError,
+} from '@/server/services/first-visit-document-version';
 import { z } from 'zod';
 import { logger } from '@/lib/utils/logger';
 import { withRoutePerformance } from '@/lib/utils/performance';
@@ -475,6 +479,7 @@ async function upsertFirstVisitDocument(args: {
       document_url: true,
       delivered_at: true,
       delivered_to: true,
+      updated_at: true,
     },
   });
 
@@ -483,8 +488,10 @@ async function upsertFirstVisitDocument(args: {
   const deliveredTo = args.receiptPersonName?.trim() || existing?.delivered_to || null;
 
   if (existing) {
-    await args.tx.firstVisitDocument.update({
-      where: { id: existing.id },
+    await claimFirstVisitDocumentVersion(args.tx, {
+      id: existing.id,
+      orgId: args.orgId,
+      expectedUpdatedAt: existing.updated_at,
       data: {
         emergency_contacts: emergencyContacts,
         document_url: documentUrl,
@@ -1751,6 +1758,9 @@ async function saveVisitRecord(ctx: AuthContext, input: CreateVisitRecordInput) 
     if (cause instanceof VisitRecordSaveRollback) {
       return cause.result;
     }
+    if (cause instanceof FirstVisitDocumentVersionConflictError) {
+      return { error: 'first_visit_document_conflict' as const };
+    }
     throw cause;
   });
 }
@@ -1829,6 +1839,11 @@ async function authenticatedPOST(req: NextRequest) {
           {
             existing_record: result.existingRecord,
           },
+        );
+      }
+      if (result.error === 'first_visit_document_conflict') {
+        return conflict(
+          '初回文書が同時に更新されました。最新の患者文書を確認してから再度保存してください。',
         );
       }
       if (result.error === 'previous_visit_source_conflict') {

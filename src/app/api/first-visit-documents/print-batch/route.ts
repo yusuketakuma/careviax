@@ -7,18 +7,22 @@ import { conflict, notFound, success, validationError } from '@/lib/api/response
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { withOrgContext } from '@/lib/db/rls';
 import { readJsonObject } from '@/lib/db/json';
+import { isPrismaErrorCode } from '@/lib/db/prisma-errors';
 import { recordFirstVisitDocumentPrintBatchSchema } from '@/lib/validations/first-visit-document';
 import { canAccessCareCase } from '@/server/services/patient-access';
 import { getPatientDocumentsData } from '@/server/services/patient-detail-documents';
-import { requireWritablePatientForUpdate } from '@/server/services/patient-write-guard';
+import { requireWritablePatient } from '@/server/services/patient-write-guard';
+import {
+  claimFirstVisitDocumentVersion,
+  FIRST_VISIT_DOCUMENT_VERSION_CONFLICT_REASON,
+  FirstVisitDocumentVersionConflictError,
+} from '@/server/services/first-visit-document-version';
 import type { Prisma } from '@prisma/client';
 
 type FirstVisitPrintBatchResult =
   | { data: { print_batch_id: string; printed_document_ids: string[]; document_count: number } }
   | { response: Response }
   | { error: 'not_found' | 'conflict' | 'print_blocked'; message?: string };
-
-class FirstVisitPrintBatchConflictError extends Error {}
 
 function buildServerPrintBatchId(now = new Date()) {
   return `print_${now.toISOString().replace(/[^0-9A-Za-z]/g, '')}_${randomUUID()
@@ -77,7 +81,13 @@ async function firstVisitDocumentPrintBatchPOST(req: NextRequest, ctx: AuthConte
     return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
   }
 
-  const documentIds = [...new Set(parsed.data.document_ids)];
+  const requestedDocuments = [...parsed.data.documents].sort((left, right) =>
+    left.id.localeCompare(right.id),
+  );
+  const documentIds = requestedDocuments.map((document) => document.id);
+  const expectedVersionById = new Map(
+    requestedDocuments.map((document) => [document.id, new Date(document.expected_updated_at)]),
+  );
 
   const result = await withOrgContext(
     ctx.orgId,
@@ -88,7 +98,7 @@ async function firstVisitDocumentPrintBatchPOST(req: NextRequest, ctx: AuthConte
           org_id: ctx.orgId,
           patient_id: parsed.data.patient_id,
         },
-        orderBy: [{ created_at: 'asc' }],
+        orderBy: [{ id: 'asc' }],
         select: {
           id: true,
           patient_id: true,
@@ -115,7 +125,7 @@ async function firstVisitDocumentPrintBatchPOST(req: NextRequest, ctx: AuthConte
         if (!canAccessScope) return { error: 'not_found' };
       }
 
-      const writable = await requireWritablePatientForUpdate(tx, ctx, parsed.data.patient_id);
+      const writable = await requireWritablePatient(tx, ctx, parsed.data.patient_id);
       if ('response' in writable) return { response: writable.response };
 
       const documentsData = await getPatientDocumentsData(tx, {
@@ -148,6 +158,25 @@ async function firstVisitDocumentPrintBatchPOST(req: NextRequest, ctx: AuthConte
       const latestActionByDocumentId = latestDocumentActionByTargetId(latestAuditLogs);
       const printBatchId = buildServerPrintBatchId();
 
+      const claimedVersions = new Map<string, Date>();
+      for (const document of documents) {
+        const expectedUpdatedAt = expectedVersionById.get(document.id);
+        if (!expectedUpdatedAt) throw new FirstVisitDocumentVersionConflictError();
+        const documentUrl = parsed.data.save_copy
+          ? buildFirstVisitPrintCopyUrl({
+              patientId: parsed.data.patient_id,
+              documentId: document.id,
+            })
+          : document.document_url;
+        const updatedAt = await claimFirstVisitDocumentVersion(tx, {
+          id: document.id,
+          orgId: ctx.orgId,
+          expectedUpdatedAt,
+          data: parsed.data.save_copy ? { document_url: documentUrl } : {},
+        });
+        claimedVersions.set(document.id, updatedAt);
+      }
+
       for (const document of documents) {
         const documentUrl = parsed.data.save_copy
           ? buildFirstVisitPrintCopyUrl({
@@ -155,22 +184,6 @@ async function firstVisitDocumentPrintBatchPOST(req: NextRequest, ctx: AuthConte
               documentId: document.id,
             })
           : document.document_url;
-        if (parsed.data.save_copy && document.document_url !== documentUrl) {
-          const updateResult = await tx.firstVisitDocument.updateMany({
-            where: {
-              id: document.id,
-              org_id: ctx.orgId,
-              updated_at: document.updated_at,
-            },
-            data: { document_url: documentUrl },
-          });
-          if (updateResult.count !== 1) {
-            throw new FirstVisitPrintBatchConflictError(
-              '初回文書が他のユーザーによって更新されています。最新のデータを取得してください。',
-            );
-          }
-        }
-
         const latestAction = latestActionByDocumentId.get(document.id);
         await createAuditLogEntry(tx, ctx, {
           action: 'first_visit_document.printed',
@@ -211,6 +224,7 @@ async function firstVisitDocumentPrintBatchPOST(req: NextRequest, ctx: AuthConte
               document_url: documentUrl,
               delivered_at: document.delivered_at?.toISOString() ?? null,
               delivered_to: document.delivered_to,
+              updated_at: claimedVersions.get(document.id)?.toISOString() ?? null,
             },
           },
         });
@@ -224,10 +238,16 @@ async function firstVisitDocumentPrintBatchPOST(req: NextRequest, ctx: AuthConte
         },
       };
     },
-    { requestContext: ctx },
+    { requestContext: ctx, timeoutMs: 10_000, maxWaitMs: 2_000 },
   ).catch((error): FirstVisitPrintBatchResult => {
-    if (error instanceof FirstVisitPrintBatchConflictError) {
-      return { error: 'conflict', message: error.message };
+    if (
+      error instanceof FirstVisitDocumentVersionConflictError ||
+      isPrismaErrorCode(error, 'P2034')
+    ) {
+      return {
+        error: 'conflict',
+        message: '初回文書が他のユーザーによって更新されています。最新のデータを取得してください。',
+      };
     }
     throw error;
   });
@@ -236,7 +256,9 @@ async function firstVisitDocumentPrintBatchPOST(req: NextRequest, ctx: AuthConte
 
   if ('error' in result) {
     if (result.error === 'conflict') {
-      return conflict(result.message ?? '初回文書が他のユーザーによって更新されています');
+      return conflict(result.message ?? '初回文書が他のユーザーによって更新されています', {
+        reason: FIRST_VISIT_DOCUMENT_VERSION_CONFLICT_REASON,
+      });
     }
     if (result.error === 'print_blocked') {
       return conflict(result.message ?? '初回文書の印刷前チェックが未完了です');

@@ -360,6 +360,8 @@ function installFirstVisitFetch(
     documents?: ReturnType<typeof firstVisitDocument>[];
     readiness?: ReturnType<typeof readyPrintReadiness> | ReturnType<typeof blockedPrintReadiness>;
     oldPatientName?: string;
+    printBatchStatus?: number;
+    printBatchReason?: string | null;
   } = {},
 ) {
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -378,7 +380,22 @@ function installFirstVisitFetch(
     }
     if (url === '/api/first-visit-documents/print-batch') {
       expect(init?.method).toBe('POST');
-      return json({ data: { print_batch_id: 'print_batch_1' } });
+      return args.printBatchStatus === 409
+        ? json(
+            {
+              message: '初回文書が更新されています',
+              ...(args.printBatchReason === null
+                ? {}
+                : {
+                    details: {
+                      reason:
+                        args.printBatchReason ?? 'first_visit_document_version_conflict',
+                    },
+                  }),
+            },
+            409,
+          )
+        : json({ data: { print_batch_id: 'print_batch_1' } });
     }
     throw new Error(`Unexpected fetch: ${url}`);
   });
@@ -467,11 +484,52 @@ describe('PrintHubContent explicit print target boundary', () => {
         headers: buildOrgJsonHeaders('org_1'),
         body: JSON.stringify({
           patient_id: 'patient_1',
-          document_ids: ['doc_1'],
+          documents: [
+            { id: 'doc_1', expected_updated_at: '2026-06-16T00:00:00.000Z' },
+          ],
           save_copy: true,
         }),
       }),
     );
+  });
+
+  it('discards confirmation and requires reprint when history detects a stale printed version', async () => {
+    installFirstVisitFetch({ printBatchStatus: 409 });
+    renderPrintHub();
+
+    expect((await screen.findAllByText('山田 太郎 様')).length).toBeGreaterThan(0);
+    const { input, confirm } = await openPrintConfirmation();
+    fireEvent.change(input, { target: { value: '山田 太郎' } });
+    fireEvent.click(confirm);
+    expect(window.print).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(await screen.findByTestId('first-visit-print-confirm-button'));
+
+    expect(
+      await screen.findByText(
+        '印刷後に文書の更新が検出されました。今印刷した帳票は使用せず破棄し、最新データを再読み込みして再印刷してください。',
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByTestId('first-visit-print-confirm-button')).toBeNull();
+  });
+
+  it('keeps non-version 409 guidance distinct from stale-output recovery', async () => {
+    installFirstVisitFetch({ printBatchStatus: 409, printBatchReason: null });
+    renderPrintHub();
+
+    expect((await screen.findAllByText('山田 太郎 様')).length).toBeGreaterThan(0);
+    const { input, confirm } = await openPrintConfirmation();
+    fireEvent.change(input, { target: { value: '山田 太郎' } });
+    fireEvent.click(confirm);
+    fireEvent.click(await screen.findByTestId('first-visit-print-confirm-button'));
+
+    expect(
+      await screen.findByText(
+        '初回文書の印刷履歴を記録できませんでした。患者状態と印刷前チェックを確認してください。',
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText(/今印刷した帳票は使用せず破棄/)).toBeNull();
+    expect(screen.getByTestId('first-visit-print-confirm-button')).toBeTruthy();
   });
 
   it('fails closed when the patient-scoped document response lacks the exact document', async () => {

@@ -19,7 +19,7 @@ import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { apiDataSchema } from '@/lib/api/response-schemas';
 import { encodePathSegment } from '@/lib/http/path-segment';
-import { messageFromError } from '@/lib/utils/error-message';
+import { messageFromError, SafeClientMessageError } from '@/lib/utils/error-message';
 import { buildFirstVisitPrintCopyUrl } from '@/app/(dashboard)/reports/print/print-hub.shared';
 import type { PatientDocumentsSnapshot, PatientOverview } from './patient-detail.types';
 
@@ -27,9 +27,55 @@ type FirstVisitDocumentItem = PatientDocumentsSnapshot['first_visit_documents'][
 type FirstVisitDocumentStatus = PatientDocumentsSnapshot['document_statuses'][number];
 type FirstVisitPrintReadiness = PatientDocumentsSnapshot['print_readiness'];
 
-// §10 fail-closed: validate the minimal mutation success envelope ({ data: { id } }).
+// §10 fail-closed: validate the minimal mutation success envelope.
 // Unknown fields are stripped, so the raw FirstVisitDocument row never reaches the client.
-const firstVisitDocumentMutationResponseSchema = apiDataSchema(z.object({ id: z.string() }));
+const firstVisitDocumentMutationResponseSchema = apiDataSchema(
+  z.object({ id: z.string(), updated_at: z.string().datetime() }),
+);
+
+class FirstVisitDocumentVersionConflictError extends Error {}
+const FIRST_VISIT_DOCUMENT_VERSION_CONFLICT_REASON =
+  'first_visit_document_version_conflict';
+const ARCHIVED_PATIENT_CONFLICT_MESSAGE =
+  'アーカイブ中の患者は復元するまで更新できません';
+const PRINT_READINESS_CONFLICT_PREFIX =
+  '初回文書の印刷前チェックで必須項目が未完了です。';
+const PRINT_READINESS_RECOVERY_MESSAGE =
+  '初回文書の印刷前チェックが未完了です。患者文書画面で必須項目を確認してください。';
+const FIRST_VISIT_DOCUMENT_MUTATION_RECOVERY_MESSAGE =
+  '初回訪問文書を更新できませんでした。再読み込みしてから操作してください。';
+
+async function isFirstVisitDocumentVersionConflict(response: Response) {
+  if (response.status !== 409) return false;
+  const body = await response.clone().json().catch(() => null);
+  if (typeof body !== 'object' || body === null || !('details' in body)) return false;
+  const details = body.details;
+  return (
+    typeof details === 'object' &&
+    details !== null &&
+    'reason' in details &&
+    details.reason === FIRST_VISIT_DOCUMENT_VERSION_CONFLICT_REASON
+  );
+}
+
+async function fixedFirstVisitDocumentMutationError(
+  response: Response,
+): Promise<
+  | typeof ARCHIVED_PATIENT_CONFLICT_MESSAGE
+  | typeof PRINT_READINESS_RECOVERY_MESSAGE
+  | typeof FIRST_VISIT_DOCUMENT_MUTATION_RECOVERY_MESSAGE
+> {
+  const body = await response.clone().json().catch(() => null);
+  const message =
+    typeof body === 'object' && body !== null && 'message' in body
+      ? body.message
+      : null;
+  if (message === ARCHIVED_PATIENT_CONFLICT_MESSAGE) return ARCHIVED_PATIENT_CONFLICT_MESSAGE;
+  if (typeof message === 'string' && message.startsWith(PRINT_READINESS_CONFLICT_PREFIX)) {
+    return PRINT_READINESS_RECOVERY_MESSAGE;
+  }
+  return FIRST_VISIT_DOCUMENT_MUTATION_RECOVERY_MESSAGE;
+}
 
 const DOCUMENT_ACTION_LABELS: Record<string, string> = {
   generated: '作成',
@@ -200,6 +246,7 @@ export function FirstVisitDocumentsPanel({
 
                   {orgId && patientId ? (
                     <FirstVisitDocumentStatusForm
+                      key={`${document.id}:${document.updated_at}`}
                       document={document}
                       orgId={orgId}
                       patientId={patientId}
@@ -632,6 +679,7 @@ function FirstVisitDocumentStatusForm({
         method: 'PATCH',
         headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({
+          expected_updated_at: document.updated_at,
           delivered_at: document.delivered_at ?? new Date().toISOString(),
           delivered_to: deliveredTo.trim() || null,
           document_url: documentUrl.trim() || null,
@@ -652,6 +700,15 @@ function FirstVisitDocumentStatusForm({
           },
         }),
       });
+      if (await isFirstVisitDocumentVersionConflict(response)) {
+        throw new FirstVisitDocumentVersionConflictError(
+          '初回訪問文書が更新されました。最新内容を確認してから、変更を再入力してください。',
+        );
+      }
+      if (!response.ok) {
+        const safeMessage = await fixedFirstVisitDocumentMutationError(response);
+        throw SafeClientMessageError.fromReviewed(safeMessage);
+      }
       return readApiJson(response, {
         schema: firstVisitDocumentMutationResponseSchema,
         fallbackMessage: '初回訪問文書の更新に失敗しました',
@@ -667,7 +724,17 @@ function FirstVisitDocumentStatusForm({
         }),
       ]);
     },
-    onError: (error: Error) => {
+    onError: async (error: Error) => {
+      if (error instanceof FirstVisitDocumentVersionConflictError) {
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: ['patient-documents', patientId, orgId] }),
+          queryClient.invalidateQueries({ queryKey: ['first-visit-documents', patientId] }),
+        ]);
+        toast.error(
+          '初回訪問文書が更新されました。最新内容を確認してから、変更を再入力してください。',
+        );
+        return;
+      }
       toast.error(messageFromError(error, '初回訪問文書の更新に失敗しました'));
     },
   });

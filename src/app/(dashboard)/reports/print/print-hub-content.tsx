@@ -14,7 +14,7 @@ import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { buildSetPlanApiPath } from '@/lib/dispensing/api-paths';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import { buildCareReportApiPath, buildCareReportPrintAuditApiPath } from '@/lib/reports/api-paths';
-import { messageFromError } from '@/lib/utils/error-message';
+import { messageFromError, SafeClientMessageError } from '@/lib/utils/error-message';
 import { buildPatientHeaderSummaryResponseSchema } from '@/app/(dashboard)/patients/[id]/card-workspace-response-schemas';
 import {
   careReportPrintAuditResponseSchema,
@@ -79,6 +79,10 @@ type PrintTargetSummary = {
   statusLabel: string;
 };
 
+class FirstVisitPrintVersionConflictError extends Error {}
+const FIRST_VISIT_DOCUMENT_VERSION_CONFLICT_REASON =
+  'first_visit_document_version_conflict';
+
 async function recordFirstVisitPrintHistory({
   orgId,
   patientId,
@@ -96,13 +100,24 @@ async function recordFirstVisitPrintHistory({
     headers: buildOrgJsonHeaders(orgId),
     body: JSON.stringify({
       patient_id: patientId,
-      document_ids: documents.map((document) => document.id),
+      documents: documents.map((document) => ({
+        id: document.id,
+        expected_updated_at: document.updated_at,
+      })),
       save_copy: saveCopy,
     }),
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new Error(body.message ?? '初回文書の印刷履歴を記録できませんでした');
+    if (
+      res.status === 409 &&
+      body.details?.reason === FIRST_VISIT_DOCUMENT_VERSION_CONFLICT_REASON
+    ) {
+      throw new FirstVisitPrintVersionConflictError('初回文書の版が更新されました');
+    }
+    throw SafeClientMessageError.fromReviewed(
+      '初回文書の印刷履歴を記録できませんでした。患者状態と印刷前チェックを確認してください。',
+    );
   }
 }
 
@@ -1100,6 +1115,18 @@ export function PrintHubContent() {
       await firstVisitPrintHistoryMutation.mutateAsync();
       setFirstVisitPrintConfirmationKey(null);
     } catch (error) {
+      if (error instanceof FirstVisitPrintVersionConflictError) {
+        setFirstVisitPrintConfirmationKey(null);
+        if (explicitPatientId) {
+          await queryClient.invalidateQueries({
+            queryKey: ['print-hub-patient-documents', orgId, explicitPatientId, target?.resourceId],
+          });
+        }
+        setPrintError(
+          '印刷後に文書の更新が検出されました。今印刷した帳票は使用せず破棄し、最新データを再読み込みして再印刷してください。',
+        );
+        return;
+      }
       setPrintError(messageFromError(error, '初回文書の印刷履歴を記録できませんでした'));
     }
   };

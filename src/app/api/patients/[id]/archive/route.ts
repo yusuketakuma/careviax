@@ -3,7 +3,6 @@ import { withAuthContext, type AuthContext, type AuthRouteContext } from '@/lib/
 import { withOrgContext } from '@/lib/db/rls';
 import { success, notFound, conflict, validationError } from '@/lib/api/response';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
-import { acquirePatientWriteStateLock } from '@/server/services/patient-write-guard';
 
 type ArchivePatientResult =
   | { patient: { id: string; archived_at: Date | null; archived_by: string | null } }
@@ -21,7 +20,6 @@ async function archivePatient(
   const result = await withOrgContext(
     ctx.orgId,
     async (tx): Promise<ArchivePatientResult> => {
-      await acquirePatientWriteStateLock(tx, ctx.orgId, id);
       const existing = await tx.patient.findFirst({
         where: { id, org_id: ctx.orgId },
         select: { id: true, archived_at: true },

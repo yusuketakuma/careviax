@@ -21,10 +21,7 @@ import {
   listAccessibleCareCaseIds,
   listAccessiblePatientCaseIds,
 } from '@/server/services/patient-access';
-import {
-  requireWritablePatient,
-  requireWritablePatientForUpdate,
-} from '@/server/services/patient-write-guard';
+import { requireWritablePatient } from '@/server/services/patient-write-guard';
 import type { Prisma } from '@prisma/client';
 import { toSafeFirstVisitDocumentMutationResponse } from './response';
 const FIRST_VISIT_TEMPLATE_TYPES = [
@@ -318,8 +315,8 @@ async function firstVisitDocumentsPOST(req: NextRequest, ctx: AuthContext) {
   const result = await withOrgContext(
     ctx.orgId,
     async (tx) => {
-      const lockedWritable = await requireWritablePatientForUpdate(tx, ctx, parsed.data.patient_id);
-      if ('response' in lockedWritable) return { response: lockedWritable.response };
+      const transactionWritable = await requireWritablePatient(tx, ctx, parsed.data.patient_id);
+      if ('response' in transactionWritable) return { response: transactionWritable.response };
 
       const created = await tx.firstVisitDocument.create({
         data: {
@@ -362,7 +359,9 @@ async function firstVisitDocumentsPOST(req: NextRequest, ctx: AuthContext) {
     { requestContext: ctx },
   );
 
-  if ('response' in result) return result.response;
+  if ('response' in result) {
+    return result.response ?? conflict('アーカイブ中の患者は復元するまで更新できません');
+  }
 
   return withSensitiveNoStore(
     success({ data: toSafeFirstVisitDocumentMutationResponse(result.document) }, 201),

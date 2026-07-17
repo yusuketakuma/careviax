@@ -49,6 +49,7 @@ export type CreateFirstVisitDocumentInput = z.infer<typeof createFirstVisitDocum
 
 export const updateFirstVisitDocumentSchema = z
   .object({
+    expected_updated_at: z.string().datetime(),
     delivered_at: z.string().datetime().optional().nullable(),
     delivered_to: z.string().optional().nullable(),
     emergency_contacts: z.array(emergencyContactSchema).min(1).optional(),
@@ -98,6 +99,13 @@ export const updateFirstVisitDocumentSchema = z
       .optional(),
   })
   .superRefine((value, ctx) => {
+    if (Object.keys(value).every((key) => key === 'expected_updated_at')) {
+      ctx.addIssue({
+        code: 'custom',
+        path: [],
+        message: '更新内容または文書操作を指定してください',
+      });
+    }
     const action = value.document_action?.action;
     if (value.document_action?.print_batch_id && action !== 'printed') {
       ctx.addIssue({
@@ -123,10 +131,28 @@ export type EmergencyContact = z.infer<typeof emergencyContactSchema>;
 
 export const recordFirstVisitDocumentPrintBatchSchema = z.object({
   patient_id: z.string().min(1, '患者IDは必須です'),
-  document_ids: z
-    .array(z.string().min(1, '初回文書IDは必須です'))
+  documents: z
+    .array(
+      z.object({
+        id: z.string().min(1, '初回文書IDは必須です'),
+        expected_updated_at: z.string().datetime(),
+      }),
+    )
     .min(1, '印刷対象の初回文書を1件以上選択してください')
-    .max(50, '一度に印刷できる初回文書は50件までです'),
+    .max(50, '一度に印刷できる初回文書は50件までです')
+    .superRefine((documents, ctx) => {
+      const seen = new Set<string>();
+      documents.forEach((document, index) => {
+        if (seen.has(document.id)) {
+          ctx.addIssue({
+            code: 'custom',
+            path: [index, 'id'],
+            message: '同じ初回文書を重複して指定できません',
+          });
+        }
+        seen.add(document.id);
+      });
+    }),
   save_copy: z.boolean().default(true),
 });
 

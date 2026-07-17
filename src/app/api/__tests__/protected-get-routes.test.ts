@@ -676,6 +676,7 @@ const routes: Array<{ name: string; handler: Handler; setupSuccess?: () => void 
         createRequest('http://localhost/api/comments?entity_type=dispense_task&entity_id=task_1', {
           'x-org-id': 'org_1',
         }),
+        emptyRouteContext,
       ),
   },
   {
@@ -1130,6 +1131,7 @@ const routes: Array<{ name: string; handler: Handler; setupSuccess?: () => void 
     handler: () =>
       firstVisitDocumentsGet(
         createRequest('http://localhost/api/first-visit-documents', { 'x-org-id': 'org_1' }),
+        emptyRouteContext,
       ),
   },
   {

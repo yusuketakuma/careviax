@@ -109,6 +109,22 @@ const emptyRouteContext = { params: Promise.resolve({}) };
 const POST = (req: NextRequest) => rawPOST(req, emptyRouteContext);
 
 function createPostRequest(body: unknown) {
+  let versionedBody = body;
+  if (
+    typeof body === 'object' &&
+    body !== null &&
+    'document_ids' in body &&
+    Array.isArray(body.document_ids)
+  ) {
+    const { document_ids, ...rest } = body;
+    versionedBody = {
+      ...rest,
+      documents: document_ids.map((id) => ({
+        id,
+        expected_updated_at: '2026-06-16T00:00:00.000Z',
+      })),
+    };
+  }
   return new NextRequest('http://localhost/api/first-visit-documents/print-batch', {
     method: 'POST',
     headers: {
@@ -116,7 +132,7 @@ function createPostRequest(body: unknown) {
       'x-org-id': 'org_1',
       'user-agent': 'vitest',
     },
-    body: JSON.stringify(body),
+    body: JSON.stringify(versionedBody),
   });
 }
 
@@ -255,7 +271,7 @@ describe('/api/first-visit-documents/print-batch', () => {
         org_id: 'org_1',
         patient_id: 'patient_1',
       },
-      orderBy: [{ created_at: 'asc' }],
+      orderBy: [{ id: 'asc' }],
       select: {
         id: true,
         patient_id: true,
@@ -268,6 +284,9 @@ describe('/api/first-visit-documents/print-batch', () => {
     });
     expect(firstVisitDocumentUpdateManyMock).toHaveBeenCalledTimes(2);
     expect(auditLogCreateMock).toHaveBeenCalledTimes(2);
+    expect(firstVisitDocumentUpdateManyMock.mock.invocationCallOrder[1]).toBeLessThan(
+      auditLogCreateMock.mock.invocationCallOrder[0]!,
+    );
     const printBatchIds = auditLogCreateMock.mock.calls.map(
       ([args]) => args.data.changes.document_action.print_batch_id,
     );
@@ -394,7 +413,85 @@ describe('/api/first-visit-documents/print-batch', () => {
 
     expect(response.status).toBe(409);
     expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      details: { reason: 'first_visit_document_version_conflict' },
+    });
     expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('claims every exact version even when save_copy is false', async () => {
+    const response = (await POST(
+      createPostRequest({
+        patient_id: 'patient_1',
+        document_ids: ['doc_2', 'doc_1'],
+        save_copy: false,
+      }),
+    ))!;
+
+    expect(response.status).toBe(200);
+    expect(firstVisitDocumentUpdateManyMock).toHaveBeenCalledTimes(2);
+    expect(firstVisitDocumentUpdateManyMock).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ where: expect.objectContaining({ id: 'doc_1' }) }),
+    );
+    expect(firstVisitDocumentUpdateManyMock).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ where: expect.objectContaining({ id: 'doc_2' }) }),
+    );
+  });
+
+  it('claims all rows before audits and reports a mid-batch conflict without audit writes', async () => {
+    firstVisitDocumentUpdateManyMock
+      .mockResolvedValueOnce({ count: 1 })
+      .mockResolvedValueOnce({ count: 0 });
+
+    const response = (await POST(
+      createPostRequest({
+        patient_id: 'patient_1',
+        document_ids: ['doc_1', 'doc_2'],
+        save_copy: false,
+      }),
+    ))!;
+
+    expect(response.status).toBe(409);
+    expect(firstVisitDocumentUpdateManyMock).toHaveBeenCalledTimes(2);
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects duplicate document ids before entering the transaction', async () => {
+    const response = (await POST(
+      createPostRequest({
+        patient_id: 'patient_1',
+        documents: [
+          { id: 'doc_1', expected_updated_at: updatedAt.toISOString() },
+          { id: 'doc_1', expected_updated_at: updatedAt.toISOString() },
+        ],
+      }),
+    ))!;
+
+    expect(response.status).toBe(400);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+  });
+
+  it('maps known transaction conflict P2034 to a fixed 409', async () => {
+    withOrgContextMock.mockRejectedValueOnce({ code: 'P2034' });
+
+    const response = (await POST(
+      createPostRequest({ patient_id: 'patient_1', document_ids: ['doc_1'] }),
+    ))!;
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({ code: 'WORKFLOW_CONFLICT' });
+  });
+
+  it('does not mask broad P2028 transaction failures as stale document conflicts', async () => {
+    withOrgContextMock.mockRejectedValueOnce({ code: 'P2028' });
+
+    const response = (await POST(
+      createPostRequest({ patient_id: 'patient_1', document_ids: ['doc_1'] }),
+    ))!;
+
+    expect(response.status).toBe(500);
   });
 
   it('rejects an empty document list before entering the transaction', async () => {

@@ -862,7 +862,7 @@ describe('/api/dashboard/workflow GET', () => {
   });
 
   it('works when called directly without a routeContext argument', async () => {
-    const response = await rawGET(createRequest({ 'x-org-id': 'org_1' }));
+    const response = await rawGET(createRequest({ 'x-org-id': 'org_1' }), emptyRouteContext);
 
     expect(response.status).toBe(200);
     expect(withRoutePerformanceMock).toHaveBeenCalledTimes(1);

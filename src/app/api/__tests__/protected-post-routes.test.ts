@@ -158,7 +158,7 @@ const routes: RouteEntry[] = [
   },
   { name: 'tasks POST', handler: (req) => tasksPost(req), invalidBody: [] },
   { name: 'consent-records POST', handler: (req) => consentRecordsPost(req) },
-  { name: 'comments POST', handler: (req) => commentsPost(req) },
+  { name: 'comments POST', handler: (req) => commentsPost(req, emptyRouteContext) },
   {
     name: 'patient-self-reports POST',
     handler: (req) => patientSelfReportsPost(req, emptyRouteContext),
@@ -225,11 +225,11 @@ const routes: RouteEntry[] = [
   },
   {
     name: 'first-visit-documents/print-batch POST',
-    handler: (req) => firstVisitDocumentsPrintBatchPost(req),
+    handler: (req) => firstVisitDocumentsPrintBatchPost(req, emptyRouteContext),
   },
   {
     name: 'first-visit-documents POST',
-    handler: (req) => firstVisitDocumentsPost(req),
+    handler: (req) => firstVisitDocumentsPost(req, emptyRouteContext),
   },
   {
     name: 'business-holidays POST',

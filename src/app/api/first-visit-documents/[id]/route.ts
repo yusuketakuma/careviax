@@ -6,15 +6,16 @@ import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { conflict, notFound, success, validationError } from '@/lib/api/response';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
-import { prisma } from '@/lib/db/client';
 import { withOrgContext } from '@/lib/db/rls';
 import { updateFirstVisitDocumentSchema } from '@/lib/validations/first-visit-document';
 import { canAccessCareCase } from '@/server/services/patient-access';
 import { getPatientDocumentsData } from '@/server/services/patient-detail-documents';
+import { requireWritablePatient } from '@/server/services/patient-write-guard';
 import {
-  requireWritablePatient,
-  requireWritablePatientForUpdate,
-} from '@/server/services/patient-write-guard';
+  claimFirstVisitDocumentVersion,
+  FIRST_VISIT_DOCUMENT_VERSION_CONFLICT_REASON,
+  FirstVisitDocumentVersionConflictError,
+} from '@/server/services/first-visit-document-version';
 import type { FirstVisitDocument } from '@prisma/client';
 import { toSafeFirstVisitDocumentMutationResponse } from '../response';
 
@@ -22,8 +23,6 @@ type FirstVisitDocumentPatchResult =
   | { document: FirstVisitDocument }
   | { response: Response }
   | { error: 'not_found' | 'conflict' | 'print_blocked'; message?: string };
-
-class FirstVisitDocumentPatchConflictError extends Error {}
 
 function buildServerPrintBatchId(now = new Date()) {
   return `print_${now.toISOString().replace(/[^0-9A-Za-z]/g, '')}_${randomUUID()
@@ -85,70 +84,25 @@ async function firstVisitDocumentPATCH(
     return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
   }
 
-  const existing = await prisma.firstVisitDocument.findFirst({
-    where: { id, org_id: ctx.orgId },
-    select: {
-      id: true,
-      patient_id: true,
-      case_id: true,
-      document_url: true,
-      delivered_at: true,
-      delivered_to: true,
-      updated_at: true,
-    },
-  });
-  if (!existing) return notFound('初回文書が見つかりません');
-
-  const canAccessScope = await canAccessCareCase({
-    db: prisma,
-    orgId: ctx.orgId,
-    patientId: existing.patient_id,
-    caseId: existing.case_id,
-    accessContext: ctx,
-  });
-  if (!canAccessScope) return notFound('初回文書が見つかりません');
-
-  const writable = await requireWritablePatient(prisma, ctx, existing.patient_id);
-  if ('response' in writable) {
-    return writable.response ?? conflict('アーカイブ中の患者は復元するまで更新できません');
-  }
-
-  const updateData = {
-    ...(parsed.data.delivered_at !== undefined
-      ? { delivered_at: parsed.data.delivered_at ? new Date(parsed.data.delivered_at) : null }
-      : {}),
-    ...(parsed.data.delivered_to !== undefined ? { delivered_to: parsed.data.delivered_to } : {}),
-    ...(parsed.data.emergency_contacts !== undefined
-      ? { emergency_contacts: parsed.data.emergency_contacts }
-      : {}),
-    ...(parsed.data.document_url !== undefined ? { document_url: parsed.data.document_url } : {}),
-  };
-  const hasDocumentUpdate = Object.keys(updateData).length > 0;
-  const nextDocumentUrl =
-    parsed.data.document_url !== undefined ? parsed.data.document_url : existing.document_url;
-  const nextDeliveredAt =
-    parsed.data.delivered_at !== undefined
-      ? parsed.data.delivered_at
-        ? new Date(parsed.data.delivered_at)
-        : null
-      : existing.delivered_at;
-  const nextDeliveredTo =
-    parsed.data.delivered_to !== undefined ? parsed.data.delivered_to : existing.delivered_to;
-  const requirementErrors = validateDocumentActionRequirements({
-    action: parsed.data.document_action?.action,
-    nextDocumentUrl,
-    nextDeliveredAt,
-    nextDeliveredTo,
-  });
-  if (Object.keys(requirementErrors).length > 0) {
-    return validationError('入力値が不正です', requirementErrors);
-  }
-
   const result = await withOrgContext(
     ctx.orgId,
     async (tx): Promise<FirstVisitDocumentPatchResult> => {
-      const lockedWritable = await requireWritablePatientForUpdate(tx, ctx, existing.patient_id);
-      if ('response' in lockedWritable) return { response: lockedWritable.response };
+      const existing = await tx.firstVisitDocument.findFirst({
+        where: { id, org_id: ctx.orgId },
+        select: {
+          id: true,
+          patient_id: true,
+          case_id: true,
+          document_url: true,
+          delivered_at: true,
+          delivered_to: true,
+          updated_at: true,
+        },
+      });
+      if (!existing) return { error: 'not_found' };
+
+      const writable = await requireWritablePatient(tx, ctx, existing.patient_id);
+      if ('response' in writable) return { response: writable.response };
 
       const canStillAccessScope = await canAccessCareCase({
         db: tx,
@@ -158,6 +112,40 @@ async function firstVisitDocumentPATCH(
         accessContext: ctx,
       });
       if (!canStillAccessScope) return { error: 'not_found' };
+
+      const updateData = {
+        ...(parsed.data.delivered_at !== undefined
+          ? { delivered_at: parsed.data.delivered_at ? new Date(parsed.data.delivered_at) : null }
+          : {}),
+        ...(parsed.data.delivered_to !== undefined
+          ? { delivered_to: parsed.data.delivered_to }
+          : {}),
+        ...(parsed.data.emergency_contacts !== undefined
+          ? { emergency_contacts: parsed.data.emergency_contacts }
+          : {}),
+        ...(parsed.data.document_url !== undefined
+          ? { document_url: parsed.data.document_url }
+          : {}),
+      };
+      const nextDocumentUrl =
+        parsed.data.document_url !== undefined ? parsed.data.document_url : existing.document_url;
+      const nextDeliveredAt =
+        parsed.data.delivered_at !== undefined
+          ? parsed.data.delivered_at
+            ? new Date(parsed.data.delivered_at)
+            : null
+          : existing.delivered_at;
+      const nextDeliveredTo =
+        parsed.data.delivered_to !== undefined ? parsed.data.delivered_to : existing.delivered_to;
+      const requirementErrors = validateDocumentActionRequirements({
+        action: parsed.data.document_action?.action,
+        nextDocumentUrl,
+        nextDeliveredAt,
+        nextDeliveredTo,
+      });
+      if (Object.keys(requirementErrors).length > 0) {
+        return { response: validationError('入力値が不正です', requirementErrors) };
+      }
 
       if (parsed.data.document_action?.action === 'printed') {
         const documentsData = await getPatientDocumentsData(tx, {
@@ -174,21 +162,12 @@ async function firstVisitDocumentPATCH(
         }
       }
 
-      if (hasDocumentUpdate) {
-        const updateResult = await tx.firstVisitDocument.updateMany({
-          where: {
-            id,
-            org_id: ctx.orgId,
-            updated_at: existing.updated_at,
-          },
-          data: updateData,
-        });
-        if (updateResult.count !== 1) {
-          throw new FirstVisitDocumentPatchConflictError(
-            '初回文書が他のユーザーによって更新されています。最新のデータを取得してください。',
-          );
-        }
-      }
+      await claimFirstVisitDocumentVersion(tx, {
+        id,
+        orgId: ctx.orgId,
+        expectedUpdatedAt: new Date(parsed.data.expected_updated_at),
+        data: updateData,
+      });
 
       const document = await tx.firstVisitDocument.findUnique({
         where: { id },
@@ -229,7 +208,7 @@ async function firstVisitDocumentPATCH(
     },
     { requestContext: ctx },
   ).catch((error): FirstVisitDocumentPatchResult => {
-    if (error instanceof FirstVisitDocumentPatchConflictError) {
+    if (error instanceof FirstVisitDocumentVersionConflictError) {
       return { error: 'conflict', message: error.message };
     }
     throw error;
@@ -239,7 +218,9 @@ async function firstVisitDocumentPATCH(
 
   if ('error' in result) {
     if (result.error === 'conflict') {
-      return conflict(result.message ?? '初回文書が他のユーザーによって更新されています');
+      return conflict(result.message ?? '初回文書が他のユーザーによって更新されています', {
+        reason: FIRST_VISIT_DOCUMENT_VERSION_CONFLICT_REASON,
+      });
     }
     if (result.error === 'print_blocked') {
       return conflict(result.message ?? '初回文書の印刷前チェックが未完了です');

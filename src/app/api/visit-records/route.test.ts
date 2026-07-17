@@ -974,7 +974,7 @@ describe('/api/visit-records POST', () => {
     contactPartyFindManyMock.mockResolvedValue([]);
     firstVisitDocumentFindFirstMock.mockResolvedValue(null);
     firstVisitDocumentCreateMock.mockResolvedValue({ id: 'first_visit_1' });
-    firstVisitDocumentUpdateMock.mockResolvedValue({ id: 'first_visit_1' });
+    firstVisitDocumentUpdateMock.mockResolvedValue({ count: 1 });
     templateFindFirstMock.mockResolvedValue({
       id: 'template_contract_2026',
       name: '居宅療養管理指導契約書 2026年版',
@@ -1086,7 +1086,7 @@ describe('/api/visit-records POST', () => {
         firstVisitDocument: {
           findFirst: firstVisitDocumentFindFirstMock,
           create: firstVisitDocumentCreateMock,
-          update: firstVisitDocumentUpdateMock,
+          updateMany: firstVisitDocumentUpdateMock,
         },
         template: {
           findFirst: templateFindFirstMock,
@@ -2963,6 +2963,7 @@ describe('/api/visit-records POST', () => {
       document_url: '/reports/print?type=first_visit_documents&patient_id=patient_1',
       delivered_at: new Date('2026-03-20T09:00:00.000Z'),
       delivered_to: '長女 山田',
+      updated_at: new Date('2026-03-20T09:00:00.000Z'),
     });
 
     const response = await POST(
@@ -2982,16 +2983,65 @@ describe('/api/visit-records POST', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(201);
     expect(firstVisitDocumentUpdateMock).toHaveBeenCalledWith({
-      where: { id: 'first_visit_existing' },
+      where: {
+        id: 'first_visit_existing',
+        org_id: 'org_1',
+        updated_at: new Date('2026-03-20T09:00:00.000Z'),
+      },
       data: expect.objectContaining({
         document_url: '/reports/print?type=first_visit_documents&patient_id=patient_1',
         delivered_at: new Date('2026-03-20T09:00:00.000Z'),
         delivered_to: '長女 山田',
+        updated_at: expect.any(Date),
       }),
     });
     expect(firstVisitDocumentCreateMock).not.toHaveBeenCalled();
     expect(templateFindFirstMock).not.toHaveBeenCalled();
     expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rolls back the visit save when the existing first-visit document version conflicts', async () => {
+    visitScheduleFindFirstMock.mockResolvedValue({
+      id: 'schedule_1',
+      case_id: 'case_1',
+      version: 4,
+      schedule_status: 'ready',
+      recurrence_rule: null,
+      cycle_id: 'cycle_1',
+      visit_type: 'initial',
+      pharmacist_id: 'user_1',
+      site_id: 'site_1',
+      time_window_start: null,
+      time_window_end: null,
+      medication_end_date: null,
+      visit_deadline_date: null,
+    });
+    firstVisitDocumentFindFirstMock.mockResolvedValue({
+      id: 'first_visit_existing',
+      document_url: '/reports/print?type=first_visit_documents&patient_id=patient_1',
+      delivered_at: null,
+      delivered_to: null,
+      updated_at: new Date('2026-03-20T09:00:00.000Z'),
+    });
+    firstVisitDocumentUpdateMock.mockResolvedValueOnce({ count: 0 });
+
+    const response = await POST(
+      createRequest(
+        {
+          schedule_id: 'schedule_1',
+          patient_id: 'patient_1',
+          visit_date: '2026-03-26',
+          outcome_status: 'completed',
+          soap_subjective: '服薬状況問題なし',
+          structured_soap: completedInitialVisitStructuredSoap,
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({ code: 'WORKFLOW_CONFLICT' });
   });
 
   it('kicks off handoff extraction without blocking the save response when structured SOAP is provided', async () => {

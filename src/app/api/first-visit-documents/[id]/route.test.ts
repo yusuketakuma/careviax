@@ -13,7 +13,6 @@ const {
   firstVisitDocumentUpdateManyMock,
   auditLogCreateMock,
   requireWritablePatientMock,
-  requireWritablePatientForUpdateMock,
   getPatientDocumentsDataMock,
   withOrgContextMock,
 } = vi.hoisted(() => ({
@@ -27,7 +26,6 @@ const {
   firstVisitDocumentUpdateManyMock: vi.fn(),
   auditLogCreateMock: vi.fn(),
   requireWritablePatientMock: vi.fn(),
-  requireWritablePatientForUpdateMock: vi.fn(),
   getPatientDocumentsDataMock: vi.fn(),
   withOrgContextMock: vi.fn(),
 }));
@@ -112,7 +110,6 @@ vi.mock('@/server/services/patient-detail-documents', () => ({
 
 vi.mock('@/server/services/patient-write-guard', () => ({
   requireWritablePatient: requireWritablePatientMock,
-  requireWritablePatientForUpdate: requireWritablePatientForUpdateMock,
 }));
 
 import { PATCH as rawPATCH } from './route';
@@ -121,13 +118,17 @@ const PATCH = (req: NextRequest, id = 'doc_1') =>
   rawPATCH(req, { params: Promise.resolve({ id }) });
 
 function createPatchRequest(body: unknown) {
+  const versionedBody =
+    typeof body === 'object' && body !== null
+      ? { expected_updated_at: '2026-06-01T00:00:00.000Z', ...body }
+      : body;
   return new NextRequest('http://localhost/api/first-visit-documents/doc_1', {
     method: 'PATCH',
     headers: {
       'content-type': 'application/json',
       'x-org-id': 'org_1',
     },
-    body: JSON.stringify(body),
+    body: JSON.stringify(versionedBody),
   });
 }
 
@@ -150,9 +151,6 @@ describe('/api/first-visit-documents/[id]', () => {
     runWithRequestAuthContextMock.mockImplementation((_ctx, callback) => callback());
     withRoutePerformanceMock.mockImplementation((_req, callback) => callback());
     requireWritablePatientMock.mockResolvedValue({
-      patient: { id: 'patient_1', archived_at: null },
-    });
-    requireWritablePatientForUpdateMock.mockResolvedValue({
       patient: { id: 'patient_1', archived_at: null },
     });
     careCaseFindFirstMock.mockResolvedValue({ id: 'case_1' });
@@ -203,6 +201,7 @@ describe('/api/first-visit-documents/[id]', () => {
           findFirst: careCaseFindFirstMock,
         },
         firstVisitDocument: {
+          findFirst: firstVisitDocumentFindFirstMock,
           updateMany: firstVisitDocumentUpdateManyMock,
           findUnique: firstVisitDocumentFindUniqueMock,
         },
@@ -211,6 +210,23 @@ describe('/api/first-visit-documents/[id]', () => {
         },
       }),
     );
+  });
+
+  it('requires an exact expected_updated_at token', async () => {
+    const response = (await PATCH(
+      createPatchRequest({ expected_updated_at: undefined, delivered_to: '山田太郎' }),
+    ))!;
+
+    expect(response.status).toBe(400);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects a version-only semantic no-op', async () => {
+    const response = (await PATCH(createPatchRequest({})))!;
+
+    expect(response.status).toBe(400);
+    expect(firstVisitDocumentUpdateManyMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
   });
 
   it('rejects invalid route IDs before touching storage', async () => {
@@ -310,7 +326,7 @@ describe('/api/first-visit-documents/[id]', () => {
         ]),
       },
     });
-    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).toHaveBeenCalled();
   });
 
   it('requires delivery target before recording recovered history', async () => {
@@ -334,7 +350,7 @@ describe('/api/first-visit-documents/[id]', () => {
         delivered_to: expect.arrayContaining(['回収では同意者・交付先を入力してください']),
       },
     });
-    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).toHaveBeenCalled();
   });
 
   it('allows localhost HTTP document URLs for local development previews', async () => {
@@ -364,6 +380,7 @@ describe('/api/first-visit-documents/[id]', () => {
       },
       data: {
         document_url: 'http://localhost:3000/api/visit-records/record_1/pdf',
+        updated_at: expect.any(Date),
       },
     });
   });
@@ -397,6 +414,7 @@ describe('/api/first-visit-documents/[id]', () => {
         delivered_at: new Date('2026-06-16T00:00:00.000Z'),
         delivered_to: '山田太郎',
         document_url: '/api/visit-records/record_1/pdf',
+        updated_at: expect.any(Date),
       },
     });
     const body = await response.json();
@@ -428,33 +446,7 @@ describe('/api/first-visit-documents/[id]', () => {
 
     expect(response.status).toBe(409);
     expectSensitiveNoStore(response);
-    expect(withOrgContextMock).not.toHaveBeenCalled();
-    expect(firstVisitDocumentUpdateManyMock).not.toHaveBeenCalled();
-    expect(auditLogCreateMock).not.toHaveBeenCalled();
-  });
-
-  it('rejects a patient archived after preflight when the transaction acquires the write lock', async () => {
-    requireWritablePatientForUpdateMock.mockResolvedValueOnce({
-      response: Response.json(
-        { message: 'アーカイブ中の患者は復元するまで更新できません' },
-        { status: 409 },
-      ),
-    });
-
-    const response = (await PATCH(
-      createPatchRequest({
-        delivered_at: '2026-06-16T00:00:00.000Z',
-        delivered_to: '山田太郎',
-      }),
-    ))!;
-
-    expect(response.status).toBe(409);
-    expectSensitiveNoStore(response);
-    expect(requireWritablePatientForUpdateMock).toHaveBeenCalledWith(
-      expect.any(Object),
-      expect.objectContaining({ orgId: 'org_1', userId: 'user_1' }),
-      'patient_1',
-    );
+    expect(withOrgContextMock).toHaveBeenCalled();
     expect(firstVisitDocumentUpdateManyMock).not.toHaveBeenCalled();
     expect(auditLogCreateMock).not.toHaveBeenCalled();
   });
@@ -531,7 +523,10 @@ describe('/api/first-visit-documents/[id]', () => {
 
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
-    expect(firstVisitDocumentUpdateManyMock).not.toHaveBeenCalled();
+    expect(firstVisitDocumentUpdateManyMock).toHaveBeenCalledWith({
+      where: { id: 'doc_1', org_id: 'org_1', updated_at: updatedAt },
+      data: { updated_at: expect.any(Date) },
+    });
     expect(getPatientDocumentsDataMock).toHaveBeenCalledWith(expect.any(Object), {
       orgId: 'org_1',
       patientId: 'patient_1',
@@ -683,6 +678,7 @@ describe('/api/first-visit-documents/[id]', () => {
       data: {
         document_url:
           '/reports/print?type=first_visit_documents&patient_id=patient_1&document_id=doc_1&copy=1',
+        updated_at: expect.any(Date),
       },
     });
     expect(auditLogCreateMock).toHaveBeenCalledWith({
@@ -760,7 +756,7 @@ describe('/api/first-visit-documents/[id]', () => {
 
     expect(response.status).toBe(404);
     expectSensitiveNoStore(response);
-    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).toHaveBeenCalled();
   });
 
   it('returns 409 when the row changed after it was read', async () => {
@@ -773,6 +769,7 @@ describe('/api/first-visit-documents/[id]', () => {
     await expect(response.json()).resolves.toMatchObject({
       code: 'WORKFLOW_CONFLICT',
       message: '初回文書が他のユーザーによって更新されています。最新のデータを取得してください。',
+      details: { reason: 'first_visit_document_version_conflict' },
     });
   });
 
@@ -807,7 +804,7 @@ describe('/api/first-visit-documents/[id]', () => {
     expect(logContextText).not.toContain('山田太郎');
     expect(logContextText).not.toContain('raw first visit');
     expect(logContextText).not.toContain('FirstVisitDocumentPatchSecretError');
-    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).toHaveBeenCalled();
     expect(auditLogCreateMock).not.toHaveBeenCalled();
   });
 });

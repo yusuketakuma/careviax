@@ -206,7 +206,7 @@ describe('/api/dashboard/dispensing-stats', () => {
   });
 
   it('remains compatible with direct calls that omit routeContext', async () => {
-    const response = await rawGET(createRequest());
+    const response = await rawGET(createRequest(), emptyRouteContext);
 
     expect(response.status).toBe(200);
     expect(withRoutePerformanceMock).toHaveBeenCalledWith(

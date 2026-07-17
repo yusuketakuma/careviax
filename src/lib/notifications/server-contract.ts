@@ -10,7 +10,7 @@ const notificationLimitSchema = z
 
 export const notificationsQuerySchema = z.object({
   cursor: notificationIdSchema.optional(),
-  limit: notificationLimitSchema.optional().default('50'),
+  limit: notificationLimitSchema.optional().default(50),
   summary: z.literal('1').optional(),
   user_id: notificationIdSchema.optional(),
   is_read: z

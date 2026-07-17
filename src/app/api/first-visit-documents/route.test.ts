@@ -15,7 +15,6 @@ const {
   firstVisitDocumentFindManyMock,
   templateFindFirstMock,
   requireWritablePatientMock,
-  requireWritablePatientForUpdateMock,
   withOrgContextMock,
 } = vi.hoisted(() => ({
   loggerErrorMock: vi.fn(),
@@ -30,7 +29,6 @@ const {
   firstVisitDocumentFindManyMock: vi.fn(),
   templateFindFirstMock: vi.fn(),
   requireWritablePatientMock: vi.fn(),
-  requireWritablePatientForUpdateMock: vi.fn(),
   withOrgContextMock: vi.fn(),
 }));
 
@@ -117,7 +115,6 @@ vi.mock('@/lib/db/rls', () => ({
 
 vi.mock('@/server/services/patient-write-guard', () => ({
   requireWritablePatient: requireWritablePatientMock,
-  requireWritablePatientForUpdate: requireWritablePatientForUpdateMock,
 }));
 
 import { GET as rawGET, POST as rawPOST } from './route';
@@ -154,9 +151,6 @@ describe('/api/first-visit-documents', () => {
     runWithRequestAuthContextMock.mockImplementation((_ctx, callback) => callback());
     withRoutePerformanceMock.mockImplementation((_req, callback) => callback());
     requireWritablePatientMock.mockResolvedValue({
-      patient: { id: 'patient_1', archived_at: null },
-    });
-    requireWritablePatientForUpdateMock.mockResolvedValue({
       patient: { id: 'patient_1', archived_at: null },
     });
     careCaseFindFirstMock.mockResolvedValue({ id: 'case_1' });
@@ -543,8 +537,11 @@ describe('/api/first-visit-documents', () => {
       expect(auditLogCreateMock).not.toHaveBeenCalled();
     });
 
-    it('rejects a patient archived after preflight when the transaction acquires the write lock', async () => {
-      requireWritablePatientForUpdateMock.mockResolvedValueOnce({
+    it('rejects a patient archived when the transaction rechecks writable state', async () => {
+      requireWritablePatientMock.mockResolvedValueOnce({
+        patient: { id: 'patient_1', archived_at: null },
+      });
+      requireWritablePatientMock.mockResolvedValueOnce({
         response: Response.json(
           { message: 'アーカイブ中の患者は復元するまで更新できません' },
           { status: 409 },
@@ -561,7 +558,7 @@ describe('/api/first-visit-documents', () => {
 
       expect(response.status).toBe(409);
       expectSensitiveNoStore(response);
-      expect(requireWritablePatientForUpdateMock).toHaveBeenCalledWith(
+      expect(requireWritablePatientMock).toHaveBeenLastCalledWith(
         expect.any(Object),
         expect.objectContaining({ orgId: 'org_1', userId: 'user_1' }),
         'patient_1',

@@ -458,7 +458,12 @@ describe('FirstVisitDocumentsPanel', () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValue(
-        new Response(JSON.stringify({ data: { id: hostileDocumentId } }), { status: 200 }),
+        new Response(
+          JSON.stringify({
+            data: { id: hostileDocumentId, updated_at: '2026-06-17T01:00:00.000Z' },
+          }),
+          { status: 200 },
+        ),
       );
     const sentinelHeaders = { 'x-org-id': 'org_1', 'x-test-helper': 'buildOrgJsonHeaders' };
     vi.mocked(buildOrgJsonHeaders).mockReturnValueOnce(sentinelHeaders);
@@ -491,6 +496,7 @@ describe('FirstVisitDocumentsPanel', () => {
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
     const expectedBody = {
+      expected_updated_at: '2026-06-16T00:00:00.000Z',
       delivered_at: '2026-06-17T00:00:00.000Z',
       delivered_to: null,
       document_url: '/api/visit-records/record_1/pdf',
@@ -523,6 +529,110 @@ describe('FirstVisitDocumentsPanel', () => {
     expect(url).not.toContain(hostileDocumentId);
     expect(url).not.toContain('%25');
     expect(init?.body).not.toContain(hostileDocumentId);
+  });
+
+  it('refetches document versions and gives fixed recovery guidance after a 409', async () => {
+    const queryClient = createTestQueryClient();
+    const invalidateQueries = vi.spyOn(queryClient, 'invalidateQueries');
+    const errorToast = vi.spyOn(toast, 'error').mockReturnValue('toast_1' as never);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            message: 'stale server detail',
+            details: { reason: 'first_visit_document_version_conflict' },
+          }),
+          { status: 409 },
+        ),
+      ),
+    );
+
+    render(
+      <FirstVisitDocumentsPanel
+        orgId="org_1"
+        patientId="patient_1"
+        cases={[{ id: 'case_1', status: 'active' } as never]}
+        documentStatuses={[]}
+        documents={[
+          {
+            id: 'doc_1',
+            case_id: 'case_1',
+            emergency_contacts: [],
+            document_url: '/api/visit-records/record_1/pdf',
+            delivered_at: '2026-06-17T00:00:00.000Z',
+            delivered_to: null,
+            created_at: '2026-06-16T00:00:00.000Z',
+            updated_at: '2026-06-16T00:00:00.000Z',
+            history: [],
+          },
+        ]}
+      />,
+      { wrapper: createQueryClientWrapper(queryClient) },
+    );
+
+    fireEvent.submit(screen.getByRole('button', { name: '保存' }).closest('form')!);
+
+    await waitFor(() =>
+      expect(errorToast).toHaveBeenCalledWith(
+        '初回訪問文書が更新されました。最新内容を確認してから、変更を再入力してください。',
+      ),
+    );
+    expect(invalidateQueries).toHaveBeenCalledWith({
+      queryKey: ['patient-documents', 'patient_1', 'org_1'],
+    });
+    expect(invalidateQueries).toHaveBeenCalledWith({
+      queryKey: ['first-visit-documents', 'patient_1'],
+    });
+  });
+
+  it.each([
+    [
+      'print readiness',
+      '初回文書の印刷前チェックで必須項目が未完了です。不足: 患者基本情報',
+      '初回文書の印刷前チェックが未完了です。患者文書画面で必須項目を確認してください。',
+    ],
+    [
+      'archived patient',
+      'アーカイブ中の患者は復元するまで更新できません',
+      'アーカイブ中の患者は復元するまで更新できません',
+    ],
+  ])('preserves %s guidance for non-version 409 responses', async (_label, message, expected) => {
+    const queryClient = createTestQueryClient();
+    const invalidateQueries = vi.spyOn(queryClient, 'invalidateQueries');
+    const errorToast = vi.spyOn(toast, 'error').mockReturnValue('toast_1' as never);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(new Response(JSON.stringify({ message }), { status: 409 })),
+    );
+
+    render(
+      <FirstVisitDocumentsPanel
+        orgId="org_1"
+        patientId="patient_1"
+        cases={[{ id: 'case_1', status: 'active' } as never]}
+        documentStatuses={[]}
+        documents={[
+          {
+            id: 'doc_1',
+            case_id: 'case_1',
+            emergency_contacts: [],
+            document_url: '/api/visit-records/record_1/pdf',
+            delivered_at: '2026-06-17T00:00:00.000Z',
+            delivered_to: null,
+            created_at: '2026-06-16T00:00:00.000Z',
+            updated_at: '2026-06-16T00:00:00.000Z',
+            history: [],
+          },
+        ]}
+      />,
+      { wrapper: createQueryClientWrapper(queryClient) },
+    );
+
+    fireEvent.submit(screen.getByRole('button', { name: '保存' }).closest('form')!);
+
+    await waitFor(() => expect(errorToast).toHaveBeenCalledWith(expected));
+    expect(invalidateQueries).not.toHaveBeenCalled();
   });
 
   it.each(['.', '..'])(
