@@ -1,26 +1,116 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import {
   expectPhiExportSnapshotRedacted,
   expectSensitiveNoStore,
 } from '@/test/api-response-assertions';
 
 const {
+  authContext,
   requireAuthContextMock,
+  runWithRequestAuthContextMock,
+  loggerErrorMock,
+  withRoutePerformanceMock,
+  unstableRethrowMock,
   buildCareReportPdfMock,
   pdfResponseMock,
   recordDataExportAuditMock,
   prismaMock,
 } = vi.hoisted(() => ({
+  authContext: {
+    orgId: 'org_1',
+    userId: 'user_1',
+    role: 'pharmacist',
+    requestId: 'request_care_report_pdf_1',
+    correlationId: 'correlation_care_report_pdf_1',
+  },
   requireAuthContextMock: vi.fn(),
+  runWithRequestAuthContextMock: vi.fn((_ctx, callback) => callback()),
+  loggerErrorMock: vi.fn(),
+  withRoutePerformanceMock: vi.fn((_req, handler) => handler()),
+  unstableRethrowMock: vi.fn(),
   buildCareReportPdfMock: vi.fn(),
   pdfResponseMock: vi.fn(),
   recordDataExportAuditMock: vi.fn(),
   prismaMock: {},
 }));
 
+vi.mock('next/navigation', () => ({
+  unstable_rethrow: unstableRethrowMock,
+}));
+
 vi.mock('@/lib/auth/context', () => ({
   requireAuthContext: requireAuthContextMock,
+  withAuthContext:
+    (
+      handler: (
+        req: NextRequest,
+        ctx: typeof authContext,
+        routeContext: { params: Promise<{ id: string }> },
+      ) => Promise<Response>,
+      options: unknown,
+    ) =>
+    async (req: NextRequest, routeContext: { params: Promise<{ id: string }> }) =>
+      withRoutePerformanceMock(req, async () => {
+        let response: Response;
+        let trace = authContext;
+        try {
+          const authResult = await requireAuthContextMock(req, options);
+          if ('response' in authResult) {
+            response = authResult.response;
+          } else {
+            trace = authResult.ctx;
+            try {
+              response = await runWithRequestAuthContextMock(authResult.ctx, () =>
+                handler(req, authResult.ctx, routeContext),
+              );
+            } catch (error) {
+              unstableRethrowMock(error);
+              loggerErrorMock(
+                {
+                  event: 'route_handler_unhandled_error',
+                  route: req.nextUrl.pathname,
+                  method: req.method,
+                  requestId: trace.requestId,
+                  correlationId: trace.correlationId,
+                },
+                error,
+              );
+              response = NextResponse.json(
+                { code: 'INTERNAL_ERROR', message: 'サーバー内部でエラーが発生しました' },
+                { status: 500 },
+              );
+            }
+          }
+        } catch (error) {
+          unstableRethrowMock(error);
+          trace = {
+            ...authContext,
+            requestId: 'generated_request_care_report_pdf_1',
+            correlationId:
+              req.headers.get('x-correlation-id') ?? 'generated_request_care_report_pdf_1',
+          };
+          loggerErrorMock(
+            {
+              event: 'route_auth_unhandled_error',
+              route: req.nextUrl.pathname,
+              method: req.method,
+              requestId: trace.requestId,
+              correlationId: trace.correlationId,
+            },
+            error,
+          );
+          response = NextResponse.json(
+            { code: 'INTERNAL_ERROR', message: 'サーバー内部でエラーが発生しました' },
+            { status: 500 },
+          );
+        }
+        response.headers.set('Cache-Control', 'private, no-store, max-age=0');
+        response.headers.set('Pragma', 'no-cache');
+        response.headers.set('X-Request-Id', trace.requestId);
+        response.headers.set('X-Correlation-Id', trace.correlationId);
+        return response;
+      }),
 }));
 
 vi.mock('@/server/services/pdf-documents', () => ({
@@ -46,7 +136,12 @@ import {
 import { GET } from './route';
 
 function createRequest() {
-  return new NextRequest('http://localhost/api/care-reports/report_1/pdf');
+  return new NextRequest('http://localhost/api/care-reports/report_1/pdf', {
+    headers: {
+      'x-request-id': 'inbound_request_should_be_ignored',
+      'x-correlation-id': 'correlation_care_report_pdf_1',
+    },
+  });
 }
 
 function expectRequestTrace(response: Response) {
@@ -56,16 +151,19 @@ function expectRequestTrace(response: Response) {
 
 describe('/api/care-reports/[id]/pdf', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
-    requireAuthContextMock.mockResolvedValue({
-      ctx: {
-        orgId: 'org_1',
-        userId: 'user_1',
-        role: 'pharmacist',
-        requestId: 'request_care_report_pdf_1',
-        correlationId: 'correlation_care_report_pdf_1',
-      },
+    vi.resetAllMocks();
+    unstableRethrowMock.mockImplementation((error) => {
+      if (
+        error instanceof Error &&
+        typeof (error as Error & { digest?: unknown }).digest === 'string' &&
+        (error as Error & { digest: string }).digest.startsWith('NEXT_REDIRECT')
+      ) {
+        throw error;
+      }
     });
+    requireAuthContextMock.mockResolvedValue({ ctx: authContext });
+    runWithRequestAuthContextMock.mockImplementation((_ctx, callback) => callback());
+    withRoutePerformanceMock.mockImplementation((_req, handler) => handler());
     pdfResponseMock.mockReturnValue(new Response('pdf', { status: 200 }));
     recordDataExportAuditMock.mockResolvedValue(undefined);
   });
@@ -86,6 +184,12 @@ describe('/api/care-reports/[id]/pdf', () => {
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
     expectRequestTrace(response);
+    expect(withRoutePerformanceMock).toHaveBeenCalledOnce();
+    expect(runWithRequestAuthContextMock).toHaveBeenCalledWith(authContext, expect.any(Function));
+    expect(requireAuthContextMock).toHaveBeenCalledWith(expect.any(NextRequest), {
+      permission: 'canSendCareReport',
+      message: '報告書 PDF の出力権限がありません',
+    });
     expect(buildCareReportPdfMock).toHaveBeenCalledWith('org_1', 'report_1', {
       userId: 'user_1',
       role: 'pharmacist',
@@ -113,6 +217,12 @@ describe('/api/care-reports/[id]/pdf', () => {
       'Yamada',
       'storageKey=s3',
     ]);
+    expect(buildCareReportPdfMock.mock.invocationCallOrder[0]!).toBeLessThan(
+      recordDataExportAuditMock.mock.invocationCallOrder[0]!,
+    );
+    expect(recordDataExportAuditMock.mock.invocationCallOrder[0]!).toBeLessThan(
+      pdfResponseMock.mock.invocationCallOrder[0]!,
+    );
   });
 
   it('returns a traced sanitized 500 when response creation fails after the audit', async () => {
@@ -141,6 +251,16 @@ describe('/api/care-reports/[id]/pdf', () => {
     expect(JSON.stringify(body)).not.toContain('山田花子');
     expect(JSON.stringify(body)).not.toContain('090-1234-5678');
     expect(JSON.stringify(body)).not.toContain('raw response creation detail');
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      {
+        event: 'route_handler_unhandled_error',
+        route: '/api/care-reports/report_1/pdf',
+        method: 'GET',
+        requestId: 'request_care_report_pdf_1',
+        correlationId: 'correlation_care_report_pdf_1',
+      },
+      expect.any(Error),
+    );
   });
 
   it('requires report send permission before rendering or auditing the export', async () => {
@@ -177,6 +297,8 @@ describe('/api/care-reports/[id]/pdf', () => {
 
     expect(response.status).toBe(500);
     expectSensitiveNoStore(response);
+    expect(response.headers.get('X-Request-Id')).toBe('generated_request_care_report_pdf_1');
+    expect(response.headers.get('X-Correlation-Id')).toBe('correlation_care_report_pdf_1');
     const body = await response.json();
     expect(body).toMatchObject({
       code: 'INTERNAL_ERROR',
@@ -188,6 +310,16 @@ describe('/api/care-reports/[id]/pdf', () => {
     expect(buildCareReportPdfMock).not.toHaveBeenCalled();
     expect(recordDataExportAuditMock).not.toHaveBeenCalled();
     expect(pdfResponseMock).not.toHaveBeenCalled();
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      {
+        event: 'route_auth_unhandled_error',
+        route: '/api/care-reports/report_1/pdf',
+        method: 'GET',
+        requestId: 'generated_request_care_report_pdf_1',
+        correlationId: 'correlation_care_report_pdf_1',
+      },
+      expect.any(Error),
+    );
   });
 
   it('rejects blank report ids before rendering or auditing the export', async () => {
@@ -324,5 +456,22 @@ describe('/api/care-reports/[id]/pdf', () => {
     });
     expect(recordDataExportAuditMock).toHaveBeenCalled();
     expect(pdfResponseMock).not.toHaveBeenCalled();
+  });
+
+  it('rethrows Next control-flow errors without auditing, logging, or creating a PDF response', async () => {
+    const controlFlowError = Object.assign(new Error('redirect'), {
+      digest: 'NEXT_REDIRECT;replace;/reports/report_1;307;',
+    });
+    buildCareReportPdfMock.mockRejectedValueOnce(controlFlowError);
+
+    await expect(
+      GET(createRequest(), {
+        params: Promise.resolve({ id: 'report_1' }),
+      }),
+    ).rejects.toBe(controlFlowError);
+
+    expect(recordDataExportAuditMock).not.toHaveBeenCalled();
+    expect(pdfResponseMock).not.toHaveBeenCalled();
+    expect(loggerErrorMock).not.toHaveBeenCalled();
   });
 });
