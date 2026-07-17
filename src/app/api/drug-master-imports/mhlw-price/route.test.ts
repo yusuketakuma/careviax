@@ -9,6 +9,11 @@ const {
   importMhlwPriceListMock,
   previewMhlwPriceListMock,
   loggerErrorMock,
+  invalidateSearchCacheMock,
+  invalidateDetailCacheMock,
+  clearRequestAuthContextMock,
+  runWithRequestAuthContextMock,
+  unstableRethrowMock,
 } = vi.hoisted(() => {
   const membershipFindFirstMock = vi.fn();
   return {
@@ -22,8 +27,20 @@ const {
     importMhlwPriceListMock: vi.fn(),
     previewMhlwPriceListMock: vi.fn(),
     loggerErrorMock: vi.fn(),
+    invalidateSearchCacheMock: vi.fn(),
+    invalidateDetailCacheMock: vi.fn(),
+    clearRequestAuthContextMock: vi.fn(),
+    runWithRequestAuthContextMock: vi.fn((_ctx, callback: () => unknown) => callback()),
+    unstableRethrowMock: vi.fn(),
   };
 });
+
+vi.mock('next/navigation', () => ({ unstable_rethrow: unstableRethrowMock }));
+
+vi.mock('@/lib/auth/request-context', () => ({
+  clearRequestAuthContext: clearRequestAuthContextMock,
+  runWithRequestAuthContext: runWithRequestAuthContextMock,
+}));
 
 vi.mock('@/lib/auth/config', () => ({
   auth: authMock,
@@ -42,7 +59,18 @@ vi.mock('@/server/services/drug-master-import/mhlw', () => ({
   previewMhlwPriceList: previewMhlwPriceListMock,
 }));
 
-import { POST } from './route';
+vi.mock('@/server/services/drug-master-search-cache', () => ({
+  invalidateDrugMasterSearchCache: invalidateSearchCacheMock,
+}));
+
+vi.mock('@/server/services/drug-master-detail-cache', () => ({
+  invalidateDrugMasterDetailCache: invalidateDetailCacheMock,
+}));
+
+import { POST as rawPOST } from './route';
+
+const emptyRouteContext = { params: Promise.resolve({}) };
+const POST = (req: NextRequest) => rawPOST(req, emptyRouteContext);
 
 type NextRequestInit = ConstructorParameters<typeof NextRequest>[1];
 
@@ -91,6 +119,7 @@ describe('/api/drug-master-imports/mhlw-price', () => {
       },
       importedCount: 55,
       workbookUrl: 'https://www.mhlw.go.jp/topics/2026/04/xls/price.xlsx',
+      workbookUrls: ['https://www.mhlw.go.jp/topics/2026/04/xls/price.xlsx'],
     });
     previewMhlwPriceListMock.mockResolvedValue({
       dryRun: true,
@@ -168,13 +197,28 @@ describe('/api/drug-master-imports/mhlw-price', () => {
 
     expect(response.status).toBe(201);
     expectNoStore(response);
+    expect(response.headers.get('X-Request-Id')).toBeTruthy();
+    expect(response.headers.get('X-Correlation-Id')).toBeTruthy();
+    expect(runWithRequestAuthContextMock).toHaveBeenCalledOnce();
     expect(importMhlwPriceListMock).toHaveBeenCalledWith(prismaMock, {
       workbookUrl: 'https://www.mhlw.go.jp/topics/2026/04/xls/price.xlsx',
     });
     expect(previewMhlwPriceListMock).not.toHaveBeenCalled();
+    expect(invalidateSearchCacheMock).toHaveBeenCalledOnce();
+    expect(invalidateDetailCacheMock).toHaveBeenCalledOnce();
+    expect(importMhlwPriceListMock.mock.invocationCallOrder[0]).toBeLessThan(
+      invalidateSearchCacheMock.mock.invocationCallOrder[0]!,
+    );
+    expect(invalidateSearchCacheMock.mock.invocationCallOrder[0]).toBeLessThan(
+      invalidateDetailCacheMock.mock.invocationCallOrder[0]!,
+    );
     await expect(response.json()).resolves.toMatchObject({
       data: {
         logId: 'log_1',
+        status: 'success',
+        importedCount: 55,
+        workbookUrl: 'https://www.mhlw.go.jp/topics/2026/04/xls/price.xlsx',
+        workbookUrls: ['https://www.mhlw.go.jp/topics/2026/04/xls/price.xlsx'],
         sourceFileHash: 'mhlw_price_source_hash',
         sourcePublishedAt: '2026-05-20T00:00:00.000Z',
         importMode: 'full',
@@ -205,9 +249,14 @@ describe('/api/drug-master-imports/mhlw-price', () => {
       previewLimit: 1,
     });
     expect(importMhlwPriceListMock).not.toHaveBeenCalled();
+    expect(runWithRequestAuthContextMock).toHaveBeenCalledOnce();
+    expect(invalidateSearchCacheMock).not.toHaveBeenCalled();
+    expect(invalidateDetailCacheMock).not.toHaveBeenCalled();
     await expect(response.json()).resolves.toMatchObject({
       data: {
         dryRun: true,
+        workbookUrl: 'https://www.mhlw.go.jp/topics/2026/04/xls/price.xlsx',
+        workbookUrls: ['https://www.mhlw.go.jp/topics/2026/04/xls/price.xlsx'],
         sourceFileHash: 'mhlw_price_source_hash',
         preview: {
           summary: {
@@ -289,16 +338,66 @@ describe('/api/drug-master-imports/mhlw-price', () => {
   });
 
   it('returns no-store 403 before reading the body when admin permission is denied', async () => {
-    membershipFindFirstMock.mockResolvedValueOnce({ role: 'viewer', site_id: null });
+    membershipFindFirstMock.mockResolvedValueOnce({ role: 'pharmacist', site_id: null });
+    const request = createMalformedJsonPostRequest();
 
-    const response = await POST(
-      createPostRequest({ workbookUrl: 'https://127.0.0.1/internal.xlsx' }),
-    );
+    const response = await POST(request);
 
     expect(response.status).toBe(403);
     expectNoStore(response);
+    expect(request.bodyUsed).toBe(false);
+    expect(runWithRequestAuthContextMock).not.toHaveBeenCalled();
     expect(importMhlwPriceListMock).not.toHaveBeenCalled();
     expect(previewMhlwPriceListMock).not.toHaveBeenCalled();
+    expect(invalidateSearchCacheMock).not.toHaveBeenCalled();
+    expect(invalidateDetailCacheMock).not.toHaveBeenCalled();
+  });
+
+  it('returns no-store 401 before reading the body when unauthenticated', async () => {
+    authMock.mockResolvedValueOnce(null);
+    const request = createMalformedJsonPostRequest();
+
+    const response = await POST(request);
+
+    expect(response.status).toBe(401);
+    expectNoStore(response);
+    expect(request.bodyUsed).toBe(false);
+    expect(runWithRequestAuthContextMock).not.toHaveBeenCalled();
+    expect(importMhlwPriceListMock).not.toHaveBeenCalled();
+    expect(previewMhlwPriceListMock).not.toHaveBeenCalled();
+    expect(invalidateSearchCacheMock).not.toHaveBeenCalled();
+    expect(invalidateDetailCacheMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a generated-trace safe 500 when authentication dependencies throw', async () => {
+    const unsafeError = new Error('raw MHLW price auth workbook token secret');
+    unsafeError.name = 'MhlwPriceAuthSecretError';
+    authMock.mockRejectedValueOnce(unsafeError);
+    const request = createMalformedJsonPostRequest();
+
+    const response = await POST(request);
+    const requestId = response.headers.get('X-Request-Id');
+    const correlationId = response.headers.get('X-Correlation-Id');
+
+    expect(response.status).toBe(500);
+    expectNoStore(response);
+    expect(requestId).toBeTruthy();
+    expect(correlationId).toBe(requestId);
+    expect(request.bodyUsed).toBe(false);
+    expect(runWithRequestAuthContextMock).not.toHaveBeenCalled();
+    expect(importMhlwPriceListMock).not.toHaveBeenCalled();
+    expect(invalidateSearchCacheMock).not.toHaveBeenCalled();
+    expect(invalidateDetailCacheMock).not.toHaveBeenCalled();
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      {
+        event: 'route_auth_unhandled_error',
+        route: '/api/drug-master-imports/mhlw-price',
+        method: 'POST',
+        requestId,
+        correlationId,
+      },
+      unsafeError,
+    );
   });
 
   it('returns a sanitized no-store 500 when MHLW price import fails unexpectedly', async () => {
@@ -313,12 +412,15 @@ describe('/api/drug-master-imports/mhlw-price', () => {
     const body = await response.json();
     expect(body).toMatchObject({ code: 'INTERNAL_ERROR' });
     expect(JSON.stringify(body)).not.toContain('mhlw price import secret');
+    expect(invalidateSearchCacheMock).not.toHaveBeenCalled();
+    expect(invalidateDetailCacheMock).not.toHaveBeenCalled();
     expect(loggerErrorMock).toHaveBeenCalledWith(
       {
-        event: 'drug_master_imports_mhlw_price_post_unhandled_error',
+        event: 'route_handler_unhandled_error',
         route: '/api/drug-master-imports/mhlw-price',
         method: 'POST',
-        status: 500,
+        requestId: response.headers.get('X-Request-Id'),
+        correlationId: response.headers.get('X-Correlation-Id'),
       },
       unsafeError,
     );
@@ -343,12 +445,15 @@ describe('/api/drug-master-imports/mhlw-price', () => {
     expect(body).toMatchObject({ code: 'INTERNAL_ERROR' });
     expect(JSON.stringify(body)).not.toContain('mhlw price preview secret');
     expect(importMhlwPriceListMock).not.toHaveBeenCalled();
+    expect(invalidateSearchCacheMock).not.toHaveBeenCalled();
+    expect(invalidateDetailCacheMock).not.toHaveBeenCalled();
     expect(loggerErrorMock).toHaveBeenCalledWith(
       {
-        event: 'drug_master_imports_mhlw_price_post_unhandled_error',
+        event: 'route_handler_unhandled_error',
         route: '/api/drug-master-imports/mhlw-price',
         method: 'POST',
-        status: 500,
+        requestId: response.headers.get('X-Request-Id'),
+        correlationId: response.headers.get('X-Correlation-Id'),
       },
       unsafeError,
     );
@@ -358,5 +463,37 @@ describe('/api/drug-master-imports/mhlw-price', () => {
     const logged = JSON.stringify(logContext);
     expect(logged).not.toContain('mhlw price preview secret');
     expect(logged).not.toContain('MhlwPricePreviewSecretError');
+  });
+
+  it('rethrows authentication control flow without logging or side effects', async () => {
+    const controlFlowError = new Error('NEXT_REDIRECT');
+    authMock.mockRejectedValueOnce(controlFlowError);
+    unstableRethrowMock.mockImplementationOnce((error) => {
+      throw error;
+    });
+    const request = createMalformedJsonPostRequest();
+
+    await expect(POST(request)).rejects.toBe(controlFlowError);
+
+    expect(request.bodyUsed).toBe(false);
+    expect(loggerErrorMock).not.toHaveBeenCalled();
+    expect(runWithRequestAuthContextMock).not.toHaveBeenCalled();
+    expect(invalidateSearchCacheMock).not.toHaveBeenCalled();
+    expect(invalidateDetailCacheMock).not.toHaveBeenCalled();
+  });
+
+  it('rethrows import control flow without shared logging or cache invalidation', async () => {
+    const controlFlowError = new Error('NEXT_NOT_FOUND');
+    importMhlwPriceListMock.mockRejectedValueOnce(controlFlowError);
+    unstableRethrowMock.mockImplementationOnce((error) => {
+      throw error;
+    });
+
+    await expect(POST(createPostRequest({}))).rejects.toBe(controlFlowError);
+
+    expect(loggerErrorMock).not.toHaveBeenCalled();
+    expect(runWithRequestAuthContextMock).toHaveBeenCalledOnce();
+    expect(invalidateSearchCacheMock).not.toHaveBeenCalled();
+    expect(invalidateDetailCacheMock).not.toHaveBeenCalled();
   });
 });
