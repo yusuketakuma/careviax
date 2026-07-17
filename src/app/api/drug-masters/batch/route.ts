@@ -1,21 +1,14 @@
 import { NextRequest } from 'next/server';
-import { unstable_rethrow } from 'next/navigation';
-import { requireAuthContext } from '@/lib/auth/context';
-import { runWithRequestAuthContext } from '@/lib/auth/request-context';
+import { withAuthContext } from '@/lib/auth/context';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
-import { internalError, success, validationError } from '@/lib/api/response';
-import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
+import { success, validationError } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
-import { logger } from '@/lib/utils/logger';
-import { withRoutePerformance } from '@/lib/utils/performance';
 import {
   buildDrugMasterBatchCacheKey,
   DRUG_MASTER_DETAIL_CACHE_TTL_MS,
   drugMasterDetailCache,
 } from '@/server/services/drug-master-detail-cache';
 import { z } from 'zod';
-
-const ROUTE = '/api/drug-masters/batch';
 
 const batchSchema = z
   .object({
@@ -65,9 +58,14 @@ async function fetchDrugMasterBatch(yjCodes: string[], drugMasterIds: string[]) 
     },
   });
 
-  const byYjCode: Record<string, (typeof drugs)[number]> = {};
-  const byDrugMasterId: Record<string, (typeof drugs)[number]> = {};
-  for (const drug of drugs) {
+  const projectedDrugs = drugs.map((drug) => ({
+    ...drug,
+    drug_price: drug.drug_price?.toNumber() ?? null,
+  }));
+
+  const byYjCode: Record<string, (typeof projectedDrugs)[number]> = {};
+  const byDrugMasterId: Record<string, (typeof projectedDrugs)[number]> = {};
+  for (const drug of projectedDrugs) {
     byYjCode[drug.yj_code] = drug;
     byDrugMasterId[drug.id] = drug;
   }
@@ -78,10 +76,6 @@ async function fetchDrugMasterBatch(yjCodes: string[], drugMasterIds: string[]) 
 type DrugMasterBatchResponseBody = Awaited<ReturnType<typeof fetchDrugMasterBatch>>;
 
 async function authenticatedPOST(req: NextRequest) {
-  const authResult = await requireAuthContext(req);
-  if ('response' in authResult) return authResult.response;
-  const { ctx } = authResult;
-
   const payload = await readJsonObjectRequestBody(req);
   if (!payload) return validationError('リクエストボディが不正です');
 
@@ -104,30 +98,10 @@ async function authenticatedPOST(req: NextRequest) {
     return success({ data: cached });
   }
 
-  const responseBody = await runWithRequestAuthContext(ctx, () =>
-    fetchDrugMasterBatch(yjCodes, drugMasterIds),
-  );
+  const responseBody = await fetchDrugMasterBatch(yjCodes, drugMasterIds);
   drugMasterDetailCache.set(cacheKey, responseBody, DRUG_MASTER_DETAIL_CACHE_TTL_MS);
 
   return success({ data: responseBody });
 }
 
-export async function POST(req: NextRequest) {
-  return withRoutePerformance(req, async () => {
-    try {
-      return withSensitiveNoStore(await authenticatedPOST(req));
-    } catch (err) {
-      unstable_rethrow(err);
-      logger.error(
-        {
-          event: 'drug_masters_batch_post_unhandled_error',
-          route: ROUTE,
-          method: req.method,
-          status: 500,
-        },
-        err,
-      );
-      return withSensitiveNoStore(internalError());
-    }
-  });
-}
+export const POST = withAuthContext(authenticatedPOST);
