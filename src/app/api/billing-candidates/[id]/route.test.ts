@@ -2,13 +2,27 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest, NextResponse } from 'next/server';
 
 const {
+  authContext,
   requireAuthContextMock,
+  runWithRequestAuthContextMock,
+  loggerErrorMock,
+  withRoutePerformanceMock,
   withOrgContextMock,
   findFirstMock,
   auditLogCreateMock,
   reviewBillingCandidateMock,
 } = vi.hoisted(() => ({
+  authContext: {
+    orgId: 'org_1',
+    userId: 'user_1',
+    role: 'admin',
+    requestId: 'request_1',
+    correlationId: 'correlation_1',
+  },
   requireAuthContextMock: vi.fn(),
+  runWithRequestAuthContextMock: vi.fn((_ctx, callback) => callback()),
+  loggerErrorMock: vi.fn(),
+  withRoutePerformanceMock: vi.fn((_req, handler) => handler()),
   withOrgContextMock: vi.fn(),
   findFirstMock: vi.fn(),
   auditLogCreateMock: vi.fn(),
@@ -17,6 +31,73 @@ const {
 
 vi.mock('@/lib/auth/context', () => ({
   requireAuthContext: requireAuthContextMock,
+  withAuthContext:
+    (
+      handler: (
+        req: NextRequest,
+        ctx: typeof authContext,
+        routeContext: { params: Promise<{ id: string }> },
+      ) => Promise<Response>,
+      options: unknown,
+    ) =>
+    async (req: NextRequest, routeContext: { params: Promise<{ id: string }> }) =>
+      withRoutePerformanceMock(req, async () => {
+        let response: Response;
+        let trace = authContext;
+        try {
+          const authResult = await requireAuthContextMock(req, options);
+          if ('response' in authResult) {
+            response = authResult.response;
+          } else {
+            trace = authResult.ctx;
+            try {
+              response = await runWithRequestAuthContextMock(authResult.ctx, () =>
+                handler(req, authResult.ctx, routeContext),
+              );
+            } catch (error) {
+              loggerErrorMock(
+                {
+                  event: 'route_handler_unhandled_error',
+                  route: req.nextUrl.pathname,
+                  method: req.method,
+                  requestId: trace.requestId,
+                  correlationId: trace.correlationId,
+                },
+                error,
+              );
+              response = NextResponse.json(
+                { code: 'INTERNAL_ERROR', message: 'サーバー内部でエラーが発生しました' },
+                { status: 500 },
+              );
+            }
+          }
+        } catch (error) {
+          trace = {
+            ...authContext,
+            requestId: 'generated_request_1',
+            correlationId: req.headers.get('x-correlation-id') ?? 'generated_request_1',
+          };
+          loggerErrorMock(
+            {
+              event: 'route_auth_unhandled_error',
+              route: req.nextUrl.pathname,
+              method: req.method,
+              requestId: trace.requestId,
+              correlationId: trace.correlationId,
+            },
+            error,
+          );
+          response = NextResponse.json(
+            { code: 'INTERNAL_ERROR', message: 'サーバー内部でエラーが発生しました' },
+            { status: 500 },
+          );
+        }
+        response.headers.set('Cache-Control', SENSITIVE_NO_STORE);
+        response.headers.set('Pragma', 'no-cache');
+        response.headers.set('X-Request-Id', trace.requestId);
+        response.headers.set('X-Correlation-Id', trace.correlationId);
+        return response;
+      }),
 }));
 
 vi.mock('@/lib/db/rls', () => ({
@@ -40,6 +121,8 @@ function createRequest(body: unknown) {
     headers: {
       'content-type': 'application/json',
       'x-org-id': 'org_1',
+      'x-request-id': 'inbound_request_should_be_ignored',
+      'x-correlation-id': 'correlation_1',
     },
   });
 }
@@ -51,6 +134,8 @@ function createMalformedJsonRequest() {
     headers: {
       'content-type': 'application/json',
       'x-org-id': 'org_1',
+      'x-request-id': 'inbound_request_should_be_ignored',
+      'x-correlation-id': 'correlation_1',
     },
   });
 }
@@ -63,13 +148,9 @@ function expectSensitiveNoStore(response: Response) {
 describe('/api/billing-candidates/[id] PATCH', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    requireAuthContextMock.mockResolvedValue({
-      ctx: {
-        orgId: 'org_1',
-        userId: 'user_1',
-        role: 'admin',
-      },
-    });
+    requireAuthContextMock.mockResolvedValue({ ctx: authContext });
+    runWithRequestAuthContextMock.mockImplementation((_ctx, callback) => callback());
+    withRoutePerformanceMock.mockImplementation((_req, handler) => handler());
     findFirstMock.mockResolvedValue({
       id: 'candidate_1',
       status: 'candidate',
@@ -103,6 +184,10 @@ describe('/api/billing-candidates/[id] PATCH', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
+    expect(response.headers.get('X-Request-Id')).toBe('request_1');
+    expect(response.headers.get('X-Correlation-Id')).toBe('correlation_1');
+    expect(withRoutePerformanceMock).toHaveBeenCalledOnce();
+    expect(runWithRequestAuthContextMock).toHaveBeenCalledWith(authContext, expect.any(Function));
     expect(requireAuthContextMock).toHaveBeenCalledWith(expect.any(Object), {
       permission: 'canManageBilling',
       message: '請求候補の更新権限がありません',
@@ -345,7 +430,8 @@ describe('/api/billing-candidates/[id] PATCH', () => {
   it('returns sanitized no-store 500 responses and skips audit when the review service throws unexpectedly', async () => {
     const rawErrorMessage =
       'review service failed for 患者A 保険者番号=12345678 請求候補=candidate_1';
-    reviewBillingCandidateMock.mockRejectedValueOnce(new Error(rawErrorMessage));
+    const thrownError = new Error(rawErrorMessage);
+    reviewBillingCandidateMock.mockRejectedValueOnce(thrownError);
 
     const response = await PATCH(
       createRequest({ action: 'confirm', expected_updated_at: CURRENT_UPDATED_AT }),
@@ -362,5 +448,41 @@ describe('/api/billing-candidates/[id] PATCH', () => {
     expect(bodyText).not.toContain('患者A');
     expect(bodyText).not.toContain('12345678');
     expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      {
+        event: 'route_handler_unhandled_error',
+        route: '/api/billing-candidates/candidate_1',
+        method: 'PATCH',
+        requestId: 'request_1',
+        correlationId: 'correlation_1',
+      },
+      thrownError,
+    );
+  });
+
+  it('returns a traced no-store 500 before parsing when the auth dependency throws', async () => {
+    const thrownError = new Error('session provider unavailable');
+    requireAuthContextMock.mockRejectedValueOnce(thrownError);
+
+    const response = await PATCH(
+      createRequest({ action: 'confirm', expected_updated_at: CURRENT_UPDATED_AT }),
+      { params: Promise.resolve({ id: 'candidate_1' }) },
+    );
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    expect(response.headers.get('X-Request-Id')).toBe('generated_request_1');
+    expect(response.headers.get('X-Correlation-Id')).toBe('correlation_1');
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      {
+        event: 'route_auth_unhandled_error',
+        route: '/api/billing-candidates/candidate_1',
+        method: 'PATCH',
+        requestId: 'generated_request_1',
+        correlationId: 'correlation_1',
+      },
+      thrownError,
+    );
   });
 });

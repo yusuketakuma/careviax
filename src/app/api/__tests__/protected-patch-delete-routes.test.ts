@@ -325,7 +325,7 @@ const permissionRoutes: RouteEntry[] = [
         createRequest(
           'http://localhost/api/first-visit-documents/doc_1',
           { 'x-org-id': 'org_1' },
-          { delivered_to: '山田太郎' },
+          { delivered_to: '山田太郎', expected_updated_at: '2026-06-18T00:00:00.000Z' },
         ),
         { params: Promise.resolve({ id: 'doc_1' }) },
       ),
@@ -618,7 +618,7 @@ describe('protected PATCH/DELETE routes auth matrix', () => {
       createRequest(
         'http://localhost/api/first-visit-documents/doc_1',
         { 'x-org-id': 'org_1' },
-        { delivered_to: '山田太郎' },
+        { delivered_to: '山田太郎', expected_updated_at: '2026-06-18T00:00:00.000Z' },
       ),
       { params: Promise.resolve({ id: 'doc_1' }) },
     );
@@ -636,7 +636,7 @@ describe('protected PATCH/DELETE routes auth matrix', () => {
       createRequest(
         'http://localhost/api/first-visit-documents/doc_1',
         { 'x-org-id': 'org_1' },
-        { delivered_to: '山田太郎' },
+        { delivered_to: '山田太郎', expected_updated_at: '2026-06-18T00:00:00.000Z' },
       ),
       { params: Promise.resolve({ id: 'doc_1' }) },
     );
@@ -654,7 +654,7 @@ describe('protected PATCH/DELETE routes auth matrix', () => {
       createRequest(
         'http://localhost/api/first-visit-documents/doc_1',
         { 'x-org-id': 'org_1' },
-        { delivered_to: '山田太郎' },
+        { delivered_to: '山田太郎', expected_updated_at: '2026-06-18T00:00:00.000Z' },
       ),
       { params: Promise.resolve({ id: 'doc_1' }) },
     );

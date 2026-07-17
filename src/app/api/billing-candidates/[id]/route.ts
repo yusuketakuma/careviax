@@ -1,12 +1,10 @@
-import { unstable_rethrow } from 'next/navigation';
-import { NextRequest, type NextResponse } from 'next/server';
-import { requireAuthContext } from '@/lib/auth/context';
+import { NextRequest } from 'next/server';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { withOrgContext } from '@/lib/db/rls';
-import { success, validationError, notFound, conflict, internalError } from '@/lib/api/response';
-import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
+import { success, validationError, notFound, conflict } from '@/lib/api/response';
+import { withAuthContext, type AuthContext, type AuthRouteContext } from '@/lib/auth/context';
 import { reviewBillingCandidate } from '@/server/services/billing-evidence';
 import { z } from 'zod';
 
@@ -24,17 +22,11 @@ function isBillingCandidateStaleError(error: unknown) {
   return error instanceof Error && error.message === 'BILLING_CANDIDATE_STALE';
 }
 
-async function authenticatedPATCH(
+async function billingCandidateReviewPATCH(
   req: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-): Promise<NextResponse> {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canManageBilling',
-    message: '請求候補の更新権限がありません',
-  });
-  if ('response' in authResult) return authResult.response;
-  const ctx = authResult.ctx;
-
+  ctx: AuthContext,
+  { params }: AuthRouteContext<{ id: string }>,
+) {
   const { id: rawId } = await params;
   const candidateId = normalizeRequiredRouteParam(rawId);
   if (!candidateId) return validationError('請求候補IDが不正です');
@@ -120,14 +112,7 @@ async function authenticatedPATCH(
   return success({ data: updated });
 }
 
-export async function PATCH(
-  req: NextRequest,
-  routeContext: { params: Promise<{ id: string }> },
-): Promise<Response> {
-  try {
-    return withSensitiveNoStore(await authenticatedPATCH(req, routeContext));
-  } catch (err) {
-    unstable_rethrow(err);
-    return withSensitiveNoStore(internalError());
-  }
-}
+export const PATCH = withAuthContext(billingCandidateReviewPATCH, {
+  permission: 'canManageBilling',
+  message: '請求候補の更新権限がありません',
+});
