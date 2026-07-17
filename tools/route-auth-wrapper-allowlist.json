@@ -3,7 +3,7 @@
   "entries": [
     {
       "path": "src/app/api/care-reports/route.ts",
-      "expectedCount": 2,
+      "expectedCount": 1,
       "permissions": ["canAuthorReport", "canReport"],
       "sensitiveNoStore": true,
       "routePerformance": true,

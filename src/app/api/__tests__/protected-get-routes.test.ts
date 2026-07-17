@@ -551,7 +551,10 @@ const routes: Array<{ name: string; handler: Handler; setupSuccess?: () => void 
   {
     name: 'care-reports GET',
     handler: () =>
-      careReportsGet(createRequest('http://localhost/api/care-reports', { 'x-org-id': 'org_1' })),
+      careReportsGet(
+        createRequest('http://localhost/api/care-reports', { 'x-org-id': 'org_1' }),
+        emptyRouteContext,
+      ),
   },
   {
     name: 'care-reports/[id] GET',

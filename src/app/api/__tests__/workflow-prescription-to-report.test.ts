@@ -923,6 +923,7 @@ describe('Workflow: prescription intake to care report', () => {
           role: 'pharmacist',
         },
       ),
+      emptyRouteContext,
     );
 
     expect(response).toBeDefined();

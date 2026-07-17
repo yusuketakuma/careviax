@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { Prisma } from '@prisma/client';
 import { expectSensitiveNoStore } from '@/test/api-response-assertions';
 
@@ -8,6 +8,7 @@ const {
   requireAuthContextMock,
   runWithRequestAuthContextMock,
   withRoutePerformanceMock,
+  unstableRethrowMock,
   withOrgContextMock,
   careReportCreateMock,
   careReportFindFirstMock,
@@ -27,6 +28,7 @@ const {
   requireAuthContextMock: vi.fn(),
   runWithRequestAuthContextMock: vi.fn((_ctx, callback: () => unknown) => callback()),
   withRoutePerformanceMock: vi.fn((_req, callback: () => unknown) => callback()),
+  unstableRethrowMock: vi.fn(),
   withOrgContextMock: vi.fn(),
   careReportCreateMock: vi.fn(),
   careReportFindFirstMock: vi.fn(),
@@ -43,6 +45,10 @@ const {
   visitRecordFindFirstMock: vi.fn(),
 }));
 
+vi.mock('next/navigation', () => ({
+  unstable_rethrow: unstableRethrowMock,
+}));
+
 type AuthenticatedTestRequest = NextRequest & {
   orgId: string;
   userId: string;
@@ -51,6 +57,101 @@ type AuthenticatedTestRequest = NextRequest & {
 
 vi.mock('@/lib/auth/context', () => ({
   requireAuthContext: requireAuthContextMock,
+  withAuthContext:
+    (
+      handler: (
+        req: NextRequest,
+        ctx: {
+          orgId: string;
+          userId: string;
+          role: string;
+          requestId: string;
+          correlationId: string;
+        },
+        routeContext: { params: Promise<Record<string, string>> },
+      ) => Promise<Response>,
+      options: unknown,
+    ) =>
+    async (req: NextRequest, routeContext: { params: Promise<Record<string, string>> }) =>
+      withRoutePerformanceMock(req, async () => {
+        let authResult:
+          | {
+              ctx: {
+                orgId: string;
+                userId: string;
+                role: string;
+                requestId: string;
+                correlationId: string;
+              };
+            }
+          | { response: Response };
+        try {
+          authResult = await requireAuthContextMock(req, options);
+        } catch (error) {
+          unstableRethrowMock(error);
+          const trace = {
+            requestId: 'generated_request_1',
+            correlationId: req.headers.get('x-correlation-id') ?? 'generated_request_1',
+          };
+          loggerErrorMock(
+            {
+              event: 'route_auth_unhandled_error',
+              route: req.nextUrl.pathname,
+              method: req.method,
+              requestId: trace.requestId,
+              correlationId: trace.correlationId,
+            },
+            error,
+          );
+          const response = NextResponse.json(
+            { code: 'INTERNAL_ERROR', message: 'サーバー内部でエラーが発生しました' },
+            { status: 500 },
+          );
+          response.headers.set('Cache-Control', 'private, no-store, max-age=0');
+          response.headers.set('Pragma', 'no-cache');
+          response.headers.set('X-Request-Id', trace.requestId);
+          response.headers.set('X-Correlation-Id', trace.correlationId);
+          return response;
+        }
+
+        if ('response' in authResult) {
+          authResult.response.headers.set('Cache-Control', 'private, no-store, max-age=0');
+          authResult.response.headers.set('Pragma', 'no-cache');
+          return authResult.response;
+        }
+
+        return runWithRequestAuthContextMock(authResult.ctx, async () => {
+          try {
+            const response = await handler(req, authResult.ctx, routeContext);
+            response.headers.set('Cache-Control', 'private, no-store, max-age=0');
+            response.headers.set('Pragma', 'no-cache');
+            response.headers.set('X-Request-Id', authResult.ctx.requestId);
+            response.headers.set('X-Correlation-Id', authResult.ctx.correlationId);
+            return response;
+          } catch (error) {
+            unstableRethrowMock(error);
+            loggerErrorMock(
+              {
+                event: 'route_handler_unhandled_error',
+                route: req.nextUrl.pathname,
+                method: req.method,
+                requestId: authResult.ctx.requestId,
+                correlationId: authResult.ctx.correlationId,
+              },
+              error,
+            );
+            const response = NextResponse.json(
+              { code: 'INTERNAL_ERROR', message: 'サーバー内部でエラーが発生しました' },
+              { status: 500 },
+            );
+            response.headers.set('Cache-Control', 'private, no-store, max-age=0');
+            response.headers.set('Pragma', 'no-cache');
+            response.headers.set('X-Request-Id', authResult.ctx.requestId);
+            response.headers.set('X-Correlation-Id', authResult.ctx.correlationId);
+            return response;
+          }
+        });
+      }),
 }));
 
 vi.mock('@/lib/auth/request-context', () => ({
@@ -106,6 +207,8 @@ vi.mock('@/lib/prescriptions/prescriber-institutions', () => ({
 
 import { GET, POST } from './route';
 
+const emptyRouteContext = { params: Promise.resolve({}) };
+
 function createAuthenticatedRequest(
   url = 'http://localhost/api/care-reports',
   init?: ConstructorParameters<typeof NextRequest>[1],
@@ -119,7 +222,7 @@ function createAuthenticatedRequest(
 }
 
 function getCareReports(req: AuthenticatedTestRequest) {
-  return GET(req);
+  return GET(req, emptyRouteContext);
 }
 
 function createCareReport(req: AuthenticatedTestRequest) {
@@ -132,10 +235,13 @@ function setupAuthMocks() {
       orgId: req.orgId,
       userId: req.userId,
       role: (req.role ?? 'pharmacist') as 'pharmacist',
+      requestId: 'request_1',
+      correlationId: 'correlation_1',
     },
   }));
   runWithRequestAuthContextMock.mockImplementation((_ctx, callback) => callback());
   withRoutePerformanceMock.mockImplementation((_req, callback) => callback());
+  unstableRethrowMock.mockImplementation(() => undefined);
 }
 
 describe('/api/care-reports GET', () => {
@@ -263,6 +369,101 @@ describe('/api/care-reports GET', () => {
     );
   });
 
+  it('rejects GET auth before query parsing, ALS, RLS, or report reads', async () => {
+    requireAuthContextMock.mockResolvedValueOnce({
+      response: NextResponse.json(
+        { code: 'FORBIDDEN', message: '報告書の閲覧権限がありません' },
+        { status: 403 },
+      ),
+    });
+
+    const response = await getCareReports(
+      createAuthenticatedRequest('http://localhost/api/care-reports?limit=invalid'),
+    );
+
+    expect(response.status).toBe(403);
+    expectSensitiveNoStore(response);
+    expect(withRoutePerformanceMock).toHaveBeenCalledOnce();
+    expect(requireAuthContextMock).toHaveBeenCalledWith(expect.any(NextRequest), {
+      permission: 'canReport',
+      message: '報告書の閲覧権限がありません',
+    });
+    expect(runWithRequestAuthContextMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(careReportFindManyMock).not.toHaveBeenCalled();
+    expect(patientFindManyMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a traced fixed 500 when GET auth resolution throws', async () => {
+    const unsafeError = new Error('患者 山田太郎 auth provider secret');
+    requireAuthContextMock.mockRejectedValueOnce(unsafeError);
+
+    const response = await getCareReports(
+      createAuthenticatedRequest('http://localhost/api/care-reports', {
+        headers: {
+          'x-request-id': 'untrusted_request_id',
+          'x-correlation-id': 'correlation_external_1',
+        },
+      }),
+    );
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    expect(response.headers.get('X-Request-Id')).toBe('generated_request_1');
+    expect(response.headers.get('X-Correlation-Id')).toBe('correlation_external_1');
+    const body = await response.json();
+    expect(body).toEqual({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    expect(JSON.stringify(body)).not.toContain('山田太郎');
+    expect(runWithRequestAuthContextMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(careReportFindManyMock).not.toHaveBeenCalled();
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      {
+        event: 'route_auth_unhandled_error',
+        route: '/api/care-reports',
+        method: 'GET',
+        requestId: 'generated_request_1',
+        correlationId: 'correlation_external_1',
+      },
+      unsafeError,
+    );
+  });
+
+  it('rethrows GET auth control-flow errors without entering the handler', async () => {
+    const controlFlowError = new Error('NEXT_REDIRECT');
+    requireAuthContextMock.mockRejectedValueOnce(controlFlowError);
+    unstableRethrowMock.mockImplementation((error) => {
+      if (error === controlFlowError) throw error;
+    });
+
+    await expect(getCareReports(createAuthenticatedRequest())).rejects.toBe(controlFlowError);
+
+    expect(withRoutePerformanceMock).toHaveBeenCalledOnce();
+    expect(runWithRequestAuthContextMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(careReportFindManyMock).not.toHaveBeenCalled();
+    expect(loggerErrorMock).not.toHaveBeenCalled();
+  });
+
+  it('rethrows GET handler control-flow errors without logging or report reads', async () => {
+    const controlFlowError = new Error('NEXT_NOT_FOUND');
+    withOrgContextMock.mockImplementationOnce(() => {
+      throw controlFlowError;
+    });
+    unstableRethrowMock.mockImplementation((error) => {
+      if (error === controlFlowError) throw error;
+    });
+
+    await expect(getCareReports(createAuthenticatedRequest())).rejects.toBe(controlFlowError);
+
+    expect(runWithRequestAuthContextMock).toHaveBeenCalledTimes(2);
+    expect(careReportFindManyMock).not.toHaveBeenCalled();
+    expect(loggerErrorMock).not.toHaveBeenCalled();
+  });
+
   it('uses a bounded minimal stable patient lookup for regular q report search (PERF-DB-006A)', async () => {
     patientFindManyMock.mockResolvedValueOnce([{ id: 'patient_1' }, { id: 'patient_2' }]);
 
@@ -271,6 +472,24 @@ describe('/api/care-reports GET', () => {
     );
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    expect(response.headers.get('X-Request-Id')).toBe('request_1');
+    expect(response.headers.get('X-Correlation-Id')).toBe('correlation_1');
+    expect(withRoutePerformanceMock).toHaveBeenCalledOnce();
+    expect(requireAuthContextMock).toHaveBeenCalledWith(expect.any(NextRequest), {
+      permission: 'canReport',
+      message: '報告書の閲覧権限がありません',
+    });
+    expect(runWithRequestAuthContextMock).toHaveBeenCalledTimes(2);
+    for (const [ctx] of runWithRequestAuthContextMock.mock.calls) {
+      expect(ctx).toEqual({
+        orgId: 'org_1',
+        userId: 'user_1',
+        role: 'pharmacist',
+        requestId: 'request_1',
+        correlationId: 'correlation_1',
+      });
+    }
     expect(patientFindManyMock).toHaveBeenNthCalledWith(1, {
       where: {
         org_id: 'org_1',
@@ -514,6 +733,8 @@ describe('/api/care-reports GET', () => {
 
     expect(response.status).toBe(500);
     expectSensitiveNoStore(response);
+    expect(response.headers.get('X-Request-Id')).toBe('request_1');
+    expect(response.headers.get('X-Correlation-Id')).toBe('correlation_1');
     const body = await response.json();
     expect(body).toMatchObject({
       code: 'INTERNAL_ERROR',
@@ -521,13 +742,15 @@ describe('/api/care-reports GET', () => {
     });
     expect(JSON.stringify(body)).not.toContain('山田太郎');
     expect(JSON.stringify(body)).not.toContain('raw care report');
+    expect(loggerErrorMock).toHaveBeenCalledOnce();
     expect(loggerErrorMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        event: 'care_reports_get_unhandled_error',
+      {
+        event: 'route_handler_unhandled_error',
         route: '/api/care-reports',
         method: 'GET',
-        status: 500,
-      }),
+        requestId: 'request_1',
+        correlationId: 'correlation_1',
+      },
       unsafeError,
     );
     const [routeContext, logError] = loggerErrorMock.mock.calls[0] ?? [];
@@ -934,12 +1157,13 @@ describe('/api/care-reports GET', () => {
     expect(patientQuery.where.id.in).toHaveLength(500);
     expect(patientQuery.where.id.in).not.toContain('patient_501');
     expect(loggerErrorMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        event: 'care_reports_get_unhandled_error',
+      {
+        event: 'route_handler_unhandled_error',
         route: '/api/care-reports',
         method: 'GET',
-        status: 500,
-      }),
+        requestId: 'request_1',
+        correlationId: 'correlation_1',
+      },
       expect.objectContaining({
         message: 'Care report palette bounded scan limit exceeded',
       }),

@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { unstable_rethrow } from 'next/navigation';
-import { requireAuthContext, type AuthContext } from '@/lib/auth/context';
+import { requireAuthContext, withAuthContext, type AuthContext } from '@/lib/auth/context';
 import { runWithRequestAuthContext } from '@/lib/auth/request-context';
 import { withOrgContext } from '@/lib/db/rls';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
@@ -463,14 +463,7 @@ function careReportSourceErrorResponse(result: {
   return result.errorKind === 'forbidden' ? forbidden(result.error) : validationError(result.error);
 }
 
-async function authenticatedGET(req: NextRequest) {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canReport',
-    message: '報告書の閲覧権限がありません',
-  });
-  if ('response' in authResult) return authResult.response;
-  const { ctx } = authResult;
-
+async function careReportsGET(req: NextRequest, ctx: AuthContext) {
   return runWithRequestAuthContext(ctx, async () => {
     const { searchParams } = new URL(req.url);
     const { cursor, limit } = parsePaginationParams(searchParams);
@@ -961,25 +954,10 @@ async function authenticatedGET(req: NextRequest) {
   });
 }
 
-export async function GET(req: NextRequest) {
-  return withRoutePerformance(req, async () => {
-    try {
-      return withSensitiveNoStore(await authenticatedGET(req));
-    } catch (err) {
-      unstable_rethrow(err);
-      logger.error(
-        {
-          event: 'care_reports_get_unhandled_error',
-          route: ROUTE,
-          method: req.method,
-          status: 500,
-        },
-        err,
-      );
-      return withSensitiveNoStore(internalError());
-    }
-  });
-}
+export const GET = withAuthContext(careReportsGET, {
+  permission: 'canReport',
+  message: '報告書の閲覧権限がありません',
+});
 
 async function authenticatedPOST(req: NextRequest) {
   const authResult = await requireAuthContext(req, {
