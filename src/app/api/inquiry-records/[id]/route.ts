@@ -1,7 +1,6 @@
 import { NextRequest } from 'next/server';
-import { unstable_rethrow } from 'next/navigation';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
-import { requireAuthContext } from '@/lib/auth/context';
+import { withAuthContext, type AuthContext, type AuthRouteContext } from '@/lib/auth/context';
 import { canFinalizeClinicalState } from '@/lib/auth/clinical-finalization';
 import { withOrgContext } from '@/lib/db/rls';
 import {
@@ -9,10 +8,8 @@ import {
   validationError,
   notFound,
   conflict,
-  internalError,
   forbiddenResponse,
 } from '@/lib/api/response';
-import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { updateInquiryRecordSchema } from '@/lib/validations/prescription';
@@ -20,11 +17,8 @@ import { prisma } from '@/lib/db/client';
 import { resolveOperationalTasks } from '@/server/services/operational-tasks';
 import { buildMedicationCycleAssignmentWhere } from '@/server/services/prescription-access';
 import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cache';
-import { logger } from '@/lib/utils/logger';
 import type { InquiryRecord } from '@prisma/client';
 import type { UpdateInquiryRecordInput } from '@/lib/validations/prescription';
-
-const ROUTE = '/api/inquiry-records/[id]';
 
 const inquiryLineAuditFields = [
   'drug_name',
@@ -89,15 +83,9 @@ function buildInquiryLineUpdateAudit(
 
 async function authenticatedPATCH(
   req: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
+  ctx: AuthContext,
+  { params }: AuthRouteContext<{ id: string }>,
 ) {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canVisit',
-    message: '問い合わせ記録の更新権限がありません',
-  });
-  if ('response' in authResult) return authResult.response;
-  const ctx = authResult.ctx;
-
   const { id: rawId } = await params;
   const id = normalizeRequiredRouteParam(rawId);
   if (!id) return validationError('疑義照会記録IDが不正です');
@@ -434,20 +422,7 @@ async function authenticatedPATCH(
   return success({ data: inquiryResult.inquiry });
 }
 
-export async function PATCH(req: NextRequest, routeContext: { params: Promise<{ id: string }> }) {
-  try {
-    return withSensitiveNoStore(await authenticatedPATCH(req, routeContext));
-  } catch (err) {
-    unstable_rethrow(err);
-    logger.error(
-      {
-        event: 'inquiry_record_patch_unhandled_error',
-        route: ROUTE,
-        method: req.method,
-        status: 500,
-      },
-      err,
-    );
-    return withSensitiveNoStore(internalError());
-  }
-}
+export const PATCH = withAuthContext<{ id: string }>(authenticatedPATCH, {
+  permission: 'canVisit',
+  message: '問い合わせ記録の更新権限がありません',
+});

@@ -4,6 +4,7 @@ import { expectNoStore } from '@/test/api-response-assertions';
 
 const {
   requireAuthContextMock,
+  withAuthContextOptions,
   withOrgContextMock,
   inquiryRecordFindFirstMock,
   prescriptionLineFindFirstMock,
@@ -12,6 +13,7 @@ const {
   loggerErrorMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
+  withAuthContextOptions: [] as unknown[],
   withOrgContextMock: vi.fn(),
   inquiryRecordFindFirstMock: vi.fn(),
   prescriptionLineFindFirstMock: vi.fn(),
@@ -21,7 +23,21 @@ const {
 }));
 
 vi.mock('@/lib/auth/context', () => ({
-  requireAuthContext: requireAuthContextMock,
+  withAuthContext: (handler: (...args: unknown[]) => Promise<Response>, options?: unknown) => {
+    withAuthContextOptions.push(options);
+    return async (req: NextRequest, routeContext: unknown) => {
+      const authResult = await requireAuthContextMock(req, options);
+      if ('response' in authResult) {
+        authResult.response.headers.set('Cache-Control', 'private, no-store, max-age=0');
+        authResult.response.headers.set('Pragma', 'no-cache');
+        return authResult.response;
+      }
+      const response = await handler(req, authResult.ctx, routeContext);
+      response.headers.set('Cache-Control', 'private, no-store, max-age=0');
+      response.headers.set('Pragma', 'no-cache');
+      return response;
+    };
+  },
 }));
 
 vi.mock('@/lib/db/client', () => ({
@@ -102,6 +118,15 @@ describe('/api/inquiry-records/[id] PATCH', () => {
       route: 'internal',
       updated_at: new Date('2026-01-01T00:00:00.000Z'),
     });
+  });
+
+  it('registers the dynamic PATCH wrapper with the exact visit permission contract', () => {
+    expect(withAuthContextOptions).toEqual([
+      {
+        permission: 'canVisit',
+        message: '問い合わせ記録の更新権限がありません',
+      },
+    ]);
   });
 
   it('wraps authentication failures with no-store headers', async () => {
@@ -404,39 +429,20 @@ describe('/api/inquiry-records/[id] PATCH', () => {
     expect(withOrgContextMock).not.toHaveBeenCalled();
   });
 
-  it('returns a fixed no-store 500 when inquiry lookup fails unexpectedly', async () => {
+  it('leaves unexpected inquiry lookup errors to the shared wrapper boundary', async () => {
     const unsafeError = new Error('raw patient inquiry secret');
     unsafeError.name = 'InquiryPatientSecretError';
     inquiryRecordFindFirstMock.mockRejectedValueOnce(unsafeError);
 
-    const response = await PATCH(
-      createRequest({
-        result: 'unchanged',
-      }),
-      { params: Promise.resolve({ id: 'inquiry_1' }) },
-    );
-
-    if (!response) throw new Error('response is required');
-    expect(response.status).toBe(500);
-    expectNoStore(response);
-    const bodyText = await response.text();
-    expect(bodyText).toContain('INTERNAL_ERROR');
-    expect(bodyText).not.toContain('raw patient inquiry secret');
-    expect(loggerErrorMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        event: 'inquiry_record_patch_unhandled_error',
-        route: '/api/inquiry-records/[id]',
-        method: 'PATCH',
-        status: 500,
-      }),
-      unsafeError,
-    );
-    const [logContext, logError] = loggerErrorMock.mock.calls[0] ?? [];
-    expect(logError).toBe(unsafeError);
-    expect(logContext).not.toHaveProperty('error_name');
-    const logContextText = JSON.stringify(logContext);
-    expect(logContextText).not.toContain('raw patient inquiry secret');
-    expect(logContextText).not.toContain('InquiryPatientSecretError');
+    await expect(
+      PATCH(
+        createRequest({
+          result: 'unchanged',
+        }),
+        { params: Promise.resolve({ id: 'inquiry_1' }) },
+      ),
+    ).rejects.toBe(unsafeError);
+    expect(loggerErrorMock).not.toHaveBeenCalled();
   });
 
   it('updates the linked prescription line when confirming a changed inquiry', async () => {
