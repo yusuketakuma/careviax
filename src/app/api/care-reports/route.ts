@@ -1,13 +1,11 @@
 import { NextRequest } from 'next/server';
-import { unstable_rethrow } from 'next/navigation';
-import { requireAuthContext, withAuthContext, type AuthContext } from '@/lib/auth/context';
+import { withAuthContext, type AuthContext } from '@/lib/auth/context';
 import { runWithRequestAuthContext } from '@/lib/auth/request-context';
 import { withOrgContext } from '@/lib/db/rls';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import {
   conflict,
   forbidden,
-  internalError,
   success,
   successWithMeasuredJsonPayload,
   validationError,
@@ -37,11 +35,7 @@ import {
 } from '@/server/services/care-report-source-provenance';
 import { getCareReportSourceBillingEvidence } from '@/server/services/care-report-source-readers';
 import { canOutputCareReport } from '@/server/services/care-report-output-policy';
-import { logger } from '@/lib/utils/logger';
-import { withRoutePerformance } from '@/lib/utils/performance';
 import { japanDayInstantRangeFromDateKey } from '@/lib/utils/date-boundary';
-
-const ROUTE = '/api/care-reports';
 
 const requiredTrimmedStringSchema = (message: string) => z.string().trim().min(1, message);
 const optionalTrimmedStringSchema = z.preprocess(
@@ -959,14 +953,7 @@ export const GET = withAuthContext(careReportsGET, {
   message: '報告書の閲覧権限がありません',
 });
 
-async function authenticatedPOST(req: NextRequest) {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canAuthorReport',
-    message: '報告書の作成権限がありません',
-  });
-  if ('response' in authResult) return authResult.response;
-  const { ctx } = authResult;
-
+async function careReportsPOST(req: NextRequest, ctx: AuthContext) {
   return runWithRequestAuthContext(ctx, async () => {
     const payload = await readJsonObjectRequestBody(req);
     if (!payload) return validationError('リクエストボディが不正です');
@@ -1143,22 +1130,7 @@ async function authenticatedPOST(req: NextRequest) {
   });
 }
 
-export async function POST(req: NextRequest) {
-  return withRoutePerformance(req, async () => {
-    try {
-      return withSensitiveNoStore(await authenticatedPOST(req));
-    } catch (err) {
-      unstable_rethrow(err);
-      logger.error(
-        {
-          event: 'care_reports_post_unhandled_error',
-          route: ROUTE,
-          method: req.method,
-          status: 500,
-        },
-        err,
-      );
-      return withSensitiveNoStore(internalError());
-    }
-  });
-}
+export const POST = withAuthContext(careReportsPOST, {
+  permission: 'canAuthorReport',
+  message: '報告書の作成権限がありません',
+});

@@ -226,7 +226,7 @@ function getCareReports(req: AuthenticatedTestRequest) {
 }
 
 function createCareReport(req: AuthenticatedTestRequest) {
-  return POST(req);
+  return POST(req, emptyRouteContext);
 }
 
 function setupAuthMocks() {
@@ -1970,6 +1970,118 @@ describe('/api/care-reports POST', () => {
     });
   }
 
+  it('rejects POST auth before consuming the body or reading report sources', async () => {
+    const request = createMalformedPostRequest();
+    requireAuthContextMock.mockResolvedValueOnce({
+      response: NextResponse.json(
+        { code: 'FORBIDDEN', message: '報告書の作成権限がありません' },
+        { status: 403 },
+      ),
+    });
+
+    const response = await createCareReport(request);
+
+    expect(response.status).toBe(403);
+    expectSensitiveNoStore(response);
+    expect(request.bodyUsed).toBe(false);
+    expect(withRoutePerformanceMock).toHaveBeenCalledOnce();
+    expect(requireAuthContextMock).toHaveBeenCalledWith(expect.any(NextRequest), {
+      permission: 'canAuthorReport',
+      message: '報告書の作成権限がありません',
+    });
+    expect(runWithRequestAuthContextMock).not.toHaveBeenCalled();
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(visitRecordFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(careReportCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a traced fixed 500 when POST auth resolution throws', async () => {
+    const unsafeError = new Error('患者 山田太郎 report create auth secret');
+    requireAuthContextMock.mockRejectedValueOnce(unsafeError);
+    const request = createAuthenticatedRequest('http://localhost/api/care-reports', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-request-id': 'untrusted_request_id',
+        'x-correlation-id': 'correlation_post_1',
+      },
+      body: '{"patient_id":',
+    });
+
+    const response = await createCareReport(request);
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    expect(response.headers.get('X-Request-Id')).toBe('generated_request_1');
+    expect(response.headers.get('X-Correlation-Id')).toBe('correlation_post_1');
+    expect(request.bodyUsed).toBe(false);
+    const body = await response.json();
+    expect(body).toEqual({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    expect(JSON.stringify(body)).not.toContain('山田太郎');
+    expect(runWithRequestAuthContextMock).not.toHaveBeenCalled();
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(careReportCreateMock).not.toHaveBeenCalled();
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      {
+        event: 'route_auth_unhandled_error',
+        route: '/api/care-reports',
+        method: 'POST',
+        requestId: 'generated_request_1',
+        correlationId: 'correlation_post_1',
+      },
+      unsafeError,
+    );
+  });
+
+  it('rethrows POST auth control-flow errors without consuming or mutating', async () => {
+    const controlFlowError = new Error('NEXT_REDIRECT');
+    const request = createMalformedPostRequest();
+    requireAuthContextMock.mockRejectedValueOnce(controlFlowError);
+    unstableRethrowMock.mockImplementation((error) => {
+      if (error === controlFlowError) throw error;
+    });
+
+    await expect(createCareReport(request)).rejects.toBe(controlFlowError);
+
+    expect(request.bodyUsed).toBe(false);
+    expect(runWithRequestAuthContextMock).not.toHaveBeenCalled();
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(careReportCreateMock).not.toHaveBeenCalled();
+    expect(loggerErrorMock).not.toHaveBeenCalled();
+  });
+
+  it('rethrows POST handler control-flow errors without logging or creating a report', async () => {
+    const controlFlowError = new Error('NEXT_NOT_FOUND');
+    patientFindFirstMock.mockRejectedValueOnce(controlFlowError);
+    unstableRethrowMock.mockImplementation((error) => {
+      if (error === controlFlowError) throw error;
+    });
+
+    await expect(
+      createCareReport(
+        createPostRequest({
+          patient_id: 'patient_1',
+          case_id: 'case_1',
+          visit_record_id: 'visit_1',
+          report_type: 'physician_report',
+          content: {},
+        }),
+      ),
+    ).rejects.toBe(controlFlowError);
+
+    expect(runWithRequestAuthContextMock).toHaveBeenCalledTimes(2);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(careReportCreateMock).not.toHaveBeenCalled();
+    expect(loggerErrorMock).not.toHaveBeenCalled();
+  });
+
   it('creates a report only when patient, case, and visit record belong together', async () => {
     const response = await createCareReport(
       createPostRequest({
@@ -1984,6 +2096,23 @@ describe('/api/care-reports POST', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(201);
     expectSensitiveNoStore(response);
+    expect(response.headers.get('X-Request-Id')).toBe('request_1');
+    expect(response.headers.get('X-Correlation-Id')).toBe('correlation_1');
+    expect(withRoutePerformanceMock).toHaveBeenCalledOnce();
+    expect(requireAuthContextMock).toHaveBeenCalledWith(expect.any(NextRequest), {
+      permission: 'canAuthorReport',
+      message: '報告書の作成権限がありません',
+    });
+    expect(runWithRequestAuthContextMock).toHaveBeenCalledTimes(2);
+    for (const [ctx] of runWithRequestAuthContextMock.mock.calls) {
+      expect(ctx).toEqual({
+        orgId: 'org_1',
+        userId: 'user_1',
+        role: 'pharmacist',
+        requestId: 'request_1',
+        correlationId: 'correlation_1',
+      });
+    }
     expect(patientFindFirstMock).toHaveBeenCalledWith({
       where: { id: 'patient_1', org_id: 'org_1' },
       select: { id: true },
@@ -2624,6 +2753,8 @@ describe('/api/care-reports POST', () => {
 
     expect(response.status).toBe(500);
     expectSensitiveNoStore(response);
+    expect(response.headers.get('X-Request-Id')).toBe('request_1');
+    expect(response.headers.get('X-Correlation-Id')).toBe('correlation_1');
     const body = await response.json();
     expect(body).toMatchObject({
       code: 'INTERNAL_ERROR',
@@ -2631,13 +2762,15 @@ describe('/api/care-reports POST', () => {
     });
     expect(JSON.stringify(body)).not.toContain('山田太郎');
     expect(JSON.stringify(body)).not.toContain('raw care report');
+    expect(loggerErrorMock).toHaveBeenCalledOnce();
     expect(loggerErrorMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        event: 'care_reports_post_unhandled_error',
+      {
+        event: 'route_handler_unhandled_error',
         route: '/api/care-reports',
         method: 'POST',
-        status: 500,
-      }),
+        requestId: 'request_1',
+        correlationId: 'correlation_1',
+      },
       unsafeError,
     );
     const [routeContext, logError] = loggerErrorMock.mock.calls[0] ?? [];

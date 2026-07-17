@@ -150,7 +150,10 @@ const routes: RouteEntry[] = [
     handler: (req) => conferenceNoteTasksPost(req, { params: Promise.resolve({ id: 'note_1' }) }),
     invalidBody: [],
   },
-  { name: 'care-reports POST', handler: (req) => careReportsPost(req) },
+  {
+    name: 'care-reports POST',
+    handler: (req) => careReportsPost(req, emptyRouteContext),
+  },
   {
     name: 'document-delivery-rules POST',
     handler: (req) => documentDeliveryRulesPost(req, emptyRouteContext),
