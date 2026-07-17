@@ -11,6 +11,11 @@ const {
   previewMhlwGenericFlagsMock,
   previewGenericNameMappingsMock,
   loggerErrorMock,
+  invalidateSearchCacheMock,
+  invalidateDetailCacheMock,
+  clearRequestAuthContextMock,
+  runWithRequestAuthContextMock,
+  unstableRethrowMock,
 } = vi.hoisted(() => {
   const membershipFindFirstMock = vi.fn();
   return {
@@ -26,8 +31,20 @@ const {
     previewMhlwGenericFlagsMock: vi.fn(),
     previewGenericNameMappingsMock: vi.fn(),
     loggerErrorMock: vi.fn(),
+    invalidateSearchCacheMock: vi.fn(),
+    invalidateDetailCacheMock: vi.fn(),
+    clearRequestAuthContextMock: vi.fn(),
+    runWithRequestAuthContextMock: vi.fn((_ctx, callback: () => unknown) => callback()),
+    unstableRethrowMock: vi.fn(),
   };
 });
+
+vi.mock('next/navigation', () => ({ unstable_rethrow: unstableRethrowMock }));
+
+vi.mock('@/lib/auth/request-context', () => ({
+  clearRequestAuthContext: clearRequestAuthContextMock,
+  runWithRequestAuthContext: runWithRequestAuthContextMock,
+}));
 
 vi.mock('@/lib/auth/config', () => ({
   auth: authMock,
@@ -48,7 +65,18 @@ vi.mock('@/server/services/drug-master-import/mhlw', () => ({
   previewGenericNameMappings: previewGenericNameMappingsMock,
 }));
 
-import { POST } from './route';
+vi.mock('@/server/services/drug-master-search-cache', () => ({
+  invalidateDrugMasterSearchCache: invalidateSearchCacheMock,
+}));
+
+vi.mock('@/server/services/drug-master-detail-cache', () => ({
+  invalidateDrugMasterDetailCache: invalidateDetailCacheMock,
+}));
+
+import { POST as rawPOST } from './route';
+
+const emptyRouteContext = { params: Promise.resolve({}) };
+const POST = (req: NextRequest) => rawPOST(req, emptyRouteContext);
 
 function createJsonRequest(body: unknown) {
   return new NextRequest('http://localhost/api/drug-master-imports/mhlw-generic', {
@@ -181,6 +209,8 @@ describe('/api/drug-master-imports/mhlw-generic', () => {
     expect(importGenericNameMappingsMock).not.toHaveBeenCalled();
     expect(previewMhlwGenericFlagsMock).not.toHaveBeenCalled();
     expect(previewGenericNameMappingsMock).not.toHaveBeenCalled();
+    expect(invalidateSearchCacheMock).not.toHaveBeenCalled();
+    expect(invalidateDetailCacheMock).not.toHaveBeenCalled();
   });
 
   it('rejects malformed JSON before import execution', async () => {
@@ -223,10 +253,28 @@ describe('/api/drug-master-imports/mhlw-generic', () => {
 
     expect(response.status).toBe(201);
     expectNoStore(response);
+    expect(response.headers.get('X-Request-Id')).toBeTruthy();
+    expect(response.headers.get('X-Correlation-Id')).toBeTruthy();
+    expect(runWithRequestAuthContextMock).toHaveBeenCalledOnce();
+    expect(runWithRequestAuthContextMock).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: 'user_1', orgId: 'org_1', role: 'admin' }),
+      expect.any(Function),
+    );
     expect(importMhlwGenericFlagsMock).toHaveBeenCalled();
     expect(importGenericNameMappingsMock).toHaveBeenCalled();
     expect(previewMhlwGenericFlagsMock).not.toHaveBeenCalled();
     expect(previewGenericNameMappingsMock).not.toHaveBeenCalled();
+    expect(invalidateSearchCacheMock).toHaveBeenCalledOnce();
+    expect(invalidateDetailCacheMock).toHaveBeenCalledOnce();
+    expect(importMhlwGenericFlagsMock.mock.invocationCallOrder[0]).toBeLessThan(
+      importGenericNameMappingsMock.mock.invocationCallOrder[0]!,
+    );
+    expect(importGenericNameMappingsMock.mock.invocationCallOrder[0]).toBeLessThan(
+      invalidateSearchCacheMock.mock.invocationCallOrder[0]!,
+    );
+    expect(invalidateSearchCacheMock.mock.invocationCallOrder[0]).toBeLessThan(
+      invalidateDetailCacheMock.mock.invocationCallOrder[0]!,
+    );
     await expect(response.json()).resolves.toMatchObject({
       data: {
         mode: 'all',
@@ -276,6 +324,12 @@ describe('/api/drug-master-imports/mhlw-generic', () => {
     });
     expect(importMhlwGenericFlagsMock).not.toHaveBeenCalled();
     expect(importGenericNameMappingsMock).not.toHaveBeenCalled();
+    expect(runWithRequestAuthContextMock).toHaveBeenCalledOnce();
+    expect(previewMhlwGenericFlagsMock.mock.invocationCallOrder[0]).toBeLessThan(
+      previewGenericNameMappingsMock.mock.invocationCallOrder[0]!,
+    );
+    expect(invalidateSearchCacheMock).not.toHaveBeenCalled();
+    expect(invalidateDetailCacheMock).not.toHaveBeenCalled();
     await expect(response.json()).resolves.toMatchObject({
       data: {
         dryRun: true,
@@ -349,6 +403,27 @@ describe('/api/drug-master-imports/mhlw-generic', () => {
     });
   });
 
+  it('imports mappings only and returns a null flags projection', async () => {
+    const response = await POST(createJsonRequest({ mode: 'mappings' }));
+
+    expect(response.status).toBe(201);
+    expectNoStore(response);
+    expect(importMhlwGenericFlagsMock).not.toHaveBeenCalled();
+    expect(importGenericNameMappingsMock).toHaveBeenCalledWith(prismaMock, {
+      workbookUrl: undefined,
+    });
+    expect(invalidateSearchCacheMock).toHaveBeenCalledOnce();
+    expect(invalidateDetailCacheMock).toHaveBeenCalledOnce();
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        mode: 'mappings',
+        importedCount: 20,
+        flags: null,
+        mappings: { importedCount: 20 },
+      },
+    });
+  });
+
   it.each([
     ['non-boolean dryRun', { dryRun: 'true' }],
     ['negative previewLimit', { dryRun: true, previewLimit: -1 }],
@@ -381,25 +456,96 @@ describe('/api/drug-master-imports/mhlw-generic', () => {
     expect(importGenericNameMappingsMock).not.toHaveBeenCalled();
     expect(previewMhlwGenericFlagsMock).not.toHaveBeenCalled();
     expect(previewGenericNameMappingsMock).not.toHaveBeenCalled();
+    expect(invalidateSearchCacheMock).not.toHaveBeenCalled();
+    expect(invalidateDetailCacheMock).not.toHaveBeenCalled();
     expect(JSON.stringify(payload)).not.toMatch(/importer|secret/);
   });
 
-  it('returns no-store 403 before reading the body when admin permission is denied', async () => {
-    membershipFindFirstMock.mockResolvedValueOnce({ role: 'viewer', site_id: null });
+  it.each([
+    'http://www.mhlw.go.jp/topics/generic.xlsx',
+    'https://example.com/generic.xlsx',
+    'https://localhost/generic.xlsx',
+    'https://127.0.0.1/generic.xlsx',
+  ])('rejects disallowed MHLW workbook URL %s before external work', async (workbookUrl) => {
+    const response = await POST(createJsonRequest({ workbookUrl }));
 
-    const response = await POST(
-      createJsonRequest({
-        mode: 'all',
-        workbookUrl: 'https://importer:secret@www.mhlw.go.jp/topics/2026/04/xls/generic.xlsx',
-      }),
-    );
-
-    expect(response.status).toBe(403);
+    expect(response.status).toBe(400);
     expectNoStore(response);
     expect(importMhlwGenericFlagsMock).not.toHaveBeenCalled();
     expect(importGenericNameMappingsMock).not.toHaveBeenCalled();
     expect(previewMhlwGenericFlagsMock).not.toHaveBeenCalled();
     expect(previewGenericNameMappingsMock).not.toHaveBeenCalled();
+    expect(invalidateSearchCacheMock).not.toHaveBeenCalled();
+    expect(invalidateDetailCacheMock).not.toHaveBeenCalled();
+  });
+
+  it('returns no-store 401 before reading the body when unauthenticated', async () => {
+    authMock.mockResolvedValueOnce(null);
+    const request = createMalformedJsonRequest();
+
+    const response = await POST(request);
+
+    expect(response.status).toBe(401);
+    expectNoStore(response);
+    expect(request.bodyUsed).toBe(false);
+    expect(runWithRequestAuthContextMock).not.toHaveBeenCalled();
+    expect(importMhlwGenericFlagsMock).not.toHaveBeenCalled();
+    expect(importGenericNameMappingsMock).not.toHaveBeenCalled();
+    expect(invalidateSearchCacheMock).not.toHaveBeenCalled();
+    expect(invalidateDetailCacheMock).not.toHaveBeenCalled();
+  });
+
+  it('returns no-store 403 before reading the body when admin permission is denied', async () => {
+    membershipFindFirstMock.mockResolvedValueOnce({ role: 'pharmacist', site_id: null });
+    const request = createMalformedJsonRequest();
+
+    const response = await POST(request);
+
+    expect(response.status).toBe(403);
+    expectNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '医薬品マスター取込は管理者のみ実行できます',
+    });
+    expect(request.bodyUsed).toBe(false);
+    expect(runWithRequestAuthContextMock).not.toHaveBeenCalled();
+    expect(importMhlwGenericFlagsMock).not.toHaveBeenCalled();
+    expect(importGenericNameMappingsMock).not.toHaveBeenCalled();
+    expect(previewMhlwGenericFlagsMock).not.toHaveBeenCalled();
+    expect(previewGenericNameMappingsMock).not.toHaveBeenCalled();
+    expect(invalidateSearchCacheMock).not.toHaveBeenCalled();
+    expect(invalidateDetailCacheMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a generated-trace safe 500 when authentication dependencies throw', async () => {
+    const unsafeError = new Error('raw MHLW workbook auth token secret');
+    unsafeError.name = 'MhlwGenericAuthSecretError';
+    authMock.mockRejectedValueOnce(unsafeError);
+    const request = createMalformedJsonRequest();
+
+    const response = await POST(request);
+    const requestId = response.headers.get('X-Request-Id');
+    const correlationId = response.headers.get('X-Correlation-Id');
+
+    expect(response.status).toBe(500);
+    expectNoStore(response);
+    expect(requestId).toBeTruthy();
+    expect(correlationId).toBe(requestId);
+    expect(request.bodyUsed).toBe(false);
+    expect(runWithRequestAuthContextMock).not.toHaveBeenCalled();
+    expect(importMhlwGenericFlagsMock).not.toHaveBeenCalled();
+    expect(importGenericNameMappingsMock).not.toHaveBeenCalled();
+    expect(invalidateSearchCacheMock).not.toHaveBeenCalled();
+    expect(invalidateDetailCacheMock).not.toHaveBeenCalled();
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      {
+        event: 'route_auth_unhandled_error',
+        route: '/api/drug-master-imports/mhlw-generic',
+        method: 'POST',
+        requestId,
+        correlationId,
+      },
+      unsafeError,
+    );
   });
 
   it('returns a sanitized no-store 500 when MHLW generic import fails unexpectedly', async () => {
@@ -414,12 +560,17 @@ describe('/api/drug-master-imports/mhlw-generic', () => {
     const body = await response.json();
     expect(body).toMatchObject({ code: 'INTERNAL_ERROR' });
     expect(JSON.stringify(body)).not.toContain('mhlw generic import secret');
+    expect(importMhlwGenericFlagsMock).toHaveBeenCalledOnce();
+    expect(importGenericNameMappingsMock).toHaveBeenCalledOnce();
+    expect(invalidateSearchCacheMock).not.toHaveBeenCalled();
+    expect(invalidateDetailCacheMock).not.toHaveBeenCalled();
     expect(loggerErrorMock).toHaveBeenCalledWith(
       {
-        event: 'drug_master_imports_mhlw_generic_post_unhandled_error',
+        event: 'route_handler_unhandled_error',
         route: '/api/drug-master-imports/mhlw-generic',
         method: 'POST',
-        status: 500,
+        requestId: response.headers.get('X-Request-Id'),
+        correlationId: response.headers.get('X-Correlation-Id'),
       },
       unsafeError,
     );
@@ -445,12 +596,15 @@ describe('/api/drug-master-imports/mhlw-generic', () => {
     expect(JSON.stringify(body)).not.toContain('mhlw generic preview secret');
     expect(importMhlwGenericFlagsMock).not.toHaveBeenCalled();
     expect(importGenericNameMappingsMock).not.toHaveBeenCalled();
+    expect(invalidateSearchCacheMock).not.toHaveBeenCalled();
+    expect(invalidateDetailCacheMock).not.toHaveBeenCalled();
     expect(loggerErrorMock).toHaveBeenCalledWith(
       {
-        event: 'drug_master_imports_mhlw_generic_post_unhandled_error',
+        event: 'route_handler_unhandled_error',
         route: '/api/drug-master-imports/mhlw-generic',
         method: 'POST',
-        status: 500,
+        requestId: response.headers.get('X-Request-Id'),
+        correlationId: response.headers.get('X-Correlation-Id'),
       },
       unsafeError,
     );
@@ -460,5 +614,50 @@ describe('/api/drug-master-imports/mhlw-generic', () => {
     const logged = JSON.stringify(logContext);
     expect(logged).not.toContain('mhlw generic preview secret');
     expect(logged).not.toContain('MhlwGenericPreviewSecretError');
+  });
+
+  it('does not run mappings or invalidate caches when the first all-mode import fails', async () => {
+    importMhlwGenericFlagsMock.mockRejectedValueOnce(new Error('flags failed'));
+
+    const response = await POST(createJsonRequest({ mode: 'all' }));
+
+    expect(response.status).toBe(500);
+    expect(importGenericNameMappingsMock).not.toHaveBeenCalled();
+    expect(invalidateSearchCacheMock).not.toHaveBeenCalled();
+    expect(invalidateDetailCacheMock).not.toHaveBeenCalled();
+  });
+
+  it('rethrows authentication control flow without logging or side effects', async () => {
+    const controlFlowError = new Error('NEXT_REDIRECT');
+    authMock.mockRejectedValueOnce(controlFlowError);
+    unstableRethrowMock.mockImplementationOnce((error) => {
+      throw error;
+    });
+    const request = createMalformedJsonRequest();
+
+    await expect(POST(request)).rejects.toBe(controlFlowError);
+
+    expect(request.bodyUsed).toBe(false);
+    expect(loggerErrorMock).not.toHaveBeenCalled();
+    expect(runWithRequestAuthContextMock).not.toHaveBeenCalled();
+    expect(importMhlwGenericFlagsMock).not.toHaveBeenCalled();
+    expect(invalidateSearchCacheMock).not.toHaveBeenCalled();
+    expect(invalidateDetailCacheMock).not.toHaveBeenCalled();
+  });
+
+  it('rethrows import control flow without shared logging or cache invalidation', async () => {
+    const controlFlowError = new Error('NEXT_NOT_FOUND');
+    importMhlwGenericFlagsMock.mockRejectedValueOnce(controlFlowError);
+    unstableRethrowMock.mockImplementationOnce((error) => {
+      throw error;
+    });
+
+    await expect(POST(createJsonRequest({ mode: 'all' }))).rejects.toBe(controlFlowError);
+
+    expect(loggerErrorMock).not.toHaveBeenCalled();
+    expect(runWithRequestAuthContextMock).toHaveBeenCalledOnce();
+    expect(importGenericNameMappingsMock).not.toHaveBeenCalled();
+    expect(invalidateSearchCacheMock).not.toHaveBeenCalled();
+    expect(invalidateDetailCacheMock).not.toHaveBeenCalled();
   });
 });

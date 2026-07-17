@@ -1,14 +1,9 @@
 import { NextRequest } from 'next/server';
-import { unstable_rethrow } from 'next/navigation';
 import { z } from 'zod';
-import { internalError, success, validationError } from '@/lib/api/response';
-import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
-import { requireAuthContext } from '@/lib/auth/context';
-import { runWithRequestAuthContext } from '@/lib/auth/request-context';
+import { success, validationError } from '@/lib/api/response';
+import { withAuthContext } from '@/lib/auth/context';
 import { readOptionalJsonObjectRequestBody } from '@/lib/api/request-body';
 import { prisma } from '@/lib/db/client';
-import { logger } from '@/lib/utils/logger';
-import { withRoutePerformance } from '@/lib/utils/performance';
 import {
   importGenericNameMappings,
   importMhlwGenericFlags,
@@ -37,16 +32,7 @@ const requestSchema = z.object({
   previewLimit: z.number().int().min(0).max(100).optional(),
 });
 
-const ROUTE = '/api/drug-master-imports/mhlw-generic';
-
 async function authenticatedPOST(req: NextRequest) {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canAdmin',
-    message: '医薬品マスター取込は管理者のみ実行できます',
-  });
-  if ('response' in authResult) return authResult.response;
-  const { ctx } = authResult;
-
   const payload = await readOptionalJsonObjectRequestBody(req);
   if (!payload) return validationError('リクエストボディが不正です');
 
@@ -58,28 +44,24 @@ async function authenticatedPOST(req: NextRequest) {
   const { dryRun, previewLimit, ...importOptions } = parsed.data;
 
   if (dryRun) {
-    const previewResult = await runWithRequestAuthContext(ctx, async () => {
-      const result = {
-        flags: null as Awaited<ReturnType<typeof previewMhlwGenericFlags>> | null,
-        mappings: null as Awaited<ReturnType<typeof previewGenericNameMappings>> | null,
-      };
+    const previewResult = {
+      flags: null as Awaited<ReturnType<typeof previewMhlwGenericFlags>> | null,
+      mappings: null as Awaited<ReturnType<typeof previewGenericNameMappings>> | null,
+    };
 
-      if (importOptions.mode === 'flags' || importOptions.mode === 'all') {
-        result.flags = await previewMhlwGenericFlags(prisma, {
-          workbookUrl: importOptions.workbookUrl,
-          previewLimit,
-        });
-      }
+    if (importOptions.mode === 'flags' || importOptions.mode === 'all') {
+      previewResult.flags = await previewMhlwGenericFlags(prisma, {
+        workbookUrl: importOptions.workbookUrl,
+        previewLimit,
+      });
+    }
 
-      if (importOptions.mode === 'mappings' || importOptions.mode === 'all') {
-        result.mappings = await previewGenericNameMappings(prisma, {
-          workbookUrl: importOptions.workbookUrl,
-          previewLimit,
-        });
-      }
-
-      return result;
-    });
+    if (importOptions.mode === 'mappings' || importOptions.mode === 'all') {
+      previewResult.mappings = await previewGenericNameMappings(prisma, {
+        workbookUrl: importOptions.workbookUrl,
+        previewLimit,
+      });
+    }
 
     return success({
       data: {
@@ -91,26 +73,22 @@ async function authenticatedPOST(req: NextRequest) {
     });
   }
 
-  const result = await runWithRequestAuthContext(ctx, async () => {
-    const importResult = {
-      flags: null as Awaited<ReturnType<typeof importMhlwGenericFlags>> | null,
-      mappings: null as Awaited<ReturnType<typeof importGenericNameMappings>> | null,
-    };
+  const result = {
+    flags: null as Awaited<ReturnType<typeof importMhlwGenericFlags>> | null,
+    mappings: null as Awaited<ReturnType<typeof importGenericNameMappings>> | null,
+  };
 
-    if (importOptions.mode === 'flags' || importOptions.mode === 'all') {
-      importResult.flags = await importMhlwGenericFlags(prisma, {
-        workbookUrl: importOptions.workbookUrl,
-      });
-    }
+  if (importOptions.mode === 'flags' || importOptions.mode === 'all') {
+    result.flags = await importMhlwGenericFlags(prisma, {
+      workbookUrl: importOptions.workbookUrl,
+    });
+  }
 
-    if (importOptions.mode === 'mappings' || importOptions.mode === 'all') {
-      importResult.mappings = await importGenericNameMappings(prisma, {
-        workbookUrl: importOptions.workbookUrl,
-      });
-    }
-
-    return importResult;
-  });
+  if (importOptions.mode === 'mappings' || importOptions.mode === 'all') {
+    result.mappings = await importGenericNameMappings(prisma, {
+      workbookUrl: importOptions.workbookUrl,
+    });
+  }
   invalidateDrugMasterSearchCache();
   invalidateDrugMasterDetailCache();
 
@@ -143,22 +121,7 @@ async function authenticatedPOST(req: NextRequest) {
   );
 }
 
-export async function POST(req: NextRequest) {
-  return withRoutePerformance(req, async () => {
-    try {
-      return withSensitiveNoStore(await authenticatedPOST(req));
-    } catch (err) {
-      unstable_rethrow(err);
-      logger.error(
-        {
-          event: 'drug_master_imports_mhlw_generic_post_unhandled_error',
-          route: ROUTE,
-          method: req.method,
-          status: 500,
-        },
-        err,
-      );
-      return withSensitiveNoStore(internalError());
-    }
-  });
-}
+export const POST = withAuthContext(authenticatedPOST, {
+  permission: 'canAdmin',
+  message: '医薬品マスター取込は管理者のみ実行できます',
+});
