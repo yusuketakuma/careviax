@@ -3,22 +3,47 @@ import { NextRequest } from 'next/server';
 import { expectNoStore } from '@/test/api-response-assertions';
 
 const {
-  requireAuthContextMock,
+  authMock,
+  membershipFindFirstMock,
+  prismaMock,
   withOrgContextMock,
-  withRoutePerformanceMock,
   drugMasterFindUniqueMock,
   drugPackageInsertFindManyMock,
   drugInteractionFindManyMock,
   drugAlertRuleFindManyMock,
   loggerErrorMock,
+  runWithRequestAuthContextMock,
+  securityEventExecuteRawMock,
+  unstableRethrowMock,
 } = vi.hoisted(() => {
+  const membershipFindFirstMock = vi.fn();
+  const auditLogCreateMock = vi.fn();
+  const securityEventExecuteRawMock = vi.fn();
   const drugMasterFindUniqueMock = vi.fn();
   const drugPackageInsertFindManyMock = vi.fn();
   const drugInteractionFindManyMock = vi.fn();
   const drugAlertRuleFindManyMock = vi.fn();
+  const prismaMock = {
+    membership: { findFirst: membershipFindFirstMock },
+    auditLog: { create: auditLogCreateMock },
+    $transaction: vi.fn(
+      (
+        fn: (tx: {
+          $executeRaw: typeof securityEventExecuteRawMock;
+          auditLog: { create: typeof auditLogCreateMock };
+        }) => unknown,
+      ) =>
+        fn({
+          $executeRaw: securityEventExecuteRawMock,
+          auditLog: { create: auditLogCreateMock },
+        }),
+    ),
+  };
 
   return {
-    requireAuthContextMock: vi.fn(),
+    authMock: vi.fn(),
+    membershipFindFirstMock,
+    prismaMock,
     withOrgContextMock: vi.fn((_orgId, fn) =>
       fn({
         drugMaster: { findUnique: drugMasterFindUniqueMock },
@@ -27,21 +52,30 @@ const {
         drugAlertRule: { findMany: drugAlertRuleFindManyMock },
       }),
     ),
-    withRoutePerformanceMock: vi.fn((_req, fn) => fn()),
     drugMasterFindUniqueMock,
     drugPackageInsertFindManyMock,
     drugInteractionFindManyMock,
     drugAlertRuleFindManyMock,
     loggerErrorMock: vi.fn(),
+    runWithRequestAuthContextMock: vi.fn((_ctx, callback: () => unknown) => callback()),
+    securityEventExecuteRawMock,
+    unstableRethrowMock: vi.fn(),
   };
 });
 
-vi.mock('@/lib/auth/context', () => ({
-  requireAuthContext: requireAuthContextMock,
+vi.mock('next/navigation', () => ({ unstable_rethrow: unstableRethrowMock }));
+
+vi.mock('@/lib/auth/request-context', () => ({
+  clearRequestAuthContext: vi.fn(),
+  runWithRequestAuthContext: runWithRequestAuthContextMock,
 }));
 
-vi.mock('@/lib/utils/performance', () => ({
-  withRoutePerformance: withRoutePerformanceMock,
+vi.mock('@/lib/auth/config', () => ({
+  auth: authMock,
+}));
+
+vi.mock('@/lib/db/client', () => ({
+  prisma: prismaMock,
 }));
 
 vi.mock('@/lib/db/rls', () => ({
@@ -131,9 +165,10 @@ const mockPackageInsert = {
 describe('GET /api/drug-masters/[id]/package-insert', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    requireAuthContextMock.mockResolvedValue({
-      ctx: { userId: 'user_1', orgId: 'org_1', role: 'pharmacist' },
-    });
+    authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    membershipFindFirstMock.mockResolvedValue({ role: 'pharmacist', site_id: null });
+    prismaMock.auditLog.create.mockResolvedValue({ id: 'audit_1' });
+    securityEventExecuteRawMock.mockResolvedValue(0);
     drugMasterFindUniqueMock.mockResolvedValue(mockDrug);
     drugPackageInsertFindManyMock.mockResolvedValue([mockPackageInsert]);
     drugInteractionFindManyMock.mockResolvedValue([]);
@@ -141,9 +176,7 @@ describe('GET /api/drug-masters/[id]/package-insert', () => {
   });
 
   it('returns 401 when not authenticated', async () => {
-    requireAuthContextMock.mockResolvedValue({
-      response: new Response(JSON.stringify({ code: 'AUTH_UNAUTHENTICATED' }), { status: 401 }),
-    });
+    authMock.mockResolvedValueOnce(null);
 
     const response = await invokeGet();
 
@@ -151,6 +184,49 @@ describe('GET /api/drug-masters/[id]/package-insert', () => {
     expectNoStore(response);
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(drugMasterFindUniqueMock).not.toHaveBeenCalled();
+    expect(runWithRequestAuthContextMock).not.toHaveBeenCalled();
+  });
+
+  it('preserves auth-only access for a non-admin active member', async () => {
+    membershipFindFirstMock.mockResolvedValueOnce({ role: 'clerk', site_id: null });
+
+    const response = await invokeGet();
+
+    expect(response.status).toBe(200);
+    expectNoStore(response);
+    expect(runWithRequestAuthContextMock).toHaveBeenCalledOnce();
+  });
+
+  it('returns a generated-trace safe 500 before reads when auth dependencies fail', async () => {
+    const unsafeError = new Error('raw package insert auth secret');
+    unsafeError.name = 'PackageInsertAuthSecretError';
+    authMock.mockRejectedValueOnce(unsafeError);
+
+    const response = await invokeGet();
+    const body = await response.json();
+
+    expect(response.status).toBe(500);
+    expectNoStore(response);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(drugMasterFindUniqueMock).not.toHaveBeenCalled();
+    expect(drugPackageInsertFindManyMock).not.toHaveBeenCalled();
+    expect(drugInteractionFindManyMock).not.toHaveBeenCalled();
+    expect(drugAlertRuleFindManyMock).not.toHaveBeenCalled();
+    expect(runWithRequestAuthContextMock).not.toHaveBeenCalled();
+    expect(body).toMatchObject({ code: 'INTERNAL_ERROR' });
+    expect(JSON.stringify(body)).not.toMatch(
+      /package insert auth secret|PackageInsertAuthSecretError/,
+    );
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      {
+        event: 'route_auth_unhandled_error',
+        route: '/api/drug-masters/drug_1/package-insert',
+        method: 'GET',
+        requestId: response.headers.get('X-Request-Id'),
+        correlationId: response.headers.get('X-Correlation-Id'),
+      },
+      unsafeError,
+    );
   });
 
   it('returns 404 when drug is not found', async () => {
@@ -169,11 +245,18 @@ describe('GET /api/drug-masters/[id]/package-insert', () => {
 
     expect(response.status).toBe(200);
     const body = await readPackageInsertPayload(response);
+    expect(response.headers.get('X-Request-Id')).toBeTruthy();
+    expect(response.headers.get('X-Correlation-Id')).toBeTruthy();
+    expect(runWithRequestAuthContextMock).toHaveBeenCalledOnce();
     expect(withOrgContextMock).toHaveBeenCalledWith(
       'org_1',
       expect.any(Function),
       expect.objectContaining({
-        requestContext: { userId: 'user_1', orgId: 'org_1', role: 'pharmacist' },
+        requestContext: expect.objectContaining({
+          userId: 'user_1',
+          orgId: 'org_1',
+          role: 'pharmacist',
+        }),
         maxWaitMs: 10_000,
         timeoutMs: 20_000,
       }),
@@ -209,6 +292,15 @@ describe('GET /api/drug-masters/[id]/package-insert', () => {
     expect(drugPackageInsertFindManyMock).not.toHaveBeenCalled();
     expect(drugInteractionFindManyMock).not.toHaveBeenCalled();
     expect(drugAlertRuleFindManyMock).not.toHaveBeenCalled();
+  });
+
+  it.each(['.', '..'])('rejects unsafe route id %s before RLS', async (id) => {
+    const response = await invokeGet(id);
+
+    expect(response.status).toBe(400);
+    expectNoStore(response);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(drugMasterFindUniqueMock).not.toHaveBeenCalled();
   });
 
   it('returns null package_insert when no package insert exists', async () => {
@@ -339,6 +431,34 @@ describe('GET /api/drug-masters/[id]/package-insert', () => {
     });
   });
 
+  it('starts both directional interaction reads before awaiting either result', async () => {
+    let releaseBarrier: (() => void) | undefined;
+    const barrier = new Promise<void>((resolve) => {
+      releaseBarrier = resolve;
+    });
+    drugInteractionFindManyMock.mockImplementation(() => barrier.then(() => []));
+
+    const responsePromise = invokeGet();
+
+    await vi.waitFor(() => {
+      expect(drugInteractionFindManyMock).toHaveBeenCalledTimes(2);
+    });
+    expect(drugInteractionFindManyMock).toHaveBeenNthCalledWith(1, {
+      where: { drug_a_id: 'drug_1' },
+      include: { drug_b: { select: { id: true, drug_name: true, yj_code: true } } },
+      orderBy: { severity: 'asc' },
+    });
+    expect(drugInteractionFindManyMock).toHaveBeenNthCalledWith(2, {
+      where: { drug_b_id: 'drug_1' },
+      include: { drug_a: { select: { id: true, drug_name: true, yj_code: true } } },
+      orderBy: { severity: 'asc' },
+    });
+    releaseBarrier?.();
+
+    const response = await responsePromise;
+    expect(response.status).toBe(200);
+  });
+
   it('returns applicable alert rules matching yj_code or therapeutic category', async () => {
     drugAlertRuleFindManyMock.mockResolvedValue([
       {
@@ -443,10 +563,11 @@ describe('GET /api/drug-masters/[id]/package-insert', () => {
     expect(JSON.stringify(body)).not.toContain('safety secret');
     expect(loggerErrorMock).toHaveBeenCalledWith(
       {
-        event: 'drug_masters_package_insert_get_unhandled_error',
-        route: '/api/drug-masters/[id]/package-insert',
+        event: 'route_handler_unhandled_error',
+        route: '/api/drug-masters/drug_1/package-insert',
         method: 'GET',
-        status: 500,
+        requestId: response.headers.get('X-Request-Id'),
+        correlationId: response.headers.get('X-Correlation-Id'),
       },
       unsafeError,
     );
@@ -456,5 +577,30 @@ describe('GET /api/drug-masters/[id]/package-insert', () => {
     const logged = JSON.stringify(logContext);
     expect(logged).not.toContain('safety secret');
     expect(logged).not.toContain('PackageInsertSecretError');
+  });
+
+  it('rethrows auth and handler control flow without logging', async () => {
+    const authControl = new Error('NEXT_REDIRECT');
+    authMock.mockRejectedValueOnce(authControl);
+    unstableRethrowMock.mockImplementationOnce((error) => {
+      throw error;
+    });
+
+    await expect(invokeGet()).rejects.toBe(authControl);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(loggerErrorMock).not.toHaveBeenCalled();
+
+    vi.clearAllMocks();
+    authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    membershipFindFirstMock.mockResolvedValue({ role: 'pharmacist', site_id: null });
+    const handlerControl = new Error('NEXT_NOT_FOUND');
+    withOrgContextMock.mockRejectedValueOnce(handlerControl);
+    unstableRethrowMock.mockImplementationOnce((error) => {
+      throw error;
+    });
+
+    await expect(invokeGet()).rejects.toBe(handlerControl);
+    expect(runWithRequestAuthContextMock).toHaveBeenCalledOnce();
+    expect(loggerErrorMock).not.toHaveBeenCalled();
   });
 });
