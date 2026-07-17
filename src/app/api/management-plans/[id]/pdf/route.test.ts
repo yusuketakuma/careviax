@@ -3,12 +3,24 @@ import { NextRequest } from 'next/server';
 import { expectSensitiveNoStore } from '@/test/api-response-assertions';
 
 const {
+  authContext,
+  authOptionsCapture,
   requireAuthContextMock,
   buildManagementPlanPdfMock,
   pdfResponseMock,
   recordDataExportAuditMock,
   prismaMock,
 } = vi.hoisted(() => ({
+  authContext: {
+    orgId: 'org_1',
+    userId: 'user_1',
+    role: 'pharmacist',
+    ipAddress: '127.0.0.1',
+    userAgent: 'vitest',
+    requestId: 'request_management_plan_pdf_1',
+    correlationId: 'correlation_management_plan_pdf_1',
+  },
+  authOptionsCapture: { value: undefined as unknown },
   requireAuthContextMock: vi.fn(),
   buildManagementPlanPdfMock: vi.fn(),
   pdfResponseMock: vi.fn(),
@@ -17,7 +29,30 @@ const {
 }));
 
 vi.mock('@/lib/auth/context', () => ({
-  requireAuthContext: requireAuthContextMock,
+  withAuthContext: (
+    handler: (
+      req: NextRequest,
+      ctx: typeof authContext,
+      routeContext: { params: Promise<{ id: string }> },
+    ) => Promise<Response>,
+    options: unknown,
+  ) => {
+    authOptionsCapture.value = options;
+    return async (req: NextRequest, routeContext: { params: Promise<{ id: string }> }) => {
+      const authResult = await requireAuthContextMock(req, options);
+      const response =
+        'response' in authResult
+          ? authResult.response
+          : await handler(req, authResult.ctx, routeContext);
+      response.headers.set('Cache-Control', 'private, no-store, max-age=0');
+      response.headers.set('Pragma', 'no-cache');
+      if ('ctx' in authResult) {
+        response.headers.set('X-Request-Id', authResult.ctx.requestId);
+        response.headers.set('X-Correlation-Id', authResult.ctx.correlationId);
+      }
+      return response;
+    };
+  },
 }));
 
 vi.mock('@/server/services/pdf-documents', () => ({
@@ -51,15 +86,7 @@ function expectRequestTrace(response: Response) {
 describe('/api/management-plans/[id]/pdf', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    requireAuthContextMock.mockResolvedValue({
-      ctx: {
-        orgId: 'org_1',
-        userId: 'user_1',
-        role: 'pharmacist',
-        requestId: 'request_management_plan_pdf_1',
-        correlationId: 'correlation_management_plan_pdf_1',
-      },
-    });
+    requireAuthContextMock.mockResolvedValue({ ctx: authContext });
     pdfResponseMock.mockReturnValue(
       new Response('pdf-bytes', {
         status: 200,
@@ -67,6 +94,13 @@ describe('/api/management-plans/[id]/pdf', () => {
       }),
     );
     recordDataExportAuditMock.mockResolvedValue(undefined);
+  });
+
+  it('registers the exact management plan PDF authorization policy', () => {
+    expect(authOptionsCapture.value).toEqual({
+      permission: 'canVisit',
+      message: '管理計画書 PDF の閲覧権限がありません',
+    });
   });
 
   it('rejects blank management plan ids before rendering or audit', async () => {
@@ -104,19 +138,21 @@ describe('/api/management-plans/[id]/pdf', () => {
       role: 'pharmacist',
     });
     expect(pdfResponseMock).toHaveBeenCalledWith(expect.any(Buffer), 'plan.pdf');
-    expect(recordDataExportAuditMock).toHaveBeenCalledWith(
-      expect.any(Object),
-      expect.objectContaining({
-        targetType: 'management_plan',
-        format: 'pdf',
-        targetId: 'plan_1',
-        requestId: 'request_management_plan_pdf_1',
-        correlationId: 'correlation_management_plan_pdf_1',
-      }),
-    );
+    expect(recordDataExportAuditMock).toHaveBeenCalledWith(prismaMock, {
+      orgId: 'org_1',
+      actorId: 'user_1',
+      targetType: 'management_plan',
+      targetId: 'plan_1',
+      format: 'pdf',
+      recordCount: 1,
+      ipAddress: '127.0.0.1',
+      userAgent: 'vitest',
+      requestId: 'request_management_plan_pdf_1',
+      correlationId: 'correlation_management_plan_pdf_1',
+    });
   });
 
-  it('returns a traced sanitized 500 when response creation fails after the audit', async () => {
+  it('leaves unexpected response creation failures to the shared wrapper boundary', async () => {
     buildManagementPlanPdfMock.mockResolvedValue({
       buffer: Buffer.from('pdf'),
       fileName: 'plan.pdf',
@@ -125,22 +161,12 @@ describe('/api/management-plans/[id]/pdf', () => {
       throw new Error('患者 山田花子 090-1234-5678 raw management plan response detail');
     });
 
-    const response = (await GET(createGetRequest(), {
-      params: Promise.resolve({ id: 'plan_1' }),
-    }))!;
-
-    expect(response.status).toBe(500);
-    expectSensitiveNoStore(response);
-    expectRequestTrace(response);
-    const body = await response.json();
-    expect(body).toMatchObject({
-      code: 'INTERNAL_ERROR',
-      message: 'サーバー内部でエラーが発生しました',
-    });
+    await expect(
+      GET(createGetRequest(), {
+        params: Promise.resolve({ id: 'plan_1' }),
+      }),
+    ).rejects.toThrow('raw management plan response detail');
     expect(recordDataExportAuditMock).toHaveBeenCalledTimes(1);
-    expect(JSON.stringify(body)).not.toContain('山田花子');
-    expect(JSON.stringify(body)).not.toContain('090-1234-5678');
-    expect(JSON.stringify(body)).not.toContain('raw management plan response detail');
   });
 
   it('fails closed when the management plan PDF export audit cannot be recorded', async () => {

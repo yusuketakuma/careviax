@@ -17,6 +17,7 @@ const {
   buildTracingReportPdfMock,
   buildVisitRecordPdfMock,
   buildPharmacyInvoiceDocumentPdfMock,
+  pdfResponseCallMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
   recordDataExportAuditMock: vi.fn(),
@@ -29,6 +30,7 @@ const {
   buildTracingReportPdfMock: vi.fn(),
   buildVisitRecordPdfMock: vi.fn(),
   buildPharmacyInvoiceDocumentPdfMock: vi.fn(),
+  pdfResponseCallMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
@@ -79,6 +81,17 @@ vi.mock('@/server/services/pdf-pharmacy-invoice', () => ({
   buildPharmacyInvoiceDocumentPdf: buildPharmacyInvoiceDocumentPdfMock,
 }));
 
+vi.mock('@/lib/api/pdf-response', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/api/pdf-response')>();
+  return {
+    ...actual,
+    pdfResponse: (buffer: Buffer, fileName: string) => {
+      pdfResponseCallMock(buffer, fileName);
+      return actual.pdfResponse(buffer, fileName);
+    },
+  };
+});
+
 vi.mock('@/lib/db/client', () => ({
   prisma: {},
 }));
@@ -113,6 +126,136 @@ describe('PDF routes', () => {
       },
     });
     recordDataExportAuditMock.mockResolvedValue(undefined);
+  });
+
+  it('awaits export audit before constructing every audited PDF response', async () => {
+    const cases = [
+      {
+        name: 'management plan',
+        setup: () =>
+          buildManagementPlanPdfMock.mockResolvedValue({
+            buffer: Buffer.from('%PDF-management-plan'),
+            fileName: 'management-plan.pdf',
+          }),
+        invoke: () =>
+          managementPlanPdfGet(createRequest('http://localhost/api/management-plans/plan_1/pdf'), {
+            params: Promise.resolve({ id: 'plan_1' }),
+          }),
+      },
+      {
+        name: 'medication history',
+        setup: () =>
+          buildMedicationHistoryPdfMock.mockResolvedValue({
+            buffer: Buffer.from('%PDF-medication-history'),
+            fileName: 'medications.pdf',
+          }),
+        invoke: () =>
+          medicationHistoryPdfGet(
+            createRequest('http://localhost/api/patients/patient_1/medications/pdf'),
+            { params: Promise.resolve({ id: 'patient_1' }) },
+          ),
+      },
+      {
+        name: 'medication calendar',
+        setup: () =>
+          buildMedicationCalendarPdfMock.mockResolvedValue({
+            buffer: Buffer.from('%PDF-medication-calendar'),
+            fileName: 'medication-calendar.pdf',
+          }),
+        invoke: () =>
+          medicationCalendarPdfGet(
+            createRequest(
+              'http://localhost/api/patients/patient_1/medication-calendar/pdf?month=2026-03',
+            ),
+            { params: Promise.resolve({ id: 'patient_1' }) },
+          ),
+      },
+      {
+        name: 'patient visit record list',
+        setup: () =>
+          buildPatientVisitRecordsPdfMock.mockResolvedValue({
+            buffer: Buffer.from('%PDF-patient-visits'),
+            fileName: 'visit-records.pdf',
+          }),
+        invoke: () =>
+          patientVisitRecordsPdfGet(
+            createRequest('http://localhost/api/patients/patient_1/visit-records/pdf'),
+            { params: Promise.resolve({ id: 'patient_1' }) },
+          ),
+      },
+      {
+        name: 'tracing report',
+        setup: () =>
+          buildTracingReportPdfMock.mockResolvedValue({
+            buffer: Buffer.from('%PDF-tracing-report'),
+            fileName: 'tracing-report.pdf',
+          }),
+        invoke: () =>
+          tracingReportPdfGet(createRequest('http://localhost/api/tracing-reports/tracing_1/pdf'), {
+            params: Promise.resolve({ id: 'tracing_1' }),
+          }),
+      },
+      {
+        name: 'visit record',
+        setup: () =>
+          buildVisitRecordPdfMock.mockResolvedValue({
+            buffer: Buffer.from('%PDF-visit-record'),
+            fileName: 'visit-record.pdf',
+          }),
+        invoke: () =>
+          visitRecordPdfGet(createRequest('http://localhost/api/visit-records/visit_1/pdf'), {
+            params: Promise.resolve({ id: 'visit_1' }),
+          }),
+      },
+      {
+        name: 'pharmacy invoice',
+        setup: () =>
+          buildPharmacyInvoiceDocumentPdfMock.mockResolvedValue({
+            buffer: Buffer.from('%PDF-pharmacy-invoice'),
+            fileName: 'pharmacy-invoice.pdf',
+            auditMetadata: {
+              document_kind: 'invoice',
+              billing_month: '2026-06-01',
+              status: 'draft',
+              item_count: 1,
+              subtotal: 5500,
+              tax_amount: 550,
+              total: 6050,
+              patient_display_mode: 'management_number',
+            },
+          }),
+        invoke: () =>
+          pharmacyInvoicePdfGet(
+            createRequest(
+              'http://localhost/api/pharmacy-invoices/invoice_1/pdf?purpose=partner_cooperation_monthly_pdf',
+            ),
+            { params: Promise.resolve({ id: 'invoice_1' }) },
+          ),
+      },
+    ];
+
+    for (const testCase of cases) {
+      pdfResponseCallMock.mockClear();
+      recordDataExportAuditMock.mockReset();
+      testCase.setup();
+
+      let resolveAudit!: () => void;
+      recordDataExportAuditMock.mockImplementationOnce(
+        () =>
+          new Promise<void>((resolve) => {
+            resolveAudit = resolve;
+          }),
+      );
+
+      const responsePromise = testCase.invoke();
+      await vi.waitFor(() => expect(recordDataExportAuditMock).toHaveBeenCalledTimes(1));
+      expect(pdfResponseCallMock, testCase.name).not.toHaveBeenCalled();
+
+      resolveAudit();
+      const response = await responsePromise;
+      expect(response.status, testCase.name).toBe(200);
+      expect(pdfResponseCallMock, testCase.name).toHaveBeenCalledTimes(1);
+    }
   });
 
   it('returns a care report pdf response', async () => {

@@ -3,12 +3,14 @@ import { NextRequest } from 'next/server';
 
 const {
   requireAuthContextMock,
+  withAuthContextOptions,
   buildVisitRecordPdfMock,
   pdfResponseMock,
   recordDataExportAuditMock,
   prismaMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
+  withAuthContextOptions: [] as unknown[],
   buildVisitRecordPdfMock: vi.fn(),
   pdfResponseMock: vi.fn(),
   recordDataExportAuditMock: vi.fn(),
@@ -16,7 +18,23 @@ const {
 }));
 
 vi.mock('@/lib/auth/context', () => ({
-  requireAuthContext: requireAuthContextMock,
+  withAuthContext: (handler: (...args: unknown[]) => Promise<Response>, options?: unknown) => {
+    withAuthContextOptions.push(options);
+    return async (req: NextRequest, routeContext: unknown) => {
+      const authResult = await requireAuthContextMock(req, options);
+      if ('response' in authResult) {
+        authResult.response.headers.set('Cache-Control', 'private, no-store, max-age=0');
+        authResult.response.headers.set('Pragma', 'no-cache');
+        return authResult.response;
+      }
+      const response = await handler(req, authResult.ctx, routeContext);
+      response.headers.set('Cache-Control', 'private, no-store, max-age=0');
+      response.headers.set('Pragma', 'no-cache');
+      response.headers.set('X-Request-Id', authResult.ctx.requestId);
+      response.headers.set('X-Correlation-Id', authResult.ctx.correlationId);
+      return response;
+    };
+  },
 }));
 
 vi.mock('@/server/services/pdf-documents', () => ({
@@ -67,6 +85,15 @@ describe('/api/visit-records/[id]/pdf', () => {
     recordDataExportAuditMock.mockResolvedValue(undefined);
   });
 
+  it('registers the exact visit permission contract', () => {
+    expect(withAuthContextOptions).toEqual([
+      {
+        permission: 'canVisit',
+        message: '訪問記録 PDF の閲覧権限がありません',
+      },
+    ]);
+  });
+
   it('returns the rendered visit record pdf', async () => {
     const hostileFileName =
       'Taro Yamada 090-1234-5678 アムロジピン storageKey=s3 token=secret provider raw error.pdf';
@@ -110,31 +137,22 @@ describe('/api/visit-records/[id]/pdf', () => {
     ]);
   });
 
-  it('returns a traced sanitized 500 when response creation fails after the audit', async () => {
+  it('lets post-audit response failures reach the shared wrapper boundary', async () => {
     buildVisitRecordPdfMock.mockResolvedValue({
       buffer: Buffer.from('pdf'),
       fileName: 'visit-record.pdf',
     });
+    const error = new Error('患者 山田花子 090-1234-5678 raw visit response detail');
     pdfResponseMock.mockImplementationOnce(() => {
-      throw new Error('患者 山田花子 090-1234-5678 raw visit response detail');
+      throw error;
     });
 
-    const response = (await GET(createGetRequest(), {
-      params: Promise.resolve({ id: 'visit_1' }),
-    }))!;
-
-    expect(response.status).toBe(500);
-    expectSensitiveNoStore(response);
-    expectRequestTrace(response);
-    const body = await response.json();
-    expect(body).toMatchObject({
-      code: 'INTERNAL_ERROR',
-      message: 'サーバー内部でエラーが発生しました',
-    });
+    await expect(
+      GET(createGetRequest(), {
+        params: Promise.resolve({ id: 'visit_1' }),
+      }),
+    ).rejects.toBe(error);
     expect(recordDataExportAuditMock).toHaveBeenCalledTimes(1);
-    expect(JSON.stringify(body)).not.toContain('山田花子');
-    expect(JSON.stringify(body)).not.toContain('090-1234-5678');
-    expect(JSON.stringify(body)).not.toContain('raw visit response detail');
   });
 
   it('fails closed when the visit record PDF export audit cannot be recorded', async () => {

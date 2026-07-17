@@ -11,9 +11,11 @@ const {
   buildBillingDocumentPdfMock,
   buildCareReportPdfMock,
   buildConferenceNotePdfMock,
+  buildManagementPlanPdfMock,
   buildMedicationCalendarPdfMock,
   buildMedicationHistoryPdfMock,
   buildPatientVisitRecordsPdfMock,
+  buildTracingReportPdfMock,
   buildVisitRecordPdfMock,
   buildPharmacyInvoiceDocumentPdfMock,
   buildVisitScheduleBillingPreviewMock,
@@ -109,9 +111,11 @@ const {
     buildBillingDocumentPdfMock: vi.fn(),
     buildCareReportPdfMock: vi.fn(),
     buildConferenceNotePdfMock: vi.fn(),
+    buildManagementPlanPdfMock: vi.fn(),
     buildMedicationCalendarPdfMock: vi.fn(),
     buildMedicationHistoryPdfMock: vi.fn(),
     buildPatientVisitRecordsPdfMock: vi.fn(),
+    buildTracingReportPdfMock: vi.fn(),
     buildVisitRecordPdfMock: vi.fn(),
     buildPharmacyInvoiceDocumentPdfMock: vi.fn(),
     buildVisitScheduleBillingPreviewMock: vi.fn(),
@@ -166,9 +170,11 @@ vi.mock('@/server/services/pdf-documents', () => ({
   buildBillingDocumentPdf: buildBillingDocumentPdfMock,
   buildCareReportPdf: buildCareReportPdfMock,
   buildConferenceNotePdf: buildConferenceNotePdfMock,
+  buildManagementPlanPdf: buildManagementPlanPdfMock,
   buildMedicationCalendarPdf: buildMedicationCalendarPdfMock,
   buildMedicationHistoryPdf: buildMedicationHistoryPdfMock,
   buildPatientVisitRecordsPdf: buildPatientVisitRecordsPdfMock,
+  buildTracingReportPdf: buildTracingReportPdfMock,
   buildVisitRecordPdf: buildVisitRecordPdfMock,
 }));
 
@@ -260,6 +266,7 @@ import { GET as incidentReportsGet } from '../incident-reports/route';
 import { GET as interventionsGet } from '../interventions/route';
 import { GET as managementPlansGet } from '../management-plans/route';
 import { GET as managementPlanGet } from '../management-plans/[id]/route';
+import { GET as managementPlanPdfGet } from '../management-plans/[id]/pdf/route';
 import { GET as medicationCyclesGet } from '../medication-cycles/route';
 import { GET as medicationIssuesGet } from '../medication-issues/route';
 import { GET as medicationSetsWorkspaceGet } from '../medication-sets/workspace/route';
@@ -314,6 +321,7 @@ import { GET as setPlanCalendarGet } from '../set-plans/[id]/calendar/route';
 import { GET as staffWorkloadGet } from '../staff-workload/route';
 import { GET as tasksGet } from '../tasks/route';
 import { GET as tracingReportsGet } from '../tracing-reports/route';
+import { GET as tracingReportPdfGet } from '../tracing-reports/[id]/pdf/route';
 import { GET as visitRecordsGet } from '../visit-records/route';
 import { GET as visitRecordGet } from '../visit-records/[id]/route';
 import { GET as visitRecordHandoffGet } from '../visit-records/[id]/handoff/route';
@@ -1203,6 +1211,16 @@ const routes: Array<{ name: string; handler: Handler; setupSuccess?: () => void 
       ),
   },
   {
+    name: 'management-plans/[id]/pdf GET',
+    handler: () =>
+      managementPlanPdfGet(
+        createRequest('http://localhost/api/management-plans/plan_1/pdf', {
+          'x-org-id': 'org_1',
+        }),
+        { params: Promise.resolve({ id: 'plan_1' }) },
+      ),
+  },
+  {
     name: 'medication-cycles GET',
     handler: () =>
       medicationCyclesGet(
@@ -1750,6 +1768,16 @@ const routes: Array<{ name: string; handler: Handler; setupSuccess?: () => void 
       ),
   },
   {
+    name: 'tracing-reports/[id]/pdf GET',
+    handler: () =>
+      tracingReportPdfGet(
+        createRequest('http://localhost/api/tracing-reports/tracing_1/pdf', {
+          'x-org-id': 'org_1',
+        }),
+        { params: Promise.resolve({ id: 'tracing_1' }) },
+      ),
+  },
+  {
     name: 'visit-records GET',
     handler: () =>
       visitRecordsGet(createRequest('http://localhost/api/visit-records', { 'x-org-id': 'org_1' })),
@@ -2066,6 +2094,10 @@ describe('protected GET routes auth matrix', () => {
       buffer: Buffer.from('%PDF-conference-note'),
       fileName: 'conference-note.pdf',
     });
+    buildManagementPlanPdfMock.mockResolvedValue({
+      buffer: Buffer.from('%PDF-management-plan'),
+      fileName: 'management-plan.pdf',
+    });
     buildMedicationCalendarPdfMock.mockResolvedValue({
       buffer: Buffer.from('%PDF-medication-calendar'),
       fileName: 'medication-calendar.pdf',
@@ -2100,6 +2132,10 @@ describe('protected GET routes auth matrix', () => {
     buildPatientVisitRecordsPdfMock.mockResolvedValue({
       buffer: Buffer.from('%PDF-patient-visits'),
       fileName: 'visit-records.pdf',
+    });
+    buildTracingReportPdfMock.mockResolvedValue({
+      buffer: Buffer.from('%PDF-tracing-report'),
+      fileName: 'tracing-report.pdf',
     });
     buildVisitRecordPdfMock.mockResolvedValue({
       buffer: Buffer.from('%PDF-visit-record'),

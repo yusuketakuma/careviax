@@ -2,17 +2,6 @@
   "description": "Allowlist for CORE-ROUTE-001 direct requireAuthContext route debt. New entries must not be added casually; migrate routes to withAuthContext instead.",
   "entries": [
     {
-      "path": "src/app/api/management-plans/[id]/pdf/route.ts",
-      "expectedCount": 1,
-      "permissions": ["canVisit"],
-      "sensitiveNoStore": true,
-      "routePerformance": false,
-      "owner": "platform-routing",
-      "debtId": "CORE-ROUTE-001",
-      "reason": "Existing route still calls requireAuthContext directly. This is frozen so no new direct-auth route can be added while the route wrapper audit burns down.",
-      "plannedAction": "Migrate this route to withAuthContext when touched, or replace this allowlist entry with an explicit documented exception including auth type, permission, no-store, route performance, rate-limit/CSRF, and audit/security event rationale."
-    },
-    {
       "path": "src/app/api/management-plans/[id]/route.ts",
       "expectedCount": 2,
       "permissions": ["canViewDashboard", "canVisit"],
@@ -233,28 +222,6 @@
       "plannedAction": "Migrate this route to withAuthContext when touched, or replace this allowlist entry with an explicit documented exception including auth type, permission, no-store, route performance, rate-limit/CSRF, and audit/security event rationale."
     },
     {
-      "path": "src/app/api/patients/[id]/medication-calendar/pdf/route.ts",
-      "expectedCount": 1,
-      "permissions": ["canVisit"],
-      "sensitiveNoStore": true,
-      "routePerformance": false,
-      "owner": "platform-routing",
-      "debtId": "CORE-ROUTE-001",
-      "reason": "Existing route still calls requireAuthContext directly. This is frozen so no new direct-auth route can be added while the route wrapper audit burns down.",
-      "plannedAction": "Migrate this route to withAuthContext when touched, or replace this allowlist entry with an explicit documented exception including auth type, permission, no-store, route performance, rate-limit/CSRF, and audit/security event rationale."
-    },
-    {
-      "path": "src/app/api/patients/[id]/medications/pdf/route.ts",
-      "expectedCount": 1,
-      "permissions": ["canVisit"],
-      "sensitiveNoStore": true,
-      "routePerformance": false,
-      "owner": "platform-routing",
-      "debtId": "CORE-ROUTE-001",
-      "reason": "Existing route still calls requireAuthContext directly. This is frozen so no new direct-auth route can be added while the route wrapper audit burns down.",
-      "plannedAction": "Migrate this route to withAuthContext when touched, or replace this allowlist entry with an explicit documented exception including auth type, permission, no-store, route performance, rate-limit/CSRF, and audit/security event rationale."
-    },
-    {
       "path": "src/app/api/patients/[id]/packaging/route.ts",
       "expectedCount": 2,
       "permissions": ["canViewDashboard", "canVisit"],
@@ -335,17 +302,6 @@
       "path": "src/app/api/patients/[id]/visit-constraints/route.ts",
       "expectedCount": 2,
       "permissions": ["canViewDashboard", "canVisit"],
-      "sensitiveNoStore": true,
-      "routePerformance": false,
-      "owner": "platform-routing",
-      "debtId": "CORE-ROUTE-001",
-      "reason": "Existing route still calls requireAuthContext directly. This is frozen so no new direct-auth route can be added while the route wrapper audit burns down.",
-      "plannedAction": "Migrate this route to withAuthContext when touched, or replace this allowlist entry with an explicit documented exception including auth type, permission, no-store, route performance, rate-limit/CSRF, and audit/security event rationale."
-    },
-    {
-      "path": "src/app/api/patients/[id]/visit-records/pdf/route.ts",
-      "expectedCount": 1,
-      "permissions": ["canVisit"],
       "sensitiveNoStore": true,
       "routePerformance": false,
       "owner": "platform-routing",
@@ -480,17 +436,6 @@
       "permissions": ["canAdmin"],
       "sensitiveNoStore": true,
       "routePerformance": true,
-      "owner": "platform-routing",
-      "debtId": "CORE-ROUTE-001",
-      "reason": "Existing route still calls requireAuthContext directly. This is frozen so no new direct-auth route can be added while the route wrapper audit burns down.",
-      "plannedAction": "Migrate this route to withAuthContext when touched, or replace this allowlist entry with an explicit documented exception including auth type, permission, no-store, route performance, rate-limit/CSRF, and audit/security event rationale."
-    },
-    {
-      "path": "src/app/api/pharmacy-invoices/[id]/pdf/route.ts",
-      "expectedCount": 1,
-      "permissions": ["canManageBilling"],
-      "sensitiveNoStore": true,
-      "routePerformance": false,
       "owner": "platform-routing",
       "debtId": "CORE-ROUTE-001",
       "reason": "Existing route still calls requireAuthContext directly. This is frozen so no new direct-auth route can be added while the route wrapper audit burns down.",
@@ -662,17 +607,6 @@
       "plannedAction": "Migrate this route to withAuthContext when touched, or replace this allowlist entry with an explicit documented exception including auth type, permission, no-store, route performance, rate-limit/CSRF, and audit/security event rationale."
     },
     {
-      "path": "src/app/api/tracing-reports/[id]/pdf/route.ts",
-      "expectedCount": 1,
-      "permissions": ["canReport"],
-      "sensitiveNoStore": true,
-      "routePerformance": false,
-      "owner": "platform-routing",
-      "debtId": "CORE-ROUTE-001",
-      "reason": "Existing route still calls requireAuthContext directly. This is frozen so no new direct-auth route can be added while the route wrapper audit burns down.",
-      "plannedAction": "Migrate this route to withAuthContext when touched, or replace this allowlist entry with an explicit documented exception including auth type, permission, no-store, route performance, rate-limit/CSRF, and audit/security event rationale."
-    },
-    {
       "path": "src/app/api/tracing-reports/[id]/route.ts",
       "expectedCount": 2,
       "permissions": ["canAuthorReport"],
@@ -784,17 +718,6 @@
     },
     {
       "path": "src/app/api/visit-records/[id]/handoff/supervision-request/route.ts",
-      "expectedCount": 1,
-      "permissions": ["canVisit"],
-      "sensitiveNoStore": true,
-      "routePerformance": false,
-      "owner": "platform-routing",
-      "debtId": "CORE-ROUTE-001",
-      "reason": "Existing route still calls requireAuthContext directly. This is frozen so no new direct-auth route can be added while the route wrapper audit burns down.",
-      "plannedAction": "Migrate this route to withAuthContext when touched, or replace this allowlist entry with an explicit documented exception including auth type, permission, no-store, route performance, rate-limit/CSRF, and audit/security event rationale."
-    },
-    {
-      "path": "src/app/api/visit-records/[id]/pdf/route.ts",
       "expectedCount": 1,
       "permissions": ["canVisit"],
       "sensitiveNoStore": true,

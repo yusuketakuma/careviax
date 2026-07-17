@@ -4,12 +4,14 @@ import { expectSensitiveNoStore } from '@/test/api-response-assertions';
 
 const {
   requireAuthContextMock,
+  withAuthContextOptions,
   buildPatientVisitRecordsPdfMock,
   pdfResponseMock,
   recordDataExportAuditMock,
   prismaMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
+  withAuthContextOptions: [] as unknown[],
   buildPatientVisitRecordsPdfMock: vi.fn(),
   pdfResponseMock: vi.fn(),
   recordDataExportAuditMock: vi.fn(),
@@ -18,6 +20,31 @@ const {
 
 vi.mock('@/lib/auth/context', () => ({
   requireAuthContext: requireAuthContextMock,
+  withAuthContext: (
+    handler: (
+      req: NextRequest,
+      ctx: ReturnType<typeof buildAuthContext>,
+      routeContext: { params: Promise<{ id: string }> },
+    ) => Promise<Response>,
+    options: unknown,
+  ) => {
+    withAuthContextOptions.push(options);
+    return async (req: NextRequest, routeContext: { params: Promise<{ id: string }> }) => {
+      const authResult = await requireAuthContextMock(req, options);
+      if ('response' in authResult) {
+        authResult.response.headers.set('Cache-Control', 'private, no-store, max-age=0');
+        authResult.response.headers.set('Pragma', 'no-cache');
+        return authResult.response;
+      }
+
+      const response = await handler(req, authResult.ctx, routeContext);
+      response.headers.set('Cache-Control', 'private, no-store, max-age=0');
+      response.headers.set('Pragma', 'no-cache');
+      response.headers.set('X-Request-Id', authResult.ctx.requestId);
+      response.headers.set('X-Correlation-Id', authResult.ctx.correlationId);
+      return response;
+    };
+  },
 }));
 
 vi.mock('@/server/services/pdf-documents', () => ({
@@ -43,6 +70,16 @@ function createGetRequest(query = '?date_from=2026-03-01&date_to=2026-03-31') {
   return new NextRequest(`http://localhost/api/patients/patient_1/visit-records/pdf${query}`);
 }
 
+function buildAuthContext() {
+  return {
+    orgId: 'org_1',
+    userId: 'user_1',
+    role: 'pharmacist',
+    requestId: 'request_visit_record_list_pdf_1',
+    correlationId: 'correlation_visit_record_list_pdf_1',
+  };
+}
+
 function expectRequestTrace(response: Response) {
   expect(response.headers.get('X-Request-Id')).toBe('request_visit_record_list_pdf_1');
   expect(response.headers.get('X-Correlation-Id')).toBe('correlation_visit_record_list_pdf_1');
@@ -51,17 +88,18 @@ function expectRequestTrace(response: Response) {
 describe('/api/patients/[id]/visit-records/pdf', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    requireAuthContextMock.mockResolvedValue({
-      ctx: {
-        orgId: 'org_1',
-        userId: 'user_1',
-        role: 'pharmacist',
-        requestId: 'request_visit_record_list_pdf_1',
-        correlationId: 'correlation_visit_record_list_pdf_1',
-      },
-    });
+    requireAuthContextMock.mockResolvedValue({ ctx: buildAuthContext() });
     pdfResponseMock.mockReturnValue(new Response('pdf', { status: 200 }));
     recordDataExportAuditMock.mockResolvedValue(undefined);
+  });
+
+  it('registers the dynamic wrapper with the exact visit permission contract', () => {
+    expect(withAuthContextOptions).toEqual([
+      {
+        permission: 'canVisit',
+        message: '訪問記録一覧 PDF の閲覧権限がありません',
+      },
+    ]);
   });
 
   it('passes the date range to patient visit records pdf builder', async () => {
@@ -101,9 +139,12 @@ describe('/api/patients/[id]/visit-records/pdf', () => {
         correlationId: 'correlation_visit_record_list_pdf_1',
       }),
     );
+    expect(recordDataExportAuditMock.mock.invocationCallOrder[0]).toBeLessThan(
+      pdfResponseMock.mock.invocationCallOrder[0]!,
+    );
   });
 
-  it('returns a traced sanitized 500 when response creation fails after the audit', async () => {
+  it('leaves unexpected response creation failures to the shared wrapper after the audit', async () => {
     buildPatientVisitRecordsPdfMock.mockResolvedValue({
       buffer: Buffer.from('pdf'),
       fileName: 'visit-records.pdf',
@@ -112,22 +153,12 @@ describe('/api/patients/[id]/visit-records/pdf', () => {
       throw new Error('患者 山田花子 090-1234-5678 raw visit list response detail');
     });
 
-    const response = (await GET(createGetRequest(), {
-      params: Promise.resolve({ id: 'patient_1' }),
-    }))!;
-
-    expect(response.status).toBe(500);
-    expectSensitiveNoStore(response);
-    expectRequestTrace(response);
-    const body = await response.json();
-    expect(body).toMatchObject({
-      code: 'INTERNAL_ERROR',
-      message: 'サーバー内部でエラーが発生しました',
-    });
+    await expect(
+      GET(createGetRequest(), {
+        params: Promise.resolve({ id: 'patient_1' }),
+      }),
+    ).rejects.toThrow('患者 山田花子 090-1234-5678 raw visit list response detail');
     expect(recordDataExportAuditMock).toHaveBeenCalledTimes(1);
-    expect(JSON.stringify(body)).not.toContain('山田花子');
-    expect(JSON.stringify(body)).not.toContain('090-1234-5678');
-    expect(JSON.stringify(body)).not.toContain('raw visit list response detail');
   });
 
   it('fails closed when the visit record list PDF export audit cannot be recorded', async () => {
