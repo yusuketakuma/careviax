@@ -1,13 +1,11 @@
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { NextRequest } from 'next/server';
-import { unstable_rethrow } from 'next/navigation';
-import { requireAuthContext } from '@/lib/auth/context';
+import { withAuthContext, type AuthContext } from '@/lib/auth/context';
 import { ADMIN_MEMBER_ROLES, DISPENSE_AUDIT_FALLBACK_MEMBER_ROLES } from '@/lib/auth/member-roles';
 import { runWithRequestAuthContext } from '@/lib/auth/request-context';
 import { withOrgContext } from '@/lib/db/rls';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
-import { success, validationError, notFound, conflict, internalError } from '@/lib/api/response';
-import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
+import { success, validationError, notFound, conflict } from '@/lib/api/response';
 import { formatDateKey } from '@/lib/date-key';
 import { buildDispenseTaskHref } from '@/lib/dispense/navigation';
 import { isPrismaUniqueConstraintError } from '@/lib/db/prisma-errors';
@@ -24,20 +22,8 @@ import { buildMedicationCycleAssignmentWhere } from '@/server/services/prescript
 import { z } from 'zod';
 import type { Prisma } from '@prisma/client';
 import type { ExceptionSeverity, ExceptionStatus } from '@/types/domain-literals';
-import { logger } from '@/lib/utils/logger';
-import { withRoutePerformance } from '@/lib/utils/performance';
 
-const ROUTE = '/api/dispense-audits';
-
-async function authenticatedGET(req: NextRequest) {
-  const auth = await requireAuthContext(req, {
-    permission: 'canViewDashboard',
-    message: '調剤鑑査の閲覧権限がありません',
-  });
-  if ('response' in auth) return auth.response;
-
-  const { ctx } = auth;
-
+async function authenticatedGET(req: NextRequest, ctx: AuthContext) {
   return runWithRequestAuthContext(ctx, async () => {
     const now = new Date();
     const { searchParams } = new URL(req.url);
@@ -193,25 +179,10 @@ async function authenticatedGET(req: NextRequest) {
   });
 }
 
-export async function GET(req: NextRequest) {
-  return withRoutePerformance(req, async () => {
-    try {
-      return withSensitiveNoStore(await authenticatedGET(req));
-    } catch (err) {
-      unstable_rethrow(err);
-      logger.error(
-        {
-          event: 'dispense_audits_get_unhandled_error',
-          route: ROUTE,
-          method: 'GET',
-          status: 500,
-        },
-        err,
-      );
-      return withSensitiveNoStore(internalError());
-    }
-  });
-}
+export const GET = withAuthContext(authenticatedGET, {
+  permission: 'canViewDashboard',
+  message: '調剤鑑査の閲覧権限がありません',
+});
 
 const REJECT_REASON_CODES = [
   'drug_name_mismatch',
@@ -522,15 +493,7 @@ function existingAuditMatchesRequest(args: {
   );
 }
 
-async function authenticatedPOST(req: NextRequest) {
-  const auth = await requireAuthContext(req, {
-    permission: 'canAuditDispense',
-    message: '調剤鑑査の作成権限がありません',
-  });
-  if ('response' in auth) return auth.response;
-
-  const { ctx } = auth;
-
+async function authenticatedPOST(req: NextRequest, ctx: AuthContext) {
   return runWithRequestAuthContext(ctx, async () => {
     const payload = await readJsonObjectRequestBody(req);
     if (!payload) return validationError('リクエストボディが不正です');
@@ -922,22 +885,7 @@ async function authenticatedPOST(req: NextRequest) {
   });
 }
 
-export async function POST(req: NextRequest) {
-  return withRoutePerformance(req, async () => {
-    try {
-      return withSensitiveNoStore(await authenticatedPOST(req));
-    } catch (err) {
-      unstable_rethrow(err);
-      logger.error(
-        {
-          event: 'dispense_audits_post_unhandled_error',
-          route: ROUTE,
-          method: 'POST',
-          status: 500,
-        },
-        err,
-      );
-      return withSensitiveNoStore(internalError());
-    }
-  });
-}
+export const POST = withAuthContext(authenticatedPOST, {
+  permission: 'canAuditDispense',
+  message: '調剤鑑査の作成権限がありません',
+});

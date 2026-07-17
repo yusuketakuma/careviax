@@ -634,6 +634,7 @@ describe('Workflow: prescription intake to care report', () => {
         result: 'approved',
         expected_version: 1,
       }),
+      emptyRouteContext,
     );
 
     expect(response).toBeDefined();

@@ -1,11 +1,12 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import type { MemberRole } from '@prisma/client';
 import { hasPermission, type PermissionKey } from '@/lib/auth/permission-matrix';
 import { expectSensitiveNoStore } from '@/test/api-response-assertions';
 
 const {
   loggerErrorMock,
+  unstableRethrowMock,
   requireAuthContextMock,
   runWithRequestAuthContextMock,
   withRoutePerformanceMock,
@@ -16,6 +17,7 @@ const {
   dispenseTaskCountMock,
 } = vi.hoisted(() => ({
   loggerErrorMock: vi.fn(),
+  unstableRethrowMock: vi.fn(),
   requireAuthContextMock: vi.fn(),
   runWithRequestAuthContextMock: vi.fn((_ctx, callback: () => unknown) => callback()),
   withRoutePerformanceMock: vi.fn((_req, callback: () => unknown) => callback()),
@@ -26,8 +28,87 @@ const {
   dispenseTaskCountMock: vi.fn(),
 }));
 
+vi.mock('next/navigation', () => ({ unstable_rethrow: unstableRethrowMock }));
+
 vi.mock('@/lib/auth/context', () => ({
   requireAuthContext: requireAuthContextMock,
+  withAuthContext:
+    (
+      handler: (
+        req: NextRequest,
+        ctx: ReturnType<typeof buildAuthContext>,
+        routeContext: { params: Promise<Record<string, string>> },
+      ) => Promise<Response>,
+      options: unknown,
+    ) =>
+    async (req: NextRequest, routeContext: { params: Promise<Record<string, string>> }) =>
+      withRoutePerformanceMock(req, async () => {
+        let authResult: { ctx: ReturnType<typeof buildAuthContext> } | { response: Response };
+        try {
+          authResult = await requireAuthContextMock(req, options);
+        } catch (error) {
+          unstableRethrowMock(error);
+          const trace = {
+            requestId: 'generated_request_1',
+            correlationId: req.headers.get('x-correlation-id') ?? 'generated_request_1',
+          };
+          loggerErrorMock(
+            {
+              event: 'route_auth_unhandled_error',
+              route: req.nextUrl.pathname,
+              method: req.method,
+              requestId: trace.requestId,
+              correlationId: trace.correlationId,
+            },
+            error,
+          );
+          const response = NextResponse.json(
+            { code: 'INTERNAL_ERROR', message: 'サーバー内部でエラーが発生しました' },
+            { status: 500 },
+          );
+          response.headers.set('Cache-Control', 'private, no-store, max-age=0');
+          response.headers.set('Pragma', 'no-cache');
+          response.headers.set('X-Request-Id', trace.requestId);
+          response.headers.set('X-Correlation-Id', trace.correlationId);
+          return response;
+        }
+        if ('response' in authResult) {
+          authResult.response.headers.set('Cache-Control', 'private, no-store, max-age=0');
+          authResult.response.headers.set('Pragma', 'no-cache');
+          return authResult.response;
+        }
+        return runWithRequestAuthContextMock(authResult.ctx, async () => {
+          try {
+            const response = await handler(req, authResult.ctx, routeContext);
+            response.headers.set('Cache-Control', 'private, no-store, max-age=0');
+            response.headers.set('Pragma', 'no-cache');
+            response.headers.set('X-Request-Id', authResult.ctx.requestId);
+            response.headers.set('X-Correlation-Id', authResult.ctx.correlationId);
+            return response;
+          } catch (error) {
+            unstableRethrowMock(error);
+            loggerErrorMock(
+              {
+                event: 'route_handler_unhandled_error',
+                route: req.nextUrl.pathname,
+                method: req.method,
+                requestId: authResult.ctx.requestId,
+                correlationId: authResult.ctx.correlationId,
+              },
+              error,
+            );
+            const response = NextResponse.json(
+              { code: 'INTERNAL_ERROR', message: 'サーバー内部でエラーが発生しました' },
+              { status: 500 },
+            );
+            response.headers.set('Cache-Control', 'private, no-store, max-age=0');
+            response.headers.set('Pragma', 'no-cache');
+            response.headers.set('X-Request-Id', authResult.ctx.requestId);
+            response.headers.set('X-Correlation-Id', authResult.ctx.correlationId);
+            return response;
+          }
+        });
+      }),
 }));
 
 vi.mock('@/lib/auth/request-context', () => ({
@@ -58,8 +139,9 @@ vi.mock('@/server/services/workflow-dashboard-cache', () => ({
 
 import { GET as rawGET, POST as rawPOST } from './route';
 
-const GET = (req: NextRequest) => rawGET(req);
-const POST = (req: NextRequest) => rawPOST(req);
+const emptyRouteContext = { params: Promise.resolve({}) };
+const GET = (req: NextRequest) => rawGET(req, emptyRouteContext);
+const POST = (req: NextRequest) => rawPOST(req, emptyRouteContext);
 
 type NextRequestInit = ConstructorParameters<typeof NextRequest>[1];
 
@@ -100,6 +182,18 @@ function createGetRequest(search = '') {
   return new NextRequest(`http://localhost/api/dispense-audits${search}`);
 }
 
+function buildAuthContext(role: MemberRole = 'pharmacist') {
+  return {
+    orgId: 'org_1',
+    userId: 'user_1',
+    role,
+    ipAddress: '127.0.0.1',
+    userAgent: 'vitest',
+    requestId: 'request_1',
+    correlationId: 'correlation_1',
+  };
+}
+
 function setupAuthMocks(role: MemberRole = 'pharmacist') {
   requireAuthContextMock.mockImplementation(
     async (_req: NextRequest, options: { permission: PermissionKey; message?: string }) => {
@@ -112,16 +206,13 @@ function setupAuthMocks(role: MemberRole = 'pharmacist') {
         };
       }
       return {
-        ctx: {
-          orgId: 'org_1',
-          userId: 'user_1',
-          role,
-        },
+        ctx: buildAuthContext(role),
       };
     },
   );
   runWithRequestAuthContextMock.mockImplementation((_ctx, callback) => callback());
   withRoutePerformanceMock.mockImplementation((_req, callback) => callback());
+  unstableRethrowMock.mockImplementation(() => undefined);
 }
 
 function doubleCountResultRow(
@@ -324,12 +415,41 @@ describe('/api/dispense-audits GET', () => {
     ]);
   });
 
+  it('rejects GET authentication before query or RLS work', async () => {
+    requireAuthContextMock.mockResolvedValueOnce({
+      response: NextResponse.json(
+        { code: 'AUTH_FORBIDDEN', message: '調剤鑑査の閲覧権限がありません' },
+        { status: 403 },
+      ),
+    });
+    const request = createGetRequest();
+
+    const response = await GET(request);
+
+    expect(response.status).toBe(403);
+    expectSensitiveNoStore(response);
+    expect(requireAuthContextMock).toHaveBeenCalledWith(request, {
+      permission: 'canViewDashboard',
+      message: '調剤鑑査の閲覧権限がありません',
+    });
+    expect(runWithRequestAuthContextMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(dispenseTaskFindManyMock).not.toHaveBeenCalled();
+    expect(dispenseTaskCountMock).not.toHaveBeenCalled();
+  });
+
   it('shows hold and corrected rejected items again while excluding already approved audits', async () => {
     const response = await GET(createGetRequest());
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
+    expect(response.headers.get('X-Request-Id')).toBe('request_1');
+    expect(response.headers.get('X-Correlation-Id')).toBe('correlation_1');
+    expect(withRoutePerformanceMock).toHaveBeenCalledOnce();
+    expect(runWithRequestAuthContextMock).toHaveBeenCalledTimes(2);
+    expect(runWithRequestAuthContextMock.mock.calls[0]?.[0]).toEqual(buildAuthContext());
+    expect(runWithRequestAuthContextMock.mock.calls[1]?.[0]).toEqual(buildAuthContext());
     const payload = (await response.json()) as {
       data: Array<{ id: string; facility_label: string | null; is_overdue: boolean }>;
     };
@@ -449,10 +569,11 @@ describe('/api/dispense-audits GET', () => {
     expect(bodyText).not.toContain('98765432');
     expect(loggerErrorMock).toHaveBeenCalledWith(
       {
-        event: 'dispense_audits_get_unhandled_error',
+        event: 'route_handler_unhandled_error',
         route: '/api/dispense-audits',
         method: 'GET',
-        status: 500,
+        requestId: 'request_1',
+        correlationId: 'correlation_1',
       },
       unsafeError,
     );
@@ -462,6 +583,72 @@ describe('/api/dispense-audits GET', () => {
     expect(serializedRouteContext).not.toContain('佐藤');
     expect(serializedRouteContext).not.toContain('98765432');
     expect(serializedRouteContext).not.toContain('DispenseAuditQueueSecretError');
+  });
+
+  it.each([
+    ['GET', () => GET(createGetRequest())],
+    ['POST', () => POST(createMalformedJsonRequest())],
+  ] as const)(
+    'returns a generated-trace safe 500 when %s authentication throws',
+    async (method, invoke) => {
+      const unsafeError = new Error('患者 山田太郎 raw dispense auth secret');
+      unsafeError.name = 'DispenseAuditAuthSecretError';
+      requireAuthContextMock.mockRejectedValueOnce(unsafeError);
+
+      const response = await invoke();
+
+      expect(response.status).toBe(500);
+      expectSensitiveNoStore(response);
+      expect(response.headers.get('X-Request-Id')).toBe('generated_request_1');
+      expect(response.headers.get('X-Correlation-Id')).toBe('generated_request_1');
+      await expect(response.json()).resolves.toEqual({
+        code: 'INTERNAL_ERROR',
+        message: 'サーバー内部でエラーが発生しました',
+      });
+      expect(runWithRequestAuthContextMock).not.toHaveBeenCalled();
+      expect(withOrgContextMock).not.toHaveBeenCalled();
+      expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+      expect(loggerErrorMock).toHaveBeenCalledWith(
+        {
+          event: 'route_auth_unhandled_error',
+          route: '/api/dispense-audits',
+          method,
+          requestId: 'generated_request_1',
+          correlationId: 'generated_request_1',
+        },
+        unsafeError,
+      );
+      const serializedRouteContext = JSON.stringify(loggerErrorMock.mock.calls[0]?.[0]);
+      expect(serializedRouteContext).not.toContain('山田太郎');
+      expect(serializedRouteContext).not.toContain('DispenseAuditAuthSecretError');
+    },
+  );
+
+  it('rethrows authentication control flow without logging or database work', async () => {
+    const controlFlowError = new Error('NEXT_REDIRECT');
+    requireAuthContextMock.mockRejectedValueOnce(controlFlowError);
+    unstableRethrowMock.mockImplementationOnce((error) => {
+      throw error;
+    });
+
+    await expect(GET(createGetRequest())).rejects.toBe(controlFlowError);
+
+    expect(loggerErrorMock).not.toHaveBeenCalled();
+    expect(runWithRequestAuthContextMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+  });
+
+  it('rethrows handler control flow without shared logging', async () => {
+    const controlFlowError = new Error('NEXT_NOT_FOUND');
+    dispenseTaskFindManyMock.mockRejectedValueOnce(controlFlowError);
+    unstableRethrowMock.mockImplementationOnce((error) => {
+      throw error;
+    });
+
+    await expect(GET(createGetRequest())).rejects.toBe(controlFlowError);
+
+    expect(loggerErrorMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 });
 
@@ -493,7 +680,8 @@ describe('/api/dispense-audits POST', () => {
   });
 
   it('rejects malformed JSON audit payloads before transaction or notification side effects', async () => {
-    const response = await POST(createMalformedJsonRequest());
+    const request = createMalformedJsonRequest();
+    const response = await POST(request);
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
@@ -514,14 +702,17 @@ describe('/api/dispense-audits POST', () => {
       ),
     });
 
-    const response = await POST(createMalformedJsonRequest());
+    const request = createMalformedJsonRequest();
+    const response = await POST(request);
 
     expect(response.status).toBe(403);
     expectSensitiveNoStore(response);
+    expect(request.bodyUsed).toBe(false);
     await expect(response.json()).resolves.toMatchObject({
       code: 'AUTH_FORBIDDEN',
       message: '調剤鑑査の作成権限がありません',
     });
+    expect(runWithRequestAuthContextMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(dispatchNotificationEventMock).not.toHaveBeenCalled();
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
@@ -582,10 +773,11 @@ describe('/api/dispense-audits POST', () => {
     expect(JSON.stringify(body)).not.toContain('raw dispense audit');
     expect(loggerErrorMock).toHaveBeenCalledWith(
       {
-        event: 'dispense_audits_post_unhandled_error',
+        event: 'route_handler_unhandled_error',
         route: '/api/dispense-audits',
         method: 'POST',
-        status: 500,
+        requestId: 'request_1',
+        correlationId: 'correlation_1',
       },
       unsafeError,
     );
@@ -678,6 +870,12 @@ describe('/api/dispense-audits POST', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(201);
     expectSensitiveNoStore(response);
+    expect(response.headers.get('X-Request-Id')).toBe('request_1');
+    expect(response.headers.get('X-Correlation-Id')).toBe('correlation_1');
+    expect(withRoutePerformanceMock).toHaveBeenCalledOnce();
+    expect(runWithRequestAuthContextMock).toHaveBeenCalledTimes(2);
+    expect(runWithRequestAuthContextMock.mock.calls[0]?.[0]).toEqual(buildAuthContext());
+    expect(runWithRequestAuthContextMock.mock.calls[1]?.[0]).toEqual(buildAuthContext());
     expect(withOrgContextMock).toHaveBeenCalledWith(
       'org_1',
       expect.any(Function),

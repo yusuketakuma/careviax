@@ -937,6 +937,7 @@ const routes: Array<{ name: string; handler: Handler; setupSuccess?: () => void 
     handler: () =>
       dispenseAuditsGet(
         createRequest('http://localhost/api/dispense-audits', { 'x-org-id': 'org_1' }),
+        emptyRouteContext,
       ),
   },
   {

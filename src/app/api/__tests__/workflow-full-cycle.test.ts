@@ -171,14 +171,19 @@ const {
       handler: (
         req: NextRequest,
         ctx: { orgId: string; userId: string; role: 'pharmacist' },
+        routeContext?: { params: Promise<Record<string, string>> },
       ) => Promise<Response>,
     ) => {
-      return (req: NextRequest) =>
-        handler(req, {
-          orgId: 'org_1',
-          userId: 'user_1',
-          role: 'pharmacist',
-        });
+      return (req: NextRequest, routeContext?: { params: Promise<Record<string, string>> }) =>
+        handler(
+          req,
+          {
+            orgId: 'org_1',
+            userId: 'user_1',
+            role: 'pharmacist',
+          },
+          routeContext,
+        );
     },
   ),
   requireAuthContextMock: vi.fn(),
@@ -1466,6 +1471,7 @@ describe('workflow full-cycle integration', () => {
         result: 'approved',
         expected_version: state.cycle.version,
       }),
+      emptyRouteContext,
     );
 
     expect(auditResponse?.status).toBe(201);

@@ -210,7 +210,10 @@ const routes: RouteEntry[] = [
   },
   { name: 'set-batches POST', handler: (req) => setBatchesPost(req) },
   { name: 'set-audits POST', handler: (req) => setAuditsPost(req) },
-  { name: 'dispense-audits POST', handler: (req) => dispenseAuditsPost(req) },
+  {
+    name: 'dispense-audits POST',
+    handler: (req) => dispenseAuditsPost(req, emptyRouteContext),
+  },
   { name: 'dispense-results POST', handler: (req) => dispenseResultsPost(req) },
   { name: 'inquiry-records POST', handler: (req) => inquiryRecordsPost(req, emptyRouteContext) },
   { name: 'incident-reports POST', handler: (req) => incidentReportsPost(req, emptyRouteContext) },
