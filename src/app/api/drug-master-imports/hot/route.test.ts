@@ -9,6 +9,11 @@ const {
   importHotMasterMock,
   previewHotMasterMock,
   loggerErrorMock,
+  invalidateSearchCacheMock,
+  invalidateDetailCacheMock,
+  clearRequestAuthContextMock,
+  runWithRequestAuthContextMock,
+  unstableRethrowMock,
 } = vi.hoisted(() => {
   const membershipFindFirstMock = vi.fn();
   return {
@@ -22,8 +27,20 @@ const {
     importHotMasterMock: vi.fn(),
     previewHotMasterMock: vi.fn(),
     loggerErrorMock: vi.fn(),
+    invalidateSearchCacheMock: vi.fn(),
+    invalidateDetailCacheMock: vi.fn(),
+    clearRequestAuthContextMock: vi.fn(),
+    runWithRequestAuthContextMock: vi.fn((_ctx, callback: () => unknown) => callback()),
+    unstableRethrowMock: vi.fn(),
   };
 });
+
+vi.mock('next/navigation', () => ({ unstable_rethrow: unstableRethrowMock }));
+
+vi.mock('@/lib/auth/request-context', () => ({
+  clearRequestAuthContext: clearRequestAuthContextMock,
+  runWithRequestAuthContext: runWithRequestAuthContextMock,
+}));
 
 vi.mock('@/lib/auth/config', () => ({
   auth: authMock,
@@ -42,7 +59,18 @@ vi.mock('@/server/services/drug-master-import/hot', () => ({
   previewHotMaster: previewHotMasterMock,
 }));
 
-import { POST } from './route';
+vi.mock('@/server/services/drug-master-search-cache', () => ({
+  invalidateDrugMasterSearchCache: invalidateSearchCacheMock,
+}));
+
+vi.mock('@/server/services/drug-master-detail-cache', () => ({
+  invalidateDrugMasterDetailCache: invalidateDetailCacheMock,
+}));
+
+import { POST as rawPOST } from './route';
+
+const emptyRouteContext = { params: Promise.resolve({}) };
+const POST = (req: NextRequest) => rawPOST(req, emptyRouteContext);
 
 function createJsonRequest(body: unknown) {
   return new NextRequest('http://localhost/api/drug-master-imports/hot', {
@@ -180,10 +208,29 @@ describe('/api/drug-master-imports/hot', () => {
 
     expect(response.status).toBe(201);
     expectNoStore(response);
+    expect(response.headers.get('X-Request-Id')).toBeTruthy();
+    expect(response.headers.get('X-Correlation-Id')).toBeTruthy();
+    expect(runWithRequestAuthContextMock).toHaveBeenCalledOnce();
+    expect(runWithRequestAuthContextMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: 'user_1',
+        orgId: 'org_1',
+        role: 'admin',
+      }),
+      expect.any(Function),
+    );
     expect(importHotMasterMock).toHaveBeenCalledWith(prismaMock, {
       fileUrl: 'https://www.medis.or.jp/hot.csv',
     });
     expect(previewHotMasterMock).not.toHaveBeenCalled();
+    expect(invalidateSearchCacheMock).toHaveBeenCalledOnce();
+    expect(invalidateDetailCacheMock).toHaveBeenCalledOnce();
+    expect(importHotMasterMock.mock.invocationCallOrder[0]).toBeLessThan(
+      invalidateSearchCacheMock.mock.invocationCallOrder[0]!,
+    );
+    expect(invalidateSearchCacheMock.mock.invocationCallOrder[0]).toBeLessThan(
+      invalidateDetailCacheMock.mock.invocationCallOrder[0]!,
+    );
     await expect(response.json()).resolves.toMatchObject({
       data: {
         logId: 'log_1',
@@ -218,6 +265,9 @@ describe('/api/drug-master-imports/hot', () => {
       previewLimit: 1,
     });
     expect(importHotMasterMock).not.toHaveBeenCalled();
+    expect(runWithRequestAuthContextMock).toHaveBeenCalledOnce();
+    expect(invalidateSearchCacheMock).not.toHaveBeenCalled();
+    expect(invalidateDetailCacheMock).not.toHaveBeenCalled();
     await expect(response.json()).resolves.toMatchObject({
       data: {
         dryRun: true,
@@ -276,6 +326,8 @@ describe('/api/drug-master-imports/hot', () => {
     expectNoStore(response);
     expect(importHotMasterMock).not.toHaveBeenCalled();
     expect(previewHotMasterMock).not.toHaveBeenCalled();
+    expect(invalidateSearchCacheMock).not.toHaveBeenCalled();
+    expect(invalidateDetailCacheMock).not.toHaveBeenCalled();
   });
 
   it('rejects credential-bearing file URLs without echoing credentials', async () => {
@@ -290,22 +342,96 @@ describe('/api/drug-master-imports/hot', () => {
     expectNoStore(response);
     expect(importHotMasterMock).not.toHaveBeenCalled();
     expect(previewHotMasterMock).not.toHaveBeenCalled();
+    expect(invalidateSearchCacheMock).not.toHaveBeenCalled();
+    expect(invalidateDetailCacheMock).not.toHaveBeenCalled();
     expect(JSON.stringify(payload)).not.toMatch(/importer|secret/);
   });
 
-  it('returns no-store 403 before reading the body when admin permission is denied', async () => {
-    membershipFindFirstMock.mockResolvedValueOnce({ role: 'viewer', site_id: null });
+  it.each([
+    'http://www.medis.or.jp/hot.csv',
+    'https://example.com/hot.csv',
+    'https://localhost/hot.csv',
+    'https://127.0.0.1/hot.csv',
+  ])('rejects disallowed HOT source URL %s before external work', async (fileUrl) => {
+    const response = await POST(createJsonRequest({ fileUrl }));
 
-    const response = await POST(
-      createJsonRequest({
-        fileUrl: 'https://importer:secret@www.medis.or.jp/hot.csv',
-      }),
-    );
-
-    expect(response.status).toBe(403);
+    expect(response.status).toBe(400);
     expectNoStore(response);
     expect(importHotMasterMock).not.toHaveBeenCalled();
     expect(previewHotMasterMock).not.toHaveBeenCalled();
+    expect(invalidateSearchCacheMock).not.toHaveBeenCalled();
+    expect(invalidateDetailCacheMock).not.toHaveBeenCalled();
+  });
+
+  it('returns no-store 401 before reading the body when unauthenticated', async () => {
+    authMock.mockResolvedValueOnce(null);
+    const request = createMalformedJsonRequest();
+
+    const response = await POST(request);
+
+    expect(response.status).toBe(401);
+    expectNoStore(response);
+    expect(request.bodyUsed).toBe(false);
+    expect(runWithRequestAuthContextMock).not.toHaveBeenCalled();
+    expect(importHotMasterMock).not.toHaveBeenCalled();
+    expect(previewHotMasterMock).not.toHaveBeenCalled();
+    expect(invalidateSearchCacheMock).not.toHaveBeenCalled();
+    expect(invalidateDetailCacheMock).not.toHaveBeenCalled();
+  });
+
+  it('returns no-store 403 before reading the body when admin permission is denied', async () => {
+    membershipFindFirstMock.mockResolvedValueOnce({ role: 'pharmacist', site_id: null });
+    const request = createMalformedJsonRequest();
+
+    const response = await POST(request);
+
+    expect(response.status).toBe(403);
+    expectNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '医薬品マスター取込は管理者のみ実行できます',
+    });
+    expect(request.bodyUsed).toBe(false);
+    expect(runWithRequestAuthContextMock).not.toHaveBeenCalled();
+    expect(importHotMasterMock).not.toHaveBeenCalled();
+    expect(previewHotMasterMock).not.toHaveBeenCalled();
+    expect(invalidateSearchCacheMock).not.toHaveBeenCalled();
+    expect(invalidateDetailCacheMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a generated-trace safe 500 when authentication dependencies throw', async () => {
+    const unsafeError = new Error('raw HOT auth URL token secret');
+    unsafeError.name = 'HotImportAuthSecretError';
+    authMock.mockRejectedValueOnce(unsafeError);
+    const request = createMalformedJsonRequest();
+
+    const response = await POST(request);
+    const requestId = response.headers.get('X-Request-Id');
+    const correlationId = response.headers.get('X-Correlation-Id');
+
+    expect(response.status).toBe(500);
+    expectNoStore(response);
+    expect(requestId).toBeTruthy();
+    expect(correlationId).toBe(requestId);
+    expect(request.bodyUsed).toBe(false);
+    expect(runWithRequestAuthContextMock).not.toHaveBeenCalled();
+    expect(importHotMasterMock).not.toHaveBeenCalled();
+    expect(previewHotMasterMock).not.toHaveBeenCalled();
+    expect(invalidateSearchCacheMock).not.toHaveBeenCalled();
+    expect(invalidateDetailCacheMock).not.toHaveBeenCalled();
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      {
+        event: 'route_auth_unhandled_error',
+        route: '/api/drug-master-imports/hot',
+        method: 'POST',
+        requestId,
+        correlationId,
+      },
+      unsafeError,
+    );
+    expect(JSON.stringify(loggerErrorMock.mock.calls[0]?.[0])).not.toContain('token');
+    expect(JSON.stringify(loggerErrorMock.mock.calls[0]?.[0])).not.toContain(
+      'HotImportAuthSecretError',
+    );
   });
 
   it('returns a sanitized no-store 500 when HOT import fails unexpectedly', async () => {
@@ -320,12 +446,15 @@ describe('/api/drug-master-imports/hot', () => {
     const body = await response.json();
     expect(body).toMatchObject({ code: 'INTERNAL_ERROR' });
     expect(JSON.stringify(body)).not.toContain('hot import secret');
+    expect(invalidateSearchCacheMock).not.toHaveBeenCalled();
+    expect(invalidateDetailCacheMock).not.toHaveBeenCalled();
     expect(loggerErrorMock).toHaveBeenCalledWith(
       {
-        event: 'drug_master_imports_hot_post_unhandled_error',
+        event: 'route_handler_unhandled_error',
         route: '/api/drug-master-imports/hot',
         method: 'POST',
-        status: 500,
+        requestId: response.headers.get('X-Request-Id'),
+        correlationId: response.headers.get('X-Correlation-Id'),
       },
       unsafeError,
     );
@@ -350,12 +479,15 @@ describe('/api/drug-master-imports/hot', () => {
     expect(body).toMatchObject({ code: 'INTERNAL_ERROR' });
     expect(JSON.stringify(body)).not.toContain('hot preview secret');
     expect(importHotMasterMock).not.toHaveBeenCalled();
+    expect(invalidateSearchCacheMock).not.toHaveBeenCalled();
+    expect(invalidateDetailCacheMock).not.toHaveBeenCalled();
     expect(loggerErrorMock).toHaveBeenCalledWith(
       {
-        event: 'drug_master_imports_hot_post_unhandled_error',
+        event: 'route_handler_unhandled_error',
         route: '/api/drug-master-imports/hot',
         method: 'POST',
-        status: 500,
+        requestId: response.headers.get('X-Request-Id'),
+        correlationId: response.headers.get('X-Correlation-Id'),
       },
       unsafeError,
     );
@@ -365,5 +497,40 @@ describe('/api/drug-master-imports/hot', () => {
     const logged = JSON.stringify(logContext);
     expect(logged).not.toContain('hot preview secret');
     expect(logged).not.toContain('HotPreviewSecretError');
+  });
+
+  it('rethrows authentication control flow without logging or side effects', async () => {
+    const controlFlowError = new Error('NEXT_REDIRECT');
+    authMock.mockRejectedValueOnce(controlFlowError);
+    unstableRethrowMock.mockImplementationOnce((error) => {
+      throw error;
+    });
+    const request = createMalformedJsonRequest();
+
+    await expect(POST(request)).rejects.toBe(controlFlowError);
+
+    expect(request.bodyUsed).toBe(false);
+    expect(loggerErrorMock).not.toHaveBeenCalled();
+    expect(runWithRequestAuthContextMock).not.toHaveBeenCalled();
+    expect(importHotMasterMock).not.toHaveBeenCalled();
+    expect(previewHotMasterMock).not.toHaveBeenCalled();
+    expect(invalidateSearchCacheMock).not.toHaveBeenCalled();
+    expect(invalidateDetailCacheMock).not.toHaveBeenCalled();
+  });
+
+  it('rethrows import control flow without shared logging or cache invalidation', async () => {
+    const controlFlowError = new Error('NEXT_NOT_FOUND');
+    importHotMasterMock.mockRejectedValueOnce(controlFlowError);
+    unstableRethrowMock.mockImplementationOnce((error) => {
+      throw error;
+    });
+
+    await expect(POST(createJsonRequest({}))).rejects.toBe(controlFlowError);
+
+    expect(loggerErrorMock).not.toHaveBeenCalled();
+    expect(runWithRequestAuthContextMock).toHaveBeenCalledOnce();
+    expect(previewHotMasterMock).not.toHaveBeenCalled();
+    expect(invalidateSearchCacheMock).not.toHaveBeenCalled();
+    expect(invalidateDetailCacheMock).not.toHaveBeenCalled();
   });
 });
