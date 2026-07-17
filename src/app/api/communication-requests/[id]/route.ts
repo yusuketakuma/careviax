@@ -1,22 +1,13 @@
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { recordPhiReadAuditForRequest } from '@/lib/audit/phi-read-audit';
-import { requireAuthContext } from '@/lib/auth/context';
+import { withAuthContext, type AuthContext, type AuthRouteContext } from '@/lib/auth/context';
 import { fetchEmergencyContacts } from '@/lib/patient/emergency-contacts';
 import { withOrgContext } from '@/lib/db/rls';
-import {
-  success,
-  validationError,
-  notFound,
-  forbidden,
-  conflict,
-  internalError,
-} from '@/lib/api/response';
-import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
+import { success, validationError, notFound, forbidden, conflict } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { buildTracingReportPdfPath } from '@/lib/reports/tracing-report-pdf-path';
-import { unstable_rethrow } from 'next/navigation';
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import {
@@ -38,13 +29,11 @@ import {
   upsertCommunicationResponseByIntent,
 } from '@/server/services/communication-response-upsert';
 
-async function authenticatedGET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canReport',
-    message: '連携依頼の閲覧権限がありません',
-  });
-  if ('response' in authResult) return authResult.response;
-  const { ctx } = authResult;
+async function communicationRequestGET(
+  _req: NextRequest,
+  ctx: AuthContext,
+  { params }: AuthRouteContext<{ id: string }>,
+) {
   const orgId = ctx.orgId;
 
   const { id: rawId } = await params;
@@ -142,14 +131,10 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
   });
 }
 
-export async function GET(req: NextRequest, routeContext: { params: Promise<{ id: string }> }) {
-  try {
-    return withSensitiveNoStore(await authenticatedGET(req, routeContext));
-  } catch (err) {
-    unstable_rethrow(err);
-    return withSensitiveNoStore(internalError());
-  }
-}
+export const GET = withAuthContext(communicationRequestGET, {
+  permission: 'canReport',
+  message: '連携依頼の閲覧権限がありません',
+});
 
 const ALLOWED_STATUS_TRANSITIONS: Record<
   string,
@@ -207,16 +192,11 @@ class CommunicationRequestPatchRollback extends Error {
   }
 }
 
-async function authenticatedPATCH(
+async function communicationRequestPATCH(
   req: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
+  ctx: AuthContext,
+  { params }: AuthRouteContext<{ id: string }>,
 ) {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canReport',
-    message: '連携依頼の更新権限がありません',
-  });
-  if ('response' in authResult) return authResult.response;
-  const { ctx } = authResult;
   const orgId = ctx.orgId;
 
   const { id: rawId } = await params;
@@ -618,11 +598,7 @@ async function authenticatedPATCH(
   return success({ data: result });
 }
 
-export async function PATCH(req: NextRequest, routeContext: { params: Promise<{ id: string }> }) {
-  try {
-    return withSensitiveNoStore(await authenticatedPATCH(req, routeContext));
-  } catch (err) {
-    unstable_rethrow(err);
-    return withSensitiveNoStore(internalError());
-  }
-}
+export const PATCH = withAuthContext(communicationRequestPATCH, {
+  permission: 'canReport',
+  message: '連携依頼の更新権限がありません',
+});
