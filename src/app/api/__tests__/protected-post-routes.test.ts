@@ -160,7 +160,10 @@ const routes: RouteEntry[] = [
     invalidBody: [],
   },
   { name: 'tasks POST', handler: (req) => tasksPost(req), invalidBody: [] },
-  { name: 'consent-records POST', handler: (req) => consentRecordsPost(req) },
+  {
+    name: 'consent-records POST',
+    handler: (req) => consentRecordsPost(req, emptyRouteContext),
+  },
   { name: 'comments POST', handler: (req) => commentsPost(req, emptyRouteContext) },
   {
     name: 'patient-self-reports POST',

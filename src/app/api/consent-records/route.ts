@@ -1,11 +1,9 @@
 import { z } from 'zod';
-import { unstable_rethrow } from 'next/navigation';
 import { NextRequest } from 'next/server';
-import { requireAuthContext } from '@/lib/auth/context';
+import { withAuthContext, type AuthContext } from '@/lib/auth/context';
 import { runWithRequestAuthContext } from '@/lib/auth/request-context';
 import { withOrgContext } from '@/lib/db/rls';
-import { internalError, notFound, success, validationError } from '@/lib/api/response';
-import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
+import { notFound, success, validationError } from '@/lib/api/response';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { buildCursorPage, parsePaginationParams } from '@/lib/api/pagination';
 import { validateOrgReferences } from '@/lib/api/org-reference';
@@ -22,10 +20,6 @@ import {
   recordConsentRecordCreatedAudit,
   recordConsentRecordsViewedAudit,
 } from '@/server/services/consent-record-audit';
-import { logger } from '@/lib/utils/logger';
-import { withRoutePerformance } from '@/lib/utils/performance';
-
-const ROUTE = '/api/consent-records';
 
 function optionalTrimmedString(value: unknown) {
   if (value === null || value === undefined) return value;
@@ -129,14 +123,7 @@ function resolveConsentDocumentUrlInput(args: {
   return { ok: true as const, documentUrl: normalizedUrl };
 }
 
-async function authenticatedGET(req: NextRequest) {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canVisit',
-    message: '同意記録の閲覧には訪問権限が必要です',
-  });
-  if ('response' in authResult) return authResult.response;
-  const { ctx } = authResult;
-
+async function consentRecordsGET(req: NextRequest, ctx: AuthContext) {
   return runWithRequestAuthContext(ctx, async () => {
     const searchParams = req.nextUrl.searchParams;
     const patientId = searchParams.get('patient_id');
@@ -223,34 +210,12 @@ async function authenticatedGET(req: NextRequest) {
   });
 }
 
-export async function GET(req: NextRequest) {
-  return withRoutePerformance(req, async () => {
-    try {
-      return withSensitiveNoStore(await authenticatedGET(req));
-    } catch (err) {
-      unstable_rethrow(err);
-      logger.error(
-        {
-          event: 'consent_records_get_unhandled_error',
-          route: ROUTE,
-          method: req.method,
-          status: 500,
-        },
-        err,
-      );
-      return withSensitiveNoStore(internalError());
-    }
-  });
-}
+export const GET = withAuthContext(consentRecordsGET, {
+  permission: 'canVisit',
+  message: '同意記録の閲覧には訪問権限が必要です',
+});
 
-async function authenticatedPOST(req: NextRequest) {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canVisit',
-    message: '同意記録の作成には訪問権限が必要です',
-  });
-  if ('response' in authResult) return authResult.response;
-  const { ctx } = authResult;
-
+async function consentRecordsPOST(req: NextRequest, ctx: AuthContext) {
   return runWithRequestAuthContext(ctx, async () => {
     const payload = await readJsonObjectRequestBody(req);
     if (!payload) return validationError('リクエストボディが不正です');
@@ -391,22 +356,7 @@ async function authenticatedPOST(req: NextRequest) {
   });
 }
 
-export async function POST(req: NextRequest) {
-  return withRoutePerformance(req, async () => {
-    try {
-      return withSensitiveNoStore(await authenticatedPOST(req));
-    } catch (err) {
-      unstable_rethrow(err);
-      logger.error(
-        {
-          event: 'consent_records_post_unhandled_error',
-          route: ROUTE,
-          method: req.method,
-          status: 500,
-        },
-        err,
-      );
-      return withSensitiveNoStore(internalError());
-    }
-  });
-}
+export const POST = withAuthContext(consentRecordsPOST, {
+  permission: 'canVisit',
+  message: '同意記録の作成には訪問権限が必要です',
+});

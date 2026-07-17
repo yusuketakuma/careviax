@@ -1,9 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { expectNoStore } from '@/test/api-response-assertions';
 
 const {
   loggerErrorMock,
+  unstableRethrowMock,
   requireAuthContextMock,
   runWithRequestAuthContextMock,
   withRoutePerformanceMock,
@@ -22,6 +23,7 @@ const {
   recordConsentRecordCreatedAuditMock,
 } = vi.hoisted(() => ({
   loggerErrorMock: vi.fn(),
+  unstableRethrowMock: vi.fn(),
   requireAuthContextMock: vi.fn(),
   runWithRequestAuthContextMock: vi.fn((_ctx, callback: () => unknown) => callback()),
   withRoutePerformanceMock: vi.fn((_req, callback: () => unknown) => callback()),
@@ -40,8 +42,87 @@ const {
   recordConsentRecordCreatedAuditMock: vi.fn(),
 }));
 
+vi.mock('next/navigation', () => ({ unstable_rethrow: unstableRethrowMock }));
+
 vi.mock('@/lib/auth/context', () => ({
   requireAuthContext: requireAuthContextMock,
+  withAuthContext:
+    (
+      handler: (
+        req: NextRequest,
+        ctx: ReturnType<typeof buildAuthContext>,
+        routeContext: { params: Promise<Record<string, string>> },
+      ) => Promise<Response>,
+      options: unknown,
+    ) =>
+    async (req: NextRequest, routeContext: { params: Promise<Record<string, string>> }) =>
+      withRoutePerformanceMock(req, async () => {
+        let authResult: { ctx: ReturnType<typeof buildAuthContext> } | { response: Response };
+        try {
+          authResult = await requireAuthContextMock(req, options);
+        } catch (error) {
+          unstableRethrowMock(error);
+          const trace = {
+            requestId: 'generated_request_1',
+            correlationId: req.headers.get('x-correlation-id') ?? 'generated_request_1',
+          };
+          loggerErrorMock(
+            {
+              event: 'route_auth_unhandled_error',
+              route: req.nextUrl.pathname,
+              method: req.method,
+              requestId: trace.requestId,
+              correlationId: trace.correlationId,
+            },
+            error,
+          );
+          const response = NextResponse.json(
+            { code: 'INTERNAL_ERROR', message: 'サーバー内部でエラーが発生しました' },
+            { status: 500 },
+          );
+          response.headers.set('Cache-Control', 'private, no-store, max-age=0');
+          response.headers.set('Pragma', 'no-cache');
+          response.headers.set('X-Request-Id', trace.requestId);
+          response.headers.set('X-Correlation-Id', trace.correlationId);
+          return response;
+        }
+        if ('response' in authResult) {
+          authResult.response.headers.set('Cache-Control', 'private, no-store, max-age=0');
+          authResult.response.headers.set('Pragma', 'no-cache');
+          return authResult.response;
+        }
+        return runWithRequestAuthContextMock(authResult.ctx, async () => {
+          try {
+            const response = await handler(req, authResult.ctx, routeContext);
+            response.headers.set('Cache-Control', 'private, no-store, max-age=0');
+            response.headers.set('Pragma', 'no-cache');
+            response.headers.set('X-Request-Id', authResult.ctx.requestId);
+            response.headers.set('X-Correlation-Id', authResult.ctx.correlationId);
+            return response;
+          } catch (error) {
+            unstableRethrowMock(error);
+            loggerErrorMock(
+              {
+                event: 'route_handler_unhandled_error',
+                route: req.nextUrl.pathname,
+                method: req.method,
+                requestId: authResult.ctx.requestId,
+                correlationId: authResult.ctx.correlationId,
+              },
+              error,
+            );
+            const response = NextResponse.json(
+              { code: 'INTERNAL_ERROR', message: 'サーバー内部でエラーが発生しました' },
+              { status: 500 },
+            );
+            response.headers.set('Cache-Control', 'private, no-store, max-age=0');
+            response.headers.set('Pragma', 'no-cache');
+            response.headers.set('X-Request-Id', authResult.ctx.requestId);
+            response.headers.set('X-Correlation-Id', authResult.ctx.correlationId);
+            return response;
+          }
+        });
+      }),
 }));
 
 vi.mock('@/lib/auth/request-context', () => ({
@@ -99,8 +180,9 @@ vi.mock('@/server/services/consent-record-audit', () => ({
 
 import { GET as rawGET, POST as rawPOST } from './route';
 
-const GET = (req: NextRequest) => rawGET(req);
-const POST = (req: NextRequest) => rawPOST(req);
+const emptyRouteContext = { params: Promise.resolve({}) };
+const GET = (req: NextRequest) => rawGET(req, emptyRouteContext);
+const POST = (req: NextRequest) => rawPOST(req, emptyRouteContext);
 
 function createRequest(url: string, body?: unknown) {
   return new NextRequest(url, {
@@ -131,6 +213,8 @@ function buildAuthContext(req: NextRequest & { role?: string }) {
     role: req.role ?? 'pharmacist',
     ipAddress: '127.0.0.1',
     userAgent: 'vitest',
+    requestId: 'request_1',
+    correlationId: 'correlation_1',
   };
 }
 
@@ -140,6 +224,7 @@ describe('/api/consent-records', () => {
     requireAuthContextMock.mockImplementation(async (req) => ({ ctx: buildAuthContext(req) }));
     runWithRequestAuthContextMock.mockImplementation((_ctx, callback) => callback());
     withRoutePerformanceMock.mockImplementation((_req, callback) => callback());
+    unstableRethrowMock.mockImplementation(() => undefined);
     consentRecordFindManyMock.mockResolvedValue([
       {
         id: 'consent_1',
@@ -178,6 +263,121 @@ describe('/api/consent-records', () => {
     );
   });
 
+  it('rejects GET authentication before query, request context, or database work', async () => {
+    requireAuthContextMock.mockResolvedValueOnce({
+      response: NextResponse.json({ code: 'FORBIDDEN' }, { status: 403 }),
+    });
+    const request = createRequest('http://localhost/api/consent-records?patient_id=patient_1');
+
+    const response = (await GET(request))!;
+
+    expect(response.status).toBe(403);
+    expectNoStore(response);
+    expect(requireAuthContextMock).toHaveBeenCalledWith(request, {
+      permission: 'canVisit',
+      message: '同意記録の閲覧には訪問権限が必要です',
+    });
+    expect(runWithRequestAuthContextMock).not.toHaveBeenCalled();
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(consentRecordFindManyMock).not.toHaveBeenCalled();
+    expect(recordConsentRecordsViewedAuditMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects POST authentication before reading malformed JSON or mutation work', async () => {
+    requireAuthContextMock.mockResolvedValueOnce({
+      response: NextResponse.json({ code: 'FORBIDDEN' }, { status: 403 }),
+    });
+    const request = createMalformedPostRequest('http://localhost/api/consent-records');
+
+    const response = (await POST(request))!;
+
+    expect(response.status).toBe(403);
+    expectNoStore(response);
+    expect(request.bodyUsed).toBe(false);
+    expect(requireAuthContextMock).toHaveBeenCalledWith(request, {
+      permission: 'canVisit',
+      message: '同意記録の作成には訪問権限が必要です',
+    });
+    expect(runWithRequestAuthContextMock).not.toHaveBeenCalled();
+    expect(validateOrgReferencesMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(recordConsentRecordCreatedAuditMock).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['GET', () => GET(createRequest('http://localhost/api/consent-records?patient_id=patient_1'))],
+    ['POST', () => POST(createMalformedPostRequest('http://localhost/api/consent-records'))],
+  ] as const)(
+    'returns a generated-trace safe 500 when %s authentication throws',
+    async (method, invoke) => {
+      const unsafeError = new Error('患者 山田太郎 raw consent auth secret');
+      requireAuthContextMock.mockRejectedValueOnce(unsafeError);
+
+      const response = (await invoke())!;
+
+      expect(response.status).toBe(500);
+      expectNoStore(response);
+      expect(response.headers.get('X-Request-Id')).toBe('generated_request_1');
+      expect(response.headers.get('X-Correlation-Id')).toBe('generated_request_1');
+      await expect(response.json()).resolves.toEqual({
+        code: 'INTERNAL_ERROR',
+        message: 'サーバー内部でエラーが発生しました',
+      });
+      expect(runWithRequestAuthContextMock).not.toHaveBeenCalled();
+      expect(withOrgContextMock).not.toHaveBeenCalled();
+      expect(loggerErrorMock).toHaveBeenCalledWith(
+        {
+          event: 'route_auth_unhandled_error',
+          route: '/api/consent-records',
+          method,
+          requestId: 'generated_request_1',
+          correlationId: 'generated_request_1',
+        },
+        unsafeError,
+      );
+      expect(JSON.stringify(loggerErrorMock.mock.calls[0]?.[0])).not.toContain('山田太郎');
+    },
+  );
+
+  it('rethrows GET authentication control-flow without logging or database work', async () => {
+    const controlFlowError = new Error('NEXT_REDIRECT');
+    requireAuthContextMock.mockRejectedValueOnce(controlFlowError);
+    unstableRethrowMock.mockImplementationOnce((error) => {
+      throw error;
+    });
+
+    await expect(
+      GET(createRequest('http://localhost/api/consent-records?patient_id=patient_1')),
+    ).rejects.toBe(controlFlowError);
+
+    expect(loggerErrorMock).not.toHaveBeenCalled();
+    expect(consentRecordFindManyMock).not.toHaveBeenCalled();
+    expect(recordConsentRecordsViewedAuditMock).not.toHaveBeenCalled();
+  });
+
+  it('rethrows POST handler control-flow without logging or mutation work', async () => {
+    const controlFlowError = new Error('NEXT_REDIRECT');
+    validateOrgReferencesMock.mockRejectedValueOnce(controlFlowError);
+    unstableRethrowMock.mockImplementationOnce((error) => {
+      throw error;
+    });
+
+    await expect(
+      POST(
+        createRequest('http://localhost/api/consent-records', {
+          patient_id: 'patient_1',
+          consent_type: 'external_sharing',
+          method: 'paper_scan',
+          obtained_date: '2026-03-29',
+        }),
+      ),
+    ).rejects.toBe(controlFlowError);
+
+    expect(loggerErrorMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(recordConsentRecordCreatedAuditMock).not.toHaveBeenCalled();
+  });
+
   it('lists consent records for the target patient', async () => {
     const response = (await GET(
       createRequest(
@@ -187,6 +387,8 @@ describe('/api/consent-records', () => {
 
     expect(response.status).toBe(200);
     expectNoStore(response);
+    expect(response.headers.get('X-Request-Id')).toBe('request_1');
+    expect(response.headers.get('X-Correlation-Id')).toBe('correlation_1');
     expect(withRoutePerformanceMock).toHaveBeenCalledWith(
       expect.any(NextRequest),
       expect.any(Function),
@@ -199,6 +401,7 @@ describe('/api/consent-records', () => {
       expect.objectContaining({ orgId: 'org_1', userId: 'user_1', role: 'pharmacist' }),
       expect.any(Function),
     );
+    expect(runWithRequestAuthContextMock).toHaveBeenCalledTimes(2);
     expect(patientFindFirstMock).toHaveBeenCalledWith({
       where: { id: 'patient_1', org_id: 'org_1' },
       select: { id: true },
@@ -340,7 +543,7 @@ describe('/api/consent-records', () => {
     unsafeError.name = 'ConsentListAuditSecretError';
     recordConsentRecordsViewedAuditMock.mockRejectedValueOnce(unsafeError);
 
-    // 監査記録に失敗したら成功扱いにせず fail closed。route-local boundary が想定外 throw を
+    // 監査記録に失敗したら成功扱いにせず fail closed。shared route boundary が想定外 throw を
     // 標準 500 エンベロープに変換するため、200 ではなく 500/INTERNAL_ERROR を返す。
     const response = (await GET(
       createRequest('http://localhost/api/consent-records?patient_id=patient_1'),
@@ -355,10 +558,11 @@ describe('/api/consent-records', () => {
     expect(body.data).toBeUndefined();
     expect(loggerErrorMock).toHaveBeenCalledWith(
       {
-        event: 'consent_records_get_unhandled_error',
+        event: 'route_handler_unhandled_error',
         route: '/api/consent-records',
         method: 'GET',
-        status: 500,
+        requestId: 'request_1',
+        correlationId: 'correlation_1',
       },
       unsafeError,
     );
@@ -408,6 +612,8 @@ describe('/api/consent-records', () => {
 
     expect(response.status).toBe(201);
     expectNoStore(response);
+    expect(response.headers.get('X-Request-Id')).toBe('request_1');
+    expect(response.headers.get('X-Correlation-Id')).toBe('correlation_1');
     expect(withRoutePerformanceMock).toHaveBeenCalledWith(
       expect.any(NextRequest),
       expect.any(Function),
@@ -420,6 +626,7 @@ describe('/api/consent-records', () => {
       expect.objectContaining({ orgId: 'org_1', userId: 'user_1', role: 'pharmacist' }),
       expect.any(Function),
     );
+    expect(runWithRequestAuthContextMock).toHaveBeenCalledTimes(2);
     expect(validateOrgReferencesMock).toHaveBeenCalledWith('org_1', {
       patient_id: 'patient_1',
     });
@@ -519,6 +726,53 @@ describe('/api/consent-records', () => {
         document_url_redacted: false,
       },
     });
+  });
+
+  it('rejects an unbound consent document file before transaction or audit work', async () => {
+    fileAssetFindFirstMock.mockResolvedValueOnce(null);
+
+    const response = (await POST(
+      createRequest('http://localhost/api/consent-records', {
+        patient_id: 'patient_1',
+        consent_type: 'external_sharing',
+        method: 'paper_scan',
+        obtained_date: '2026-03-29',
+        document_file_id: 'file_1',
+      }),
+    ))!;
+
+    expect(response.status).toBe(400);
+    expectNoStore(response);
+    expect(fileAssetFindFirstMock).toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(consentRecordCreateMock).not.toHaveBeenCalled();
+    expect(recordConsentRecordCreatedAuditMock).not.toHaveBeenCalled();
+  });
+
+  it('stops after organization-reference validation failure without access or mutation work', async () => {
+    validateOrgReferencesMock.mockResolvedValueOnce({
+      ok: false,
+      response: NextResponse.json({ code: 'VALIDATION_ERROR' }, { status: 400 }),
+    });
+
+    const response = (await POST(
+      createRequest('http://localhost/api/consent-records', {
+        patient_id: 'patient_1',
+        case_id: 'case_other',
+        consent_type: 'external_sharing',
+        method: 'paper_scan',
+        obtained_date: '2026-03-29',
+      }),
+    ))!;
+
+    expect(response.status).toBe(400);
+    expectNoStore(response);
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(fileAssetFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(consentRecordCreateMock).not.toHaveBeenCalled();
+    expect(recordConsentRecordCreatedAuditMock).not.toHaveBeenCalled();
   });
 
   it('serializes concurrent active consent creates and lets one request detect the duplicate in-transaction (TOCTOU guard)', async () => {
@@ -672,7 +926,7 @@ describe('/api/consent-records', () => {
     unsafeError.name = 'ConsentCreateAuditSecretError';
     recordConsentRecordCreatedAuditMock.mockRejectedValueOnce(unsafeError);
 
-    // 監査記録に失敗したら成功(2xx)を返さず fail closed。route-local boundary が想定外 throw を
+    // 監査記録に失敗したら成功(2xx)を返さず fail closed。shared route boundary が想定外 throw を
     // 標準 500 エンベロープに変換するため、クライアントには 500/INTERNAL_ERROR を返す。
     const response = (await POST(
       createRequest('http://localhost/api/consent-records', {
@@ -690,10 +944,11 @@ describe('/api/consent-records', () => {
     expect(JSON.stringify(body)).not.toContain('leak.pdf');
     expect(loggerErrorMock).toHaveBeenCalledWith(
       {
-        event: 'consent_records_post_unhandled_error',
+        event: 'route_handler_unhandled_error',
         route: '/api/consent-records',
         method: 'POST',
-        status: 500,
+        requestId: 'request_1',
+        correlationId: 'correlation_1',
       },
       unsafeError,
     );

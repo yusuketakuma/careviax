@@ -782,6 +782,7 @@ const routes: Array<{ name: string; handler: Handler; setupSuccess?: () => void 
         createRequest('http://localhost/api/consent-records?patient_id=patient_1', {
           'x-org-id': 'org_1',
         }),
+        emptyRouteContext,
       ),
   },
   {
