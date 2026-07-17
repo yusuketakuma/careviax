@@ -1,13 +1,11 @@
 import { NextRequest } from 'next/server';
-import { unstable_rethrow } from 'next/navigation';
 import { z } from 'zod';
-import { requireAuthContext } from '@/lib/auth/context';
+import { withAuthContext, type AuthContext, type AuthRouteContext } from '@/lib/auth/context';
 import { canConfirmCareReportClinicalJudgement } from '@/lib/auth/care-report-confirmation';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import {
   conflict,
   forbiddenResponse,
-  internalError,
   notFound,
   success,
   validationError,
@@ -32,16 +30,11 @@ const finalizeCareReportSchema = z.object({
   pharmacist_credential_id: z.string().trim().min(1).optional(),
 });
 
-async function authenticatedPOST(
+async function finalizeCareReportPOST(
   req: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
+  ctx: AuthContext,
+  { params }: AuthRouteContext<{ id: string }>,
 ) {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canAuthorReport',
-    message: '報告書の確定権限がありません',
-  });
-  if ('response' in authResult) return authResult.response;
-  const ctx = authResult.ctx;
   if (!canConfirmCareReportClinicalJudgement(ctx.role)) {
     return sensitiveResponse(await forbiddenResponse('報告書の確定権限がありません'));
   }
@@ -236,11 +229,7 @@ async function authenticatedPOST(
   );
 }
 
-export async function POST(req: NextRequest, routeContext: { params: Promise<{ id: string }> }) {
-  try {
-    return sensitiveResponse(await authenticatedPOST(req, routeContext));
-  } catch (err) {
-    unstable_rethrow(err);
-    return sensitiveResponse(internalError());
-  }
-}
+export const POST = withAuthContext(finalizeCareReportPOST, {
+  permission: 'canAuthorReport',
+  message: '報告書の確定権限がありません',
+});
