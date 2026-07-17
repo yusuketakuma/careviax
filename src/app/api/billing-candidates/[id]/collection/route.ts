@@ -1,14 +1,12 @@
 import { createHash, createHmac } from 'node:crypto';
 import { Prisma } from '@prisma/client';
-import { unstable_rethrow } from 'next/navigation';
-import { NextRequest, type NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { parseOptionalIdempotencyKey } from '@/lib/api/idempotency-key';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
-import { conflict, internalError, notFound, success, validationError } from '@/lib/api/response';
+import { conflict, notFound, success, validationError } from '@/lib/api/response';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
-import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
-import { requireAuthContext } from '@/lib/auth/context';
+import { withAuthContext, type AuthContext, type AuthRouteContext } from '@/lib/auth/context';
 import { getAuthSecret } from '@/lib/auth/secret';
 import { readJsonObject } from '@/lib/db/json';
 import { withOrgContext } from '@/lib/db/rls';
@@ -168,17 +166,11 @@ function isInvoiceManagedBilling(input: {
   );
 }
 
-async function authenticatedPATCH(
+async function billingCollectionPATCH(
   req: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-): Promise<NextResponse> {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canManageBilling',
-    message: '集金記録の更新権限がありません',
-  });
-  if ('response' in authResult) return authResult.response;
-  const ctx = authResult.ctx;
-
+  ctx: AuthContext,
+  { params }: AuthRouteContext<{ id: string }>,
+) {
   const { id: rawId } = await params;
   const candidateId = normalizeRequiredRouteParam(rawId);
   if (!candidateId) return validationError('請求候補IDが不正です');
@@ -421,14 +413,7 @@ async function authenticatedPATCH(
   return success({ data: result });
 }
 
-export async function PATCH(
-  req: NextRequest,
-  routeContext: { params: Promise<{ id: string }> },
-): Promise<Response> {
-  try {
-    return withSensitiveNoStore(await authenticatedPATCH(req, routeContext));
-  } catch (err) {
-    unstable_rethrow(err);
-    return withSensitiveNoStore(internalError());
-  }
-}
+export const PATCH = withAuthContext(billingCollectionPATCH, {
+  permission: 'canManageBilling',
+  message: '集金記録の更新権限がありません',
+});

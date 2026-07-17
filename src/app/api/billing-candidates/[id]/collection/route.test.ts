@@ -3,7 +3,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest, NextResponse } from 'next/server';
 
 const {
+  authContext,
   requireAuthContextMock,
+  runWithRequestAuthContextMock,
+  loggerErrorMock,
+  withRoutePerformanceMock,
   withOrgContextMock,
   findFirstMock,
   patientFindFirstMock,
@@ -12,7 +16,17 @@ const {
   taskFindFirstMock,
   auditLogCreateMock,
 } = vi.hoisted(() => ({
+  authContext: {
+    orgId: 'org_1',
+    userId: 'user_1',
+    role: 'admin',
+    requestId: 'request_collection_1',
+    correlationId: 'correlation_collection_1',
+  },
   requireAuthContextMock: vi.fn(),
+  runWithRequestAuthContextMock: vi.fn((_ctx, callback) => callback()),
+  loggerErrorMock: vi.fn(),
+  withRoutePerformanceMock: vi.fn((_req, handler) => handler()),
   withOrgContextMock: vi.fn(),
   findFirstMock: vi.fn(),
   patientFindFirstMock: vi.fn(),
@@ -24,6 +38,73 @@ const {
 
 vi.mock('@/lib/auth/context', () => ({
   requireAuthContext: requireAuthContextMock,
+  withAuthContext:
+    (
+      handler: (
+        req: NextRequest,
+        ctx: typeof authContext,
+        routeContext: { params: Promise<{ id: string }> },
+      ) => Promise<Response>,
+      options: unknown,
+    ) =>
+    async (req: NextRequest, routeContext: { params: Promise<{ id: string }> }) =>
+      withRoutePerformanceMock(req, async () => {
+        let response: Response;
+        let trace = authContext;
+        try {
+          const authResult = await requireAuthContextMock(req, options);
+          if ('response' in authResult) {
+            response = authResult.response;
+          } else {
+            trace = authResult.ctx;
+            try {
+              response = await runWithRequestAuthContextMock(authResult.ctx, () =>
+                handler(req, authResult.ctx, routeContext),
+              );
+            } catch (error) {
+              loggerErrorMock(
+                {
+                  event: 'route_handler_unhandled_error',
+                  route: req.nextUrl.pathname,
+                  method: req.method,
+                  requestId: trace.requestId,
+                  correlationId: trace.correlationId,
+                },
+                error,
+              );
+              response = NextResponse.json(
+                { code: 'INTERNAL_ERROR', message: 'サーバー内部でエラーが発生しました' },
+                { status: 500 },
+              );
+            }
+          }
+        } catch (error) {
+          trace = {
+            ...authContext,
+            requestId: 'generated_request_collection_1',
+            correlationId: req.headers.get('x-correlation-id') ?? 'generated_request_collection_1',
+          };
+          loggerErrorMock(
+            {
+              event: 'route_auth_unhandled_error',
+              route: req.nextUrl.pathname,
+              method: req.method,
+              requestId: trace.requestId,
+              correlationId: trace.correlationId,
+            },
+            error,
+          );
+          response = NextResponse.json(
+            { code: 'INTERNAL_ERROR', message: 'サーバー内部でエラーが発生しました' },
+            { status: 500 },
+          );
+        }
+        response.headers.set('Cache-Control', SENSITIVE_NO_STORE);
+        response.headers.set('Pragma', 'no-cache');
+        response.headers.set('X-Request-Id', trace.requestId);
+        response.headers.set('X-Correlation-Id', trace.correlationId);
+        return response;
+      }),
 }));
 
 vi.mock('@/lib/db/rls', () => ({
@@ -46,6 +127,8 @@ function createRequest(body: unknown, headers: Record<string, string> = {}) {
     headers: {
       'content-type': 'application/json',
       'x-org-id': 'org_1',
+      'x-request-id': 'inbound_request_should_be_ignored',
+      'x-correlation-id': 'correlation_collection_1',
       ...headers,
     },
     body: JSON.stringify(requestBody),
@@ -104,13 +187,9 @@ describe('/api/billing-candidates/[id]/collection PATCH', () => {
   beforeEach(() => {
     vi.stubEnv('BILLING_COLLECTION_IDEMPOTENCY_HASH_SECRET', LOCAL_AUTH_SECRET);
     vi.clearAllMocks();
-    requireAuthContextMock.mockResolvedValue({
-      ctx: {
-        orgId: 'org_1',
-        userId: 'user_1',
-        role: 'admin',
-      },
-    });
+    requireAuthContextMock.mockResolvedValue({ ctx: authContext });
+    runWithRequestAuthContextMock.mockImplementation((_ctx, callback) => callback());
+    withRoutePerformanceMock.mockImplementation((_req, handler) => handler());
     findFirstMock.mockResolvedValue({
       id: 'candidate_1',
       patient_id: 'patient_1',
@@ -187,6 +266,10 @@ describe('/api/billing-candidates/[id]/collection PATCH', () => {
 
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
+    expect(response.headers.get('X-Request-Id')).toBe('request_collection_1');
+    expect(response.headers.get('X-Correlation-Id')).toBe('correlation_collection_1');
+    expect(withRoutePerformanceMock).toHaveBeenCalledOnce();
+    expect(runWithRequestAuthContextMock).toHaveBeenCalledWith(authContext, expect.any(Function));
     expect(requireAuthContextMock).toHaveBeenCalledWith(expect.any(Object), {
       permission: 'canManageBilling',
       message: '集金記録の更新権限がありません',
@@ -442,6 +525,81 @@ describe('/api/billing-candidates/[id]/collection PATCH', () => {
       details: { reason: 'key_reused_with_different_request' },
     });
     expect(updateManyMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('returns the concurrent winner as an idempotent replay after losing the CAS race', async () => {
+    const requestBody = {
+      status: 'billed',
+      billed_amount: 3240,
+      collected_amount: 0,
+      invoice_issue_status: 'issued',
+    };
+    const winner = {
+      id: 'candidate_1',
+      calculation_breakdown: {
+        amount_yen: 3240,
+        collection: {
+          status: 'billed',
+          idempotency_key_hash: buildIdempotencyKeyHash('collection-key-1'),
+          idempotency_request_fingerprint: buildRequestFingerprint({
+            expected_updated_at: CURRENT_UPDATED_AT,
+            ...requestBody,
+            save_receipt_copy: false,
+            save_invoice_copy: false,
+          }),
+        },
+      },
+    };
+    updateManyMock.mockResolvedValueOnce({ count: 0 });
+    findUniqueMock.mockResolvedValueOnce(winner);
+
+    const response = await PATCH(
+      createRequest(requestBody, { 'Idempotency-Key': 'collection-key-1' }),
+      { params: Promise.resolve({ id: 'candidate_1' }) },
+    );
+
+    expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({ data: winner });
+    expect(updateManyMock).toHaveBeenCalledOnce();
+    expect(findUniqueMock).toHaveBeenCalledOnce();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a key-reuse conflict when the concurrent CAS winner has a different fingerprint', async () => {
+    const requestBody = {
+      status: 'billed',
+      billed_amount: 3240,
+      collected_amount: 0,
+      invoice_issue_status: 'issued',
+    };
+    updateManyMock.mockResolvedValueOnce({ count: 0 });
+    findUniqueMock.mockResolvedValueOnce({
+      id: 'candidate_1',
+      calculation_breakdown: {
+        amount_yen: 3240,
+        collection: {
+          status: 'billed',
+          idempotency_key_hash: buildIdempotencyKeyHash('collection-key-1'),
+          idempotency_request_fingerprint: 'billing-collection-request:v1:different-winner',
+        },
+      },
+    });
+
+    const response = await PATCH(
+      createRequest(requestBody, { 'Idempotency-Key': 'collection-key-1' }),
+      { params: Promise.resolve({ id: 'candidate_1' }) },
+    );
+
+    expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'Idempotency-Keyが別の集金記録リクエストで使用されています',
+      details: { reason: 'key_reused_with_different_request' },
+    });
+    expect(updateManyMock).toHaveBeenCalledOnce();
+    expect(findUniqueMock).toHaveBeenCalledOnce();
     expect(auditLogCreateMock).not.toHaveBeenCalled();
   });
 
@@ -819,7 +977,8 @@ describe('/api/billing-candidates/[id]/collection PATCH', () => {
   it('returns sanitized no-store 500 responses for unexpected failures without leaking raw billing context', async () => {
     const rawErrorMessage =
       'DB failure for 患者A 支払者=長女 領収証番号=R20260616-001 storage_key=secret/path.pdf';
-    withOrgContextMock.mockRejectedValueOnce(new Error(rawErrorMessage));
+    const thrownError = new Error(rawErrorMessage);
+    withOrgContextMock.mockRejectedValueOnce(thrownError);
 
     const response = await PATCH(createRequest({ status: 'billed', billed_amount: 3240 }), {
       params: Promise.resolve({ id: 'candidate_1' }),
@@ -833,5 +992,40 @@ describe('/api/billing-candidates/[id]/collection PATCH', () => {
     expect(bodyText).not.toContain('患者A');
     expect(bodyText).not.toContain('R20260616-001');
     expect(bodyText).not.toContain('secret/path.pdf');
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      {
+        event: 'route_handler_unhandled_error',
+        route: '/api/billing-candidates/candidate_1/collection',
+        method: 'PATCH',
+        requestId: 'request_collection_1',
+        correlationId: 'correlation_collection_1',
+      },
+      thrownError,
+    );
+  });
+
+  it('returns a traced no-store 500 before parsing when the auth dependency throws', async () => {
+    const thrownError = new Error('session provider unavailable');
+    requireAuthContextMock.mockRejectedValueOnce(thrownError);
+
+    const response = await PATCH(createRequest({ status: 'billed', billed_amount: 3240 }), {
+      params: Promise.resolve({ id: 'candidate_1' }),
+    });
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    expect(response.headers.get('X-Request-Id')).toBe('generated_request_collection_1');
+    expect(response.headers.get('X-Correlation-Id')).toBe('correlation_collection_1');
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      {
+        event: 'route_auth_unhandled_error',
+        route: '/api/billing-candidates/candidate_1/collection',
+        method: 'PATCH',
+        requestId: 'generated_request_collection_1',
+        correlationId: 'correlation_collection_1',
+      },
+      thrownError,
+    );
   });
 });
