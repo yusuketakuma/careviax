@@ -1,18 +1,9 @@
 import { NextRequest } from 'next/server';
-import { unstable_rethrow } from 'next/navigation';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
-import { requireAuthContext } from '@/lib/auth/context';
+import { withAuthContext, type AuthContext, type AuthRouteContext } from '@/lib/auth/context';
 import { runWithRequestAuthContext } from '@/lib/auth/request-context';
 import { withOrgContext } from '@/lib/db/rls';
-import {
-  success,
-  validationError,
-  notFound,
-  conflict,
-  forbidden,
-  internalError,
-} from '@/lib/api/response';
-import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
+import { success, validationError, notFound, conflict, forbidden } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
@@ -33,12 +24,6 @@ import {
   findCommunicationResponseByIntent,
   upsertCommunicationResponseByIntent,
 } from '@/server/services/communication-response-upsert';
-import { logger } from '@/lib/utils/logger';
-import { withRoutePerformance } from '@/lib/utils/performance';
-
-const ROUTE = '/api/communication-requests/[id]/responses';
-
-type RouteContext = { params: Promise<{ id: string }> };
 
 const createResponseSchema = z.object({
   expected_updated_at: z.string().datetime('版情報が不正です'),
@@ -47,14 +32,11 @@ const createResponseSchema = z.object({
   responded_at: z.preprocess(trimStringOrUndefined, z.string().datetime('日付形式が不正です')),
 });
 
-async function authenticatedGET(req: NextRequest, { params }: RouteContext) {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canReport',
-    message: '連携依頼の閲覧権限がありません',
-  });
-  if ('response' in authResult) return authResult.response;
-  const { ctx } = authResult;
-
+async function communicationResponsesGET(
+  _req: NextRequest,
+  ctx: AuthContext,
+  { params }: AuthRouteContext<{ id: string }>,
+) {
   return runWithRequestAuthContext(ctx, async () => {
     const { id: rawId } = await params;
     const id = normalizeRequiredRouteParam(rawId);
@@ -101,34 +83,16 @@ async function authenticatedGET(req: NextRequest, { params }: RouteContext) {
   });
 }
 
-export async function GET(req: NextRequest, routeContext: RouteContext) {
-  return withRoutePerformance(req, async () => {
-    try {
-      return withSensitiveNoStore(await authenticatedGET(req, routeContext));
-    } catch (err) {
-      unstable_rethrow(err);
-      logger.error(
-        {
-          event: 'communication_request_responses_get_unhandled_error',
-          route: ROUTE,
-          method: req.method,
-          status: 500,
-        },
-        err,
-      );
-      return withSensitiveNoStore(internalError());
-    }
-  });
-}
+export const GET = withAuthContext(communicationResponsesGET, {
+  permission: 'canReport',
+  message: '連携依頼の閲覧権限がありません',
+});
 
-async function authenticatedPOST(req: NextRequest, { params }: RouteContext) {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canReport',
-    message: '連携依頼の更新権限がありません',
-  });
-  if ('response' in authResult) return authResult.response;
-  const { ctx } = authResult;
-
+async function communicationResponsesPOST(
+  req: NextRequest,
+  ctx: AuthContext,
+  { params }: AuthRouteContext<{ id: string }>,
+) {
   return runWithRequestAuthContext(ctx, async () => {
     const { id: rawId } = await params;
     const id = normalizeRequiredRouteParam(rawId);
@@ -307,22 +271,7 @@ async function authenticatedPOST(req: NextRequest, { params }: RouteContext) {
   });
 }
 
-export async function POST(req: NextRequest, routeContext: RouteContext) {
-  return withRoutePerformance(req, async () => {
-    try {
-      return withSensitiveNoStore(await authenticatedPOST(req, routeContext));
-    } catch (err) {
-      unstable_rethrow(err);
-      logger.error(
-        {
-          event: 'communication_request_responses_post_unhandled_error',
-          route: ROUTE,
-          method: req.method,
-          status: 500,
-        },
-        err,
-      );
-      return withSensitiveNoStore(internalError());
-    }
-  });
-}
+export const POST = withAuthContext(communicationResponsesPOST, {
+  permission: 'canReport',
+  message: '連携依頼の更新権限がありません',
+});

@@ -1,10 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { Prisma } from '@prisma/client';
 import { expectSensitiveNoStore } from '@/test/api-response-assertions';
 
 const {
   loggerErrorMock,
+  unstableRethrowMock,
   requireAuthContextMock,
   runWithRequestAuthContextMock,
   withRoutePerformanceMock,
@@ -20,6 +21,7 @@ const {
   withOrgContextMock,
 } = vi.hoisted(() => ({
   loggerErrorMock: vi.fn(),
+  unstableRethrowMock: vi.fn(),
   requireAuthContextMock: vi.fn(),
   runWithRequestAuthContextMock: vi.fn((_ctx, callback: () => unknown) => callback()),
   withRoutePerformanceMock: vi.fn((_req, callback: () => unknown) => callback()),
@@ -35,8 +37,109 @@ const {
   withOrgContextMock: vi.fn(),
 }));
 
+vi.mock('next/navigation', () => ({ unstable_rethrow: unstableRethrowMock }));
+
 vi.mock('@/lib/auth/context', () => ({
   requireAuthContext: requireAuthContextMock,
+  withAuthContext:
+    (
+      handler: (
+        req: NextRequest,
+        ctx: {
+          orgId: string;
+          userId: string;
+          role: string;
+          ipAddress: string;
+          userAgent: string;
+          requestId: string;
+          correlationId: string;
+        },
+        routeContext: { params: Promise<{ id: string }> },
+      ) => Promise<Response>,
+      options: unknown,
+    ) =>
+    async (req: NextRequest, routeContext: { params: Promise<{ id: string }> }) =>
+      withRoutePerformanceMock(req, async () => {
+        let authResult:
+          | {
+              ctx: {
+                orgId: string;
+                userId: string;
+                role: string;
+                ipAddress: string;
+                userAgent: string;
+                requestId: string;
+                correlationId: string;
+              };
+            }
+          | { response: Response };
+        try {
+          authResult = await requireAuthContextMock(req, options);
+        } catch (error) {
+          unstableRethrowMock(error);
+          const trace = {
+            requestId: 'generated_request_1',
+            correlationId: req.headers.get('x-correlation-id') ?? 'generated_request_1',
+          };
+          loggerErrorMock(
+            {
+              event: 'route_auth_unhandled_error',
+              route: req.nextUrl.pathname,
+              method: req.method,
+              requestId: trace.requestId,
+              correlationId: trace.correlationId,
+            },
+            error,
+          );
+          const response = NextResponse.json(
+            { code: 'INTERNAL_ERROR', message: 'サーバー内部でエラーが発生しました' },
+            { status: 500 },
+          );
+          response.headers.set('Cache-Control', 'private, no-store, max-age=0');
+          response.headers.set('Pragma', 'no-cache');
+          response.headers.set('X-Request-Id', trace.requestId);
+          response.headers.set('X-Correlation-Id', trace.correlationId);
+          return response;
+        }
+
+        if ('response' in authResult) {
+          authResult.response.headers.set('Cache-Control', 'private, no-store, max-age=0');
+          authResult.response.headers.set('Pragma', 'no-cache');
+          return authResult.response;
+        }
+
+        return runWithRequestAuthContextMock(authResult.ctx, async () => {
+          try {
+            const response = await handler(req, authResult.ctx, routeContext);
+            response.headers.set('Cache-Control', 'private, no-store, max-age=0');
+            response.headers.set('Pragma', 'no-cache');
+            response.headers.set('X-Request-Id', authResult.ctx.requestId);
+            response.headers.set('X-Correlation-Id', authResult.ctx.correlationId);
+            return response;
+          } catch (error) {
+            unstableRethrowMock(error);
+            loggerErrorMock(
+              {
+                event: 'route_handler_unhandled_error',
+                route: req.nextUrl.pathname,
+                method: req.method,
+                requestId: authResult.ctx.requestId,
+                correlationId: authResult.ctx.correlationId,
+              },
+              error,
+            );
+            const response = NextResponse.json(
+              { code: 'INTERNAL_ERROR', message: 'サーバー内部でエラーが発生しました' },
+              { status: 500 },
+            );
+            response.headers.set('Cache-Control', 'private, no-store, max-age=0');
+            response.headers.set('Pragma', 'no-cache');
+            response.headers.set('X-Request-Id', authResult.ctx.requestId);
+            response.headers.set('X-Correlation-Id', authResult.ctx.correlationId);
+            return response;
+          }
+        });
+      }),
 }));
 
 vi.mock('@/lib/auth/request-context', () => ({
@@ -123,6 +226,8 @@ function buildAuthContext(req: NextRequest & { role?: string }) {
     role: req.role ?? 'pharmacist',
     ipAddress: '127.0.0.1',
     userAgent: 'vitest',
+    requestId: 'request_1',
+    correlationId: 'correlation_1',
   };
 }
 
@@ -132,6 +237,7 @@ describe('/api/communication-requests/[id]/responses', () => {
     requireAuthContextMock.mockImplementation(async (req) => ({ ctx: buildAuthContext(req) }));
     runWithRequestAuthContextMock.mockImplementation((_ctx, callback) => callback());
     withRoutePerformanceMock.mockImplementation((_req, callback) => callback());
+    unstableRethrowMock.mockImplementation(() => undefined);
     communicationRequestFindFirstMock.mockResolvedValue({
       id: 'request_1',
       patient_id: 'patient_1',
@@ -174,6 +280,8 @@ describe('/api/communication-requests/[id]/responses', () => {
 
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
+    expect(response.headers.get('X-Request-Id')).toBe('request_1');
+    expect(response.headers.get('X-Correlation-Id')).toBe('correlation_1');
     expect(withRoutePerformanceMock).toHaveBeenCalledWith(
       expect.any(NextRequest),
       expect.any(Function),
@@ -186,6 +294,7 @@ describe('/api/communication-requests/[id]/responses', () => {
       expect.objectContaining({ orgId: 'org_1', userId: 'user_1', role: 'pharmacist' }),
       expect.any(Function),
     );
+    expect(runWithRequestAuthContextMock).toHaveBeenCalledTimes(2);
     const payload = await response.json();
     expect(Object.keys(payload).sort()).toEqual(['data', 'meta']);
     expect(payload).toMatchObject({
@@ -196,6 +305,75 @@ describe('/api/communication-requests/[id]/responses', () => {
       where: { request_id: 'request_1', org_id: 'org_1' },
       orderBy: [{ responded_at: 'desc' }, { id: 'desc' }],
     });
+  });
+
+  it('rejects GET before resolving params or entering request context when authentication fails', async () => {
+    const authResponse = NextResponse.json(
+      { code: 'FORBIDDEN', message: '拒否されました' },
+      { status: 403 },
+    );
+    requireAuthContextMock.mockResolvedValueOnce({ response: authResponse });
+    const paramsThenMock = vi.fn();
+    const params = { then: paramsThenMock } as unknown as Promise<{ id: string }>;
+
+    const response = (await GET(createGetRequest(), { params }))!;
+
+    expect(response.status).toBe(403);
+    expectSensitiveNoStore(response);
+    expect(requireAuthContextMock).toHaveBeenCalledWith(expect.any(NextRequest), {
+      permission: 'canReport',
+      message: '連携依頼の閲覧権限がありません',
+    });
+    expect(paramsThenMock).not.toHaveBeenCalled();
+    expect(runWithRequestAuthContextMock).not.toHaveBeenCalled();
+    expect(communicationRequestFindFirstMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a sanitized traced GET 500 without resolving params when authentication throws', async () => {
+    const unsafeError = new Error('患者 山田太郎 authentication secret');
+    requireAuthContextMock.mockRejectedValueOnce(unsafeError);
+    const paramsThenMock = vi.fn();
+    const params = { then: paramsThenMock } as unknown as Promise<{ id: string }>;
+
+    const response = (await GET(createGetRequest(), { params }))!;
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    expect(response.headers.get('X-Request-Id')).toBe('generated_request_1');
+    expect(response.headers.get('X-Correlation-Id')).toBe('generated_request_1');
+    await expect(response.json()).resolves.toEqual({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    expect(paramsThenMock).not.toHaveBeenCalled();
+    expect(runWithRequestAuthContextMock).not.toHaveBeenCalled();
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      {
+        event: 'route_auth_unhandled_error',
+        route: '/api/communication-requests/request_1/responses',
+        method: 'GET',
+        requestId: 'generated_request_1',
+        correlationId: 'generated_request_1',
+      },
+      unsafeError,
+    );
+    expect(JSON.stringify(loggerErrorMock.mock.calls[0]?.[0])).not.toContain('山田太郎');
+  });
+
+  it('rethrows GET authentication control-flow errors without logging or side effects', async () => {
+    const controlFlowError = new Error('NEXT_REDIRECT');
+    requireAuthContextMock.mockRejectedValueOnce(controlFlowError);
+    unstableRethrowMock.mockImplementationOnce((error) => {
+      throw error;
+    });
+
+    await expect(
+      GET(createGetRequest(), { params: Promise.resolve({ id: 'request_1' }) }),
+    ).rejects.toBe(controlFlowError);
+
+    expect(loggerErrorMock).not.toHaveBeenCalled();
+    expect(runWithRequestAuthContextMock).not.toHaveBeenCalled();
+    expect(communicationRequestFindFirstMock).not.toHaveBeenCalled();
   });
 
   it('rejects care report response reads when the caller cannot send reports', async () => {
@@ -245,6 +423,8 @@ describe('/api/communication-requests/[id]/responses', () => {
 
     expect(response.status).toBe(500);
     expectSensitiveNoStore(response);
+    expect(response.headers.get('X-Request-Id')).toBe('request_1');
+    expect(response.headers.get('X-Correlation-Id')).toBe('correlation_1');
     const body = await response.json();
     expect(body).toMatchObject({
       code: 'INTERNAL_ERROR',
@@ -255,13 +435,15 @@ describe('/api/communication-requests/[id]/responses', () => {
     expect(JSON.stringify(body)).not.toContain('facility memo');
     expect(loggerErrorMock).toHaveBeenCalledWith(
       {
-        event: 'communication_request_responses_get_unhandled_error',
-        route: '/api/communication-requests/[id]/responses',
+        event: 'route_handler_unhandled_error',
+        route: '/api/communication-requests/request_1/responses',
         method: 'GET',
-        status: 500,
+        requestId: 'request_1',
+        correlationId: 'correlation_1',
       },
       unsafeError,
     );
+    expect(loggerErrorMock).toHaveBeenCalledTimes(1);
     const [logContext, logError] = loggerErrorMock.mock.calls[0] ?? [];
     expect(logError).toBe(unsafeError);
     expect(logContext).not.toHaveProperty('error_name');
@@ -285,6 +467,8 @@ describe('/api/communication-requests/[id]/responses', () => {
 
     expect(response.status).toBe(201);
     expectSensitiveNoStore(response);
+    expect(response.headers.get('X-Request-Id')).toBe('request_1');
+    expect(response.headers.get('X-Correlation-Id')).toBe('correlation_1');
     expect(withRoutePerformanceMock).toHaveBeenCalledWith(
       expect.any(NextRequest),
       expect.any(Function),
@@ -297,6 +481,7 @@ describe('/api/communication-requests/[id]/responses', () => {
       expect.objectContaining({ orgId: 'org_1', userId: 'user_1', role: 'pharmacist' }),
       expect.any(Function),
     );
+    expect(runWithRequestAuthContextMock).toHaveBeenCalledTimes(2);
     expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
       requestContext: expect.objectContaining({
         orgId: 'org_1',
@@ -357,6 +542,52 @@ describe('/api/communication-requests/[id]/responses', () => {
     );
   });
 
+  it('rejects POST before resolving params or reading the body when authentication fails', async () => {
+    const authResponse = NextResponse.json(
+      { code: 'FORBIDDEN', message: '拒否されました' },
+      { status: 403 },
+    );
+    requireAuthContextMock.mockResolvedValueOnce({ response: authResponse });
+    const request = createMalformedJsonPostRequest();
+    const paramsThenMock = vi.fn();
+    const params = { then: paramsThenMock } as unknown as Promise<{ id: string }>;
+
+    const response = (await POST(request, { params }))!;
+
+    expect(response.status).toBe(403);
+    expectSensitiveNoStore(response);
+    expect(requireAuthContextMock).toHaveBeenCalledWith(expect.any(NextRequest), {
+      permission: 'canReport',
+      message: '連携依頼の更新権限がありません',
+    });
+    expect(paramsThenMock).not.toHaveBeenCalled();
+    expect(request.bodyUsed).toBe(false);
+    expect(runWithRequestAuthContextMock).not.toHaveBeenCalled();
+    expect(communicationRequestFindFirstMock).not.toHaveBeenCalled();
+  });
+
+  it('rethrows POST handler control-flow errors without logging or audit side effects', async () => {
+    const controlFlowError = new Error('NEXT_REDIRECT');
+    communicationRequestFindFirstMock.mockRejectedValueOnce(controlFlowError);
+    unstableRethrowMock.mockImplementationOnce((error) => {
+      throw error;
+    });
+
+    await expect(
+      POST(
+        createPostRequest({
+          responder_name: '医師A',
+          content: '確認しました',
+          responded_at: '2026-03-29T00:00:00.000Z',
+        }),
+        { params: Promise.resolve({ id: 'request_1' }) },
+      ),
+    ).rejects.toBe(controlFlowError);
+
+    expect(loggerErrorMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+
   it('returns a sanitized no-store 500 without raw logging when response creation fails unexpectedly', async () => {
     const unsafeError = new Error('患者 山田太郎 raw communication response create secret');
     unsafeError.name = 'CommunicationResponseCreateSecretError';
@@ -375,6 +606,8 @@ describe('/api/communication-requests/[id]/responses', () => {
 
     expect(response.status).toBe(500);
     expectSensitiveNoStore(response);
+    expect(response.headers.get('X-Request-Id')).toBe('request_1');
+    expect(response.headers.get('X-Correlation-Id')).toBe('correlation_1');
     const body = await response.json();
     expect(body).toMatchObject({
       code: 'INTERNAL_ERROR',
@@ -384,13 +617,15 @@ describe('/api/communication-requests/[id]/responses', () => {
     expect(JSON.stringify(body)).not.toContain('raw communication response');
     expect(loggerErrorMock).toHaveBeenCalledWith(
       {
-        event: 'communication_request_responses_post_unhandled_error',
-        route: '/api/communication-requests/[id]/responses',
+        event: 'route_handler_unhandled_error',
+        route: '/api/communication-requests/request_1/responses',
         method: 'POST',
-        status: 500,
+        requestId: 'request_1',
+        correlationId: 'correlation_1',
       },
       unsafeError,
     );
+    expect(loggerErrorMock).toHaveBeenCalledTimes(1);
     const [logContext, logError] = loggerErrorMock.mock.calls[0] ?? [];
     expect(logError).toBe(unsafeError);
     expect(logContext).not.toHaveProperty('error_name');
