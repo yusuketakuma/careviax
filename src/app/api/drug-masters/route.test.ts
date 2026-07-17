@@ -1,8 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
+import { Prisma } from '@prisma/client';
 import { serverCache } from '@/lib/utils/server-cache';
 import { invalidateDrugMasterSearchCache } from '@/server/services/drug-master-search-cache';
 import { expectNoStore } from '@/test/api-response-assertions';
+import { genericCandidatesResponseSchema } from '@/app/(dashboard)/prescriptions/new/generic-candidate-schema';
 
 const {
   authMock,
@@ -14,6 +16,8 @@ const {
   pharmacySiteFindFirstMock,
   pharmacyDrugStockFindManyMock,
   loggerErrorMock,
+  runWithRequestAuthContextMock,
+  unstableRethrowMock,
 } = vi.hoisted(() => {
   const membershipFindFirstMock = vi.fn();
   const drugMasterFindManyMock = vi.fn();
@@ -48,8 +52,17 @@ const {
     pharmacySiteFindFirstMock,
     pharmacyDrugStockFindManyMock,
     loggerErrorMock: vi.fn(),
+    runWithRequestAuthContextMock: vi.fn((_ctx, callback: () => unknown) => callback()),
+    unstableRethrowMock: vi.fn(),
   };
 });
+
+vi.mock('next/navigation', () => ({ unstable_rethrow: unstableRethrowMock }));
+
+vi.mock('@/lib/auth/request-context', () => ({
+  clearRequestAuthContext: vi.fn(),
+  runWithRequestAuthContext: runWithRequestAuthContextMock,
+}));
 
 vi.mock('@/lib/auth/config', () => ({
   auth: authMock,
@@ -77,6 +90,10 @@ function createRequest(url: string) {
   return new NextRequest(url, { headers: { 'x-org-id': 'org_1' } });
 }
 
+async function invokeGet(request: NextRequest) {
+  return GET(request, { params: Promise.resolve({}) });
+}
+
 function buildDrugMasterHit(overrides: Record<string, unknown> = {}) {
   return {
     id: 'drug_1',
@@ -86,7 +103,7 @@ function buildDrugMasterHit(overrides: Record<string, unknown> = {}) {
     drug_name: 'アムロジピンOD錠5mg',
     drug_name_kana: 'アムロジピン',
     generic_name: 'アムロジピンベシル酸塩',
-    drug_price: 12.3,
+    drug_price: new Prisma.Decimal('12.30'),
     unit: '錠',
     dosage_form: '錠剤',
     therapeutic_category: '2171',
@@ -139,7 +156,7 @@ describe('/api/drug-masters GET', () => {
       },
     ]);
 
-    const response = await GET(
+    const response = await invokeGet(
       createRequest('http://localhost/api/drug-masters?site_id=site_1&stocked=true&limit=5'),
     );
 
@@ -208,9 +225,9 @@ describe('/api/drug-masters GET', () => {
   });
 
   it('attaches generic price-comparison data for generic candidate searches', async () => {
-    const response = await GET(
+    const response = await invokeGet(
       createRequest(
-        'http://localhost/api/drug-masters?q=%E3%82%A2%E3%83%A0%E3%83%AD&generic=true&limit=5',
+        'http://localhost/api/drug-masters?q=%E3%82%A2%E3%83%A0%E3%83%AD&generic=true&limit=5&includeTotal=false',
       ),
     );
 
@@ -228,10 +245,12 @@ describe('/api/drug-masters GET', () => {
         price_comparison: true,
       },
     });
-    await expect(response.json()).resolves.toMatchObject({
+    const payload = await response.json();
+    expect(payload).toMatchObject({
       data: [
         expect.objectContaining({
           drug_name: 'アムロジピンOD錠5mg',
+          drug_price: 12.3,
           tall_man_name: 'amLODIPine OD錠5mg',
           is_high_risk: true,
           is_lasa_risk: true,
@@ -241,10 +260,34 @@ describe('/api/drug-masters GET', () => {
         }),
       ],
     });
+    expect(genericCandidatesResponseSchema.safeParse(payload).success).toBe(true);
+  });
+
+  it('normalizes null and non-finite price values to the consumer number-or-null wire', async () => {
+    drugMasterFindManyMock.mockResolvedValueOnce([
+      buildDrugMasterHit({ id: 'drug_null', yj_code: 'YJ_NULL', drug_price: null }),
+      buildDrugMasterHit({
+        id: 'drug_nonfinite',
+        yj_code: 'YJ_NONFINITE',
+        drug_price: { toNumber: () => Number.POSITIVE_INFINITY },
+      }),
+    ]);
+
+    const response = await invokeGet(
+      createRequest('http://localhost/api/drug-masters?generic=true&limit=5&includeTotal=false'),
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.data).toEqual([
+      expect.objectContaining({ id: 'drug_null', drug_price: null }),
+      expect.objectContaining({ id: 'drug_nonfinite', drug_price: null }),
+    ]);
+    expect(genericCandidatesResponseSchema.safeParse(payload).success).toBe(true);
   });
 
   it('supports high-risk and LASA filters for medication-safety review', async () => {
-    const response = await GET(
+    const response = await invokeGet(
       createRequest('http://localhost/api/drug-masters?highRisk=true&lasa=true&limit=%205%20'),
     );
 
@@ -268,8 +311,66 @@ describe('/api/drug-masters GET', () => {
     );
   });
 
+  it('preserves category, generic, narcotic, price sort, and maximum limit semantics', async () => {
+    const response = await invokeGet(
+      createRequest(
+        'http://localhost/api/drug-masters?category=21&generic=true&narcotic=true&sort=drug_price&order=desc&limit=100',
+      ),
+    );
+
+    expect(response.status).toBe(200);
+    expect(drugMasterFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          therapeutic_category: { startsWith: '21' },
+          is_generic: true,
+          is_narcotic: true,
+        }),
+        orderBy: [{ drug_price: 'desc' }, { drug_name: 'asc' }],
+        skip: 0,
+        take: 101,
+      }),
+    );
+  });
+
+  it.each(['0', '101'])('rejects out-of-range limit %s before RLS', async (limit) => {
+    const response = await invokeGet(
+      createRequest(`http://localhost/api/drug-masters?limit=${limit}`),
+    );
+
+    expect(response.status).toBe(400);
+    expectNoStore(response);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects invalid boolean filters before RLS', async () => {
+    const response = await invokeGet(createRequest('http://localhost/api/drug-masters?generic=1'));
+
+    expect(response.status).toBe(400);
+    expectNoStore(response);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+  });
+
+  it('returns site-scoped 404 before global master reads for another organization site', async () => {
+    pharmacySiteFindFirstMock.mockResolvedValueOnce(null);
+
+    const response = await invokeGet(
+      createRequest('http://localhost/api/drug-masters?site_id=other_site&limit=5'),
+    );
+
+    expect(response.status).toBe(404);
+    expectNoStore(response);
+    expect(pharmacySiteFindFirstMock).toHaveBeenCalledWith({
+      where: { id: 'other_site', org_id: 'org_1' },
+      select: { id: true },
+    });
+    expect(drugMasterFindManyMock).not.toHaveBeenCalled();
+    expect(genericDrugMappingFindManyMock).not.toHaveBeenCalled();
+    expect(pharmacyDrugStockFindManyMock).not.toHaveBeenCalled();
+  });
+
   it('rejects malformed limit values before site or drug lookup', async () => {
-    const response = await GET(
+    const response = await invokeGet(
       createRequest('http://localhost/api/drug-masters?site_id=site_1&limit=1e2'),
     );
 
@@ -289,7 +390,7 @@ describe('/api/drug-masters GET', () => {
   });
 
   it.each(['abc', '-10', '25abc'])('uses a safe offset for malformed cursor %s', async (cursor) => {
-    const response = await GET(
+    const response = await invokeGet(
       createRequest(`http://localhost/api/drug-masters?cursor=${encodeURIComponent(cursor)}`),
     );
 
@@ -305,7 +406,7 @@ describe('/api/drug-masters GET', () => {
   });
 
   it('searches practical drug identifiers and display aliases', async () => {
-    const response = await GET(
+    const response = await invokeGet(
       createRequest('http://localhost/api/drug-masters?q=1234567&limit=5'),
     );
 
@@ -337,7 +438,7 @@ describe('/api/drug-masters GET', () => {
       buildDrugMasterHit({ id: 'drug_2', yj_code: '987654321098' }),
     ]);
 
-    const response = await GET(
+    const response = await invokeGet(
       createRequest(
         'http://localhost/api/drug-masters?q=%E3%82%A2%E3%83%A0&limit=1&includeTotal=false',
       ),
@@ -361,7 +462,8 @@ describe('/api/drug-masters GET', () => {
   });
 
   it('caches the org-independent search result across repeated identical queries', async () => {
-    const first = await GET(
+    const cacheSetSpy = vi.spyOn(serverCache, 'set');
+    const first = await invokeGet(
       createRequest('http://localhost/api/drug-masters?q=%E3%82%A2%E3%83%A0&limit=5'),
     );
     if (!first) throw new Error('response is required');
@@ -369,8 +471,10 @@ describe('/api/drug-masters GET', () => {
     expect(drugMasterFindManyMock).toHaveBeenCalledTimes(1);
     expect(drugMasterCountMock).toHaveBeenCalledTimes(1);
     expect(genericDrugMappingFindManyMock).toHaveBeenCalledTimes(1);
+    expect(cacheSetSpy).toHaveBeenCalledOnce();
+    expect(cacheSetSpy.mock.calls[0]?.[2]).toBe(120_000);
 
-    const second = await GET(
+    const second = await invokeGet(
       createRequest('http://localhost/api/drug-masters?q=%E3%82%A2%E3%83%A0&limit=5'),
     );
     if (!second) throw new Error('response is required');
@@ -380,16 +484,19 @@ describe('/api/drug-masters GET', () => {
     expect(drugMasterCountMock).toHaveBeenCalledTimes(1);
     expect(genericDrugMappingFindManyMock).toHaveBeenCalledTimes(1);
 
-    await expect(second.json()).resolves.toMatchObject(await first.json());
+    const firstPayload = await first.json();
+    const secondPayload = await second.json();
+    expect(firstPayload.data[0]?.drug_price).toBe(12.3);
+    expect(secondPayload).toEqual(firstPayload);
   });
 
   it('bypasses the cache for org-scoped stocked-only searches', async () => {
     pharmacyDrugStockFindManyMock.mockResolvedValue([]);
 
-    await GET(
+    await invokeGet(
       createRequest('http://localhost/api/drug-masters?site_id=site_1&stocked=true&limit=5'),
     );
-    await GET(
+    await invokeGet(
       createRequest('http://localhost/api/drug-masters?site_id=site_1&stocked=true&limit=5'),
     );
 
@@ -397,8 +504,38 @@ describe('/api/drug-masters GET', () => {
     expect(drugMasterCountMock).toHaveBeenCalledTimes(2);
   });
 
+  it('reuses only global search data while refreshing site stock on every site-only request', async () => {
+    pharmacyDrugStockFindManyMock
+      .mockResolvedValueOnce([{ id: 'stock_first', drug_master_id: 'drug_1' }])
+      .mockResolvedValueOnce([{ id: 'stock_second', drug_master_id: 'drug_1' }]);
+
+    const first = await invokeGet(
+      createRequest('http://localhost/api/drug-masters?site_id=site_1&limit=5'),
+    );
+    const second = await invokeGet(
+      createRequest('http://localhost/api/drug-masters?site_id=site_1&limit=5'),
+    );
+
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(200);
+    expect(pharmacySiteFindFirstMock).toHaveBeenCalledTimes(2);
+    expect(drugMasterFindManyMock).toHaveBeenCalledOnce();
+    expect(genericDrugMappingFindManyMock).toHaveBeenCalledOnce();
+    expect(pharmacyDrugStockFindManyMock).toHaveBeenCalledTimes(2);
+    await expect(first.json()).resolves.toMatchObject({
+      data: [
+        expect.objectContaining({ stock_config: expect.objectContaining({ id: 'stock_first' }) }),
+      ],
+    });
+    await expect(second.json()).resolves.toMatchObject({
+      data: [
+        expect.objectContaining({ stock_config: expect.objectContaining({ id: 'stock_second' }) }),
+      ],
+    });
+  });
+
   it('invalidates the search cache after a drug-master import completes', async () => {
-    const first = await GET(
+    const first = await invokeGet(
       createRequest('http://localhost/api/drug-masters?q=%E3%82%A2%E3%83%A0&limit=5'),
     );
     if (!first) throw new Error('response is required');
@@ -406,7 +543,7 @@ describe('/api/drug-masters GET', () => {
 
     invalidateDrugMasterSearchCache();
 
-    const second = await GET(
+    const second = await invokeGet(
       createRequest('http://localhost/api/drug-masters?q=%E3%82%A2%E3%83%A0&limit=5'),
     );
     if (!second) throw new Error('response is required');
@@ -416,34 +553,85 @@ describe('/api/drug-masters GET', () => {
 
   it('returns no-store 401 before drug lookups when unauthenticated', async () => {
     authMock.mockResolvedValueOnce(null);
+    const cacheGetSpy = vi.spyOn(serverCache, 'get');
 
-    const response = await GET(createRequest('http://localhost/api/drug-masters?limit=5'));
+    const response = await invokeGet(
+      createRequest('http://localhost/api/drug-masters?limit=invalid'),
+    );
 
     expect(response.status).toBe(401);
     expectNoStore(response);
     expect(membershipFindFirstMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(drugMasterFindManyMock).not.toHaveBeenCalled();
+    expect(cacheGetSpy).not.toHaveBeenCalled();
+    expect(runWithRequestAuthContextMock).not.toHaveBeenCalled();
+  });
+
+  it('preserves collection search for a non-admin active member', async () => {
+    membershipFindFirstMock.mockResolvedValueOnce({ role: 'clerk', site_id: null });
+
+    const response = await invokeGet(createRequest('http://localhost/api/drug-masters?limit=5'));
+
+    expect(response.status).toBe(200);
+    expectNoStore(response);
+    expect(runWithRequestAuthContextMock).toHaveBeenCalledOnce();
+  });
+
+  it('returns a traced safe 500 before RLS or cache when auth dependencies fail', async () => {
+    const unsafeError = new Error('raw drug master auth secret');
+    unsafeError.name = 'DrugMasterListAuthSecretError';
+    authMock.mockRejectedValueOnce(unsafeError);
+    const cacheGetSpy = vi.spyOn(serverCache, 'get');
+
+    const response = await invokeGet(
+      createRequest('http://localhost/api/drug-masters?limit=invalid'),
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(500);
+    expectNoStore(response);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(drugMasterFindManyMock).not.toHaveBeenCalled();
+    expect(cacheGetSpy).not.toHaveBeenCalled();
+    expect(runWithRequestAuthContextMock).not.toHaveBeenCalled();
+    expect(body).toMatchObject({ code: 'INTERNAL_ERROR' });
+    expect(JSON.stringify(body)).not.toMatch(
+      /drug master auth secret|DrugMasterListAuthSecretError/,
+    );
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      {
+        event: 'route_auth_unhandled_error',
+        route: '/api/drug-masters',
+        method: 'GET',
+        requestId: response.headers.get('X-Request-Id'),
+        correlationId: response.headers.get('X-Correlation-Id'),
+      },
+      unsafeError,
+    );
   });
 
   it('returns a sanitized no-store 500 when list lookup fails unexpectedly', async () => {
     const unsafeError = new Error('raw drug master list secret');
     unsafeError.name = 'DrugMasterListSecretError';
     drugMasterFindManyMock.mockRejectedValueOnce(unsafeError);
+    const cacheSetSpy = vi.spyOn(serverCache, 'set');
 
-    const response = await GET(createRequest('http://localhost/api/drug-masters?limit=5'));
+    const response = await invokeGet(createRequest('http://localhost/api/drug-masters?limit=5'));
 
     expect(response.status).toBe(500);
     expectNoStore(response);
     const body = await response.json();
     expect(body).toMatchObject({ code: 'INTERNAL_ERROR' });
     expect(JSON.stringify(body)).not.toContain('list secret');
+    expect(cacheSetSpy).not.toHaveBeenCalled();
     expect(loggerErrorMock).toHaveBeenCalledWith(
       {
-        event: 'drug_masters_list_get_unhandled_error',
+        event: 'route_handler_unhandled_error',
         route: '/api/drug-masters',
         method: 'GET',
-        status: 500,
+        requestId: response.headers.get('X-Request-Id'),
+        correlationId: response.headers.get('X-Correlation-Id'),
       },
       unsafeError,
     );
@@ -453,5 +641,42 @@ describe('/api/drug-masters GET', () => {
     const logged = JSON.stringify(logContext);
     expect(logged).not.toContain('list secret');
     expect(logged).not.toContain('DrugMasterListSecretError');
+
+    const retry = await invokeGet(createRequest('http://localhost/api/drug-masters?limit=5'));
+    expect(retry.status).toBe(200);
+    expect(drugMasterFindManyMock).toHaveBeenCalledTimes(2);
+    expect(cacheSetSpy).toHaveBeenCalledOnce();
+  });
+
+  it('rethrows auth and handler control flow without logging or caching', async () => {
+    const cacheSetSpy = vi.spyOn(serverCache, 'set');
+    const authControl = new Error('NEXT_REDIRECT');
+    authMock.mockRejectedValueOnce(authControl);
+    unstableRethrowMock.mockImplementationOnce((error) => {
+      throw error;
+    });
+
+    await expect(
+      invokeGet(createRequest('http://localhost/api/drug-masters?limit=invalid')),
+    ).rejects.toBe(authControl);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(cacheSetSpy).not.toHaveBeenCalled();
+    expect(loggerErrorMock).not.toHaveBeenCalled();
+
+    vi.clearAllMocks();
+    authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    membershipFindFirstMock.mockResolvedValue({ role: 'pharmacist', site_id: null });
+    const handlerControl = new Error('NEXT_NOT_FOUND');
+    withOrgContextMock.mockRejectedValueOnce(handlerControl);
+    unstableRethrowMock.mockImplementationOnce((error) => {
+      throw error;
+    });
+
+    await expect(
+      invokeGet(createRequest('http://localhost/api/drug-masters?limit=5')),
+    ).rejects.toBe(handlerControl);
+    expect(runWithRequestAuthContextMock).toHaveBeenCalledOnce();
+    expect(cacheSetSpy).not.toHaveBeenCalled();
+    expect(loggerErrorMock).not.toHaveBeenCalled();
   });
 });

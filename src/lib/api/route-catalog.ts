@@ -955,7 +955,7 @@ export const routeCatalog: RouteCatalogEntry[] = [
   {
     path: '/api/drug-masters',
     methods: ['GET'],
-    permission: 'canAdmin',
+    permission: 'authenticated',
     description: '医薬品マスタ検索',
     area: 'masters',
   },

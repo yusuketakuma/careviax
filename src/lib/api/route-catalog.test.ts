@@ -33,6 +33,16 @@ describe('routeCatalog', () => {
     );
   });
 
+  it('documents drug master search as available to active authenticated members', () => {
+    expect(routeCatalog.find((entry) => entry.path === '/api/drug-masters')).toEqual({
+      path: '/api/drug-masters',
+      methods: ['GET'],
+      permission: 'authenticated',
+      description: '医薬品マスタ検索',
+      area: 'masters',
+    });
+  });
+
   it('separates ordinary patient reads from clinical patient writes by HTTP method', () => {
     expect(routeCatalog).toEqual(
       expect.arrayContaining([
