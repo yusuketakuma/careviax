@@ -1,15 +1,13 @@
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { buildAuditTaskHref } from '@/lib/audit/navigation';
 import { NextRequest } from 'next/server';
-import { unstable_rethrow } from 'next/navigation';
-import { requireAuthContext } from '@/lib/auth/context';
+import { withAuthContext, type AuthContext } from '@/lib/auth/context';
 import { ADMIN_MEMBER_ROLES } from '@/lib/auth/member-roles';
 import { withOrgContext } from '@/lib/db/rls';
 import { runWithRequestAuthContext } from '@/lib/auth/request-context';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { toPrismaJsonInput } from '@/lib/db/json';
-import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
-import { success, validationError, notFound, conflict, internalError } from '@/lib/api/response';
+import { success, validationError, notFound, conflict } from '@/lib/api/response';
 import { dispatchNotificationEvent } from '@/server/services/notifications';
 import { notifyWebhookEventForOrg } from '@/server/services/outbound-webhook';
 import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cache';
@@ -37,8 +35,6 @@ import { selectLatestDrugPriceVersionsByDrugMasterIdForAsOf } from './drug-price
 import { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import type { ExceptionSeverity, ExceptionStatus } from '@/types/domain-literals';
-import { logger } from '@/lib/utils/logger';
-import { withRoutePerformance } from '@/lib/utils/performance';
 
 const dispenseResultLineSchema = z.object({
   line_id: z.string().min(1),
@@ -110,8 +106,6 @@ const createDispenseResultSchema = z
   });
 
 type SubmittedDispenseResultLine = z.infer<typeof dispenseResultLineSchema>;
-
-const ROUTE = '/api/dispense-results';
 
 type ReplayableDispenseResult = {
   id: string;
@@ -430,15 +424,7 @@ async function promoteCycleToDispensingIfNeeded(args: {
   }
 }
 
-async function authenticatedPOST(req: NextRequest) {
-  const auth = await requireAuthContext(req, {
-    permission: 'canDispense',
-    message: '調剤結果の登録権限がありません',
-  });
-  if ('response' in auth) return auth.response;
-
-  const { ctx } = auth;
-
+async function authenticatedPOST(req: NextRequest, ctx: AuthContext) {
   return runWithRequestAuthContext(ctx, async () => {
     const payload = await readJsonObjectRequestBody(req);
     if (!payload) return validationError('リクエストボディが不正です');
@@ -1163,22 +1149,7 @@ async function authenticatedPOST(req: NextRequest) {
   });
 }
 
-export async function POST(req: NextRequest) {
-  return withRoutePerformance(req, async () => {
-    try {
-      return withSensitiveNoStore(await authenticatedPOST(req));
-    } catch (err) {
-      unstable_rethrow(err);
-      logger.error(
-        {
-          event: 'dispense_results_post_unhandled_error',
-          route: ROUTE,
-          method: 'POST',
-          status: 500,
-        },
-        err,
-      );
-      return withSensitiveNoStore(internalError());
-    }
-  });
-}
+export const POST = withAuthContext(authenticatedPOST, {
+  permission: 'canDispense',
+  message: '調剤結果の登録権限がありません',
+});

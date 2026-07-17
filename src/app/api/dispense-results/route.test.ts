@@ -4,9 +4,11 @@ import { expectSensitiveNoStore } from '@/test/api-response-assertions';
 
 const {
   loggerErrorMock,
-  requireAuthContextMock,
+  authMock,
+  membershipFindFirstMock,
+  clearRequestAuthContextMock,
   runWithRequestAuthContextMock,
-  withRoutePerformanceMock,
+  unstableRethrowMock,
   withOrgContextMock,
   dispatchNotificationEventMock,
   checkDispenseAlertsMock,
@@ -14,9 +16,11 @@ const {
   notifyWebhookEventForOrgMock,
 } = vi.hoisted(() => ({
   loggerErrorMock: vi.fn(),
-  requireAuthContextMock: vi.fn(),
+  authMock: vi.fn(),
+  membershipFindFirstMock: vi.fn(),
+  clearRequestAuthContextMock: vi.fn(),
   runWithRequestAuthContextMock: vi.fn((_ctx, callback: () => unknown) => callback()),
-  withRoutePerformanceMock: vi.fn((_req, callback: () => unknown) => callback()),
+  unstableRethrowMock: vi.fn(),
   withOrgContextMock: vi.fn(),
   dispatchNotificationEventMock: vi.fn(),
   checkDispenseAlertsMock: vi.fn(),
@@ -24,22 +28,29 @@ const {
   notifyWebhookEventForOrgMock: vi.fn().mockResolvedValue(undefined),
 }));
 
-vi.mock('@/lib/auth/context', () => ({
-  requireAuthContext: requireAuthContextMock,
-}));
+vi.mock('next/navigation', () => ({ unstable_rethrow: unstableRethrowMock }));
 
 vi.mock('@/lib/auth/request-context', () => ({
+  clearRequestAuthContext: clearRequestAuthContextMock,
   runWithRequestAuthContext: runWithRequestAuthContextMock,
+}));
+
+vi.mock('@/lib/auth/config', () => ({
+  auth: authMock,
+}));
+
+vi.mock('@/lib/db/client', () => ({
+  prisma: {
+    membership: {
+      findFirst: membershipFindFirstMock,
+    },
+  },
 }));
 
 vi.mock('@/lib/utils/logger', () => ({
   logger: {
     error: loggerErrorMock,
   },
-}));
-
-vi.mock('@/lib/utils/performance', () => ({
-  withRoutePerformance: withRoutePerformanceMock,
 }));
 
 vi.mock('@/lib/db/rls', () => ({
@@ -73,7 +84,8 @@ vi.mock('@/server/services/operational-tasks', () => ({
 import { selectLatestDrugPriceVersionsByDrugMasterIdForAsOf } from './drug-price-version-selection';
 import { POST as rawPOST } from './route';
 
-const POST = (req: NextRequest) => rawPOST(req);
+const emptyRouteContext = { params: Promise.resolve({}) };
+const POST = (req: NextRequest) => rawPOST(req, emptyRouteContext);
 
 const safetyChecklist = {
   patient_identity: true,
@@ -102,6 +114,7 @@ function createRawRequest(body: unknown) {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
+      'x-org-id': 'org_1',
     },
     body: JSON.stringify(body),
   });
@@ -112,21 +125,17 @@ function createMalformedJsonRequest() {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
+      'x-org-id': 'org_1',
     },
     body: '{"task_id":',
   });
 }
 
 function setupAuthMocks() {
-  requireAuthContextMock.mockResolvedValue({
-    ctx: {
-      orgId: 'org_1',
-      userId: 'user_1',
-      role: 'pharmacist' as const,
-    },
-  });
+  authMock.mockResolvedValue({ user: { id: 'user_1' } });
+  membershipFindFirstMock.mockResolvedValue({ role: 'pharmacist' });
   runWithRequestAuthContextMock.mockImplementation((_ctx, callback) => callback());
-  withRoutePerformanceMock.mockImplementation((_req, callback) => callback());
+  unstableRethrowMock.mockImplementation(() => undefined);
 }
 
 function mockDispenseTaskForQuantityValidation(args: {
@@ -282,25 +291,91 @@ describe('/api/dispense-results POST', () => {
   });
 
   it('short-circuits auth failures before parsing malformed JSON or side effects', async () => {
-    requireAuthContextMock.mockResolvedValueOnce({
-      response: Response.json(
-        { code: 'AUTH_FORBIDDEN', message: '調剤結果の登録権限がありません' },
-        { status: 403 },
-      ),
-    });
+    membershipFindFirstMock.mockResolvedValueOnce({ role: 'clerk' });
+    const request = createMalformedJsonRequest();
 
-    const response = await POST(createMalformedJsonRequest());
+    const response = await POST(request);
 
     expect(response.status).toBe(403);
     expectSensitiveNoStore(response);
+    expect(request.bodyUsed).toBe(false);
     await expect(response.json()).resolves.toMatchObject({
       code: 'AUTH_FORBIDDEN',
       message: '調剤結果の登録権限がありません',
     });
+    expect(runWithRequestAuthContextMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(checkDispenseAlertsMock).not.toHaveBeenCalled();
     expect(dispatchNotificationEventMock).not.toHaveBeenCalled();
     expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects unauthenticated requests before parsing malformed JSON or side effects', async () => {
+    authMock.mockResolvedValueOnce(null);
+    const request = createMalformedJsonRequest();
+
+    const response = await POST(request);
+
+    expect(response.status).toBe(401);
+    expectSensitiveNoStore(response);
+    expect(request.bodyUsed).toBe(false);
+    expect(runWithRequestAuthContextMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(checkDispenseAlertsMock).not.toHaveBeenCalled();
+    expect(dispatchNotificationEventMock).not.toHaveBeenCalled();
+    expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a generated-trace safe 500 when authentication dependencies throw', async () => {
+    const unsafeError = new Error('患者 山田太郎 raw dispense result auth secret');
+    unsafeError.name = 'DispenseResultsAuthSecretError';
+    authMock.mockRejectedValueOnce(unsafeError);
+    const request = createMalformedJsonRequest();
+
+    const response = await POST(request);
+    const requestId = response.headers.get('X-Request-Id');
+    const correlationId = response.headers.get('X-Correlation-Id');
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    expect(requestId).toBeTruthy();
+    expect(correlationId).toBe(requestId);
+    expect(request.bodyUsed).toBe(false);
+    await expect(response.json()).resolves.toEqual({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    expect(runWithRequestAuthContextMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      {
+        event: 'route_auth_unhandled_error',
+        route: '/api/dispense-results',
+        method: 'POST',
+        requestId,
+        correlationId,
+      },
+      unsafeError,
+    );
+    expect(JSON.stringify(loggerErrorMock.mock.calls[0]?.[0])).not.toContain('山田太郎');
+  });
+
+  it('rethrows authentication control flow without logging or side effects', async () => {
+    const controlFlowError = new Error('NEXT_REDIRECT');
+    authMock.mockRejectedValueOnce(controlFlowError);
+    unstableRethrowMock.mockImplementationOnce((error) => {
+      throw error;
+    });
+    const request = createMalformedJsonRequest();
+
+    await expect(POST(request)).rejects.toBe(controlFlowError);
+
+    expect(request.bodyUsed).toBe(false);
+    expect(loggerErrorMock).not.toHaveBeenCalled();
+    expect(runWithRequestAuthContextMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+    expect(notifyWebhookEventForOrgMock).not.toHaveBeenCalled();
   });
 
   it('requires expected_version before transaction or notification side effects', async () => {
@@ -406,12 +481,13 @@ describe('/api/dispense-results POST', () => {
     expect(JSON.stringify(body)).not.toContain('山田太郎');
     expect(JSON.stringify(body)).not.toContain('raw dispense result');
     expect(loggerErrorMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        event: 'dispense_results_post_unhandled_error',
+      {
+        event: 'route_handler_unhandled_error',
         route: '/api/dispense-results',
         method: 'POST',
-        status: 500,
-      }),
+        requestId: response.headers.get('X-Request-Id'),
+        correlationId: response.headers.get('X-Correlation-Id'),
+      },
       unsafeError,
     );
     const [routeContext, logError] = loggerErrorMock.mock.calls[0] ?? [];
@@ -425,6 +501,39 @@ describe('/api/dispense-results POST', () => {
     expect(dispatchNotificationEventMock).not.toHaveBeenCalled();
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
     expect(notifyWebhookEventForOrgMock).not.toHaveBeenCalled();
+    expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
+  });
+
+  it('rethrows handler control flow without shared logging or external side effects', async () => {
+    const controlFlowError = new Error('NEXT_NOT_FOUND');
+    withOrgContextMock.mockRejectedValueOnce(controlFlowError);
+    unstableRethrowMock.mockImplementationOnce((error) => {
+      throw error;
+    });
+
+    await expect(
+      POST(
+        createRequest({
+          task_id: 'task_1',
+          safety_checklist: safetyChecklist,
+          lines: [
+            {
+              line_id: 'line_1',
+              actual_drug_name: 'アムロジピン',
+              actual_drug_code: '123',
+              actual_quantity: 14,
+              ...prescriptionQuantityConfirmed,
+              carry_type: 'carry',
+            },
+          ],
+        }),
+      ),
+    ).rejects.toBe(controlFlowError);
+
+    expect(loggerErrorMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+    expect(notifyWebhookEventForOrgMock).not.toHaveBeenCalled();
+    expect(dispatchNotificationEventMock).not.toHaveBeenCalled();
     expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
   });
 
@@ -1214,6 +1323,12 @@ describe('/api/dispense-results POST', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(201);
     expectSensitiveNoStore(response);
+    expect(response.headers.get('X-Request-Id')).toBeTruthy();
+    expect(response.headers.get('X-Correlation-Id')).toBeTruthy();
+    expect(runWithRequestAuthContextMock).toHaveBeenCalledTimes(2);
+    expect(runWithRequestAuthContextMock.mock.calls[0]?.[0]).toBe(
+      runWithRequestAuthContextMock.mock.calls[1]?.[0],
+    );
     await expect(response.json()).resolves.toMatchObject({
       data: {
         task_id: 'task_1',

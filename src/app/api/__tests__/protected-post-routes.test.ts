@@ -214,7 +214,10 @@ const routes: RouteEntry[] = [
     name: 'dispense-audits POST',
     handler: (req) => dispenseAuditsPost(req, emptyRouteContext),
   },
-  { name: 'dispense-results POST', handler: (req) => dispenseResultsPost(req) },
+  {
+    name: 'dispense-results POST',
+    handler: (req) => dispenseResultsPost(req, emptyRouteContext),
+  },
   { name: 'inquiry-records POST', handler: (req) => inquiryRecordsPost(req, emptyRouteContext) },
   { name: 'incident-reports POST', handler: (req) => incidentReportsPost(req, emptyRouteContext) },
   { name: 'pca-pumps POST', handler: (req) => pcaPumpsPost(req) },

@@ -1458,6 +1458,7 @@ describe('workflow full-cycle integration', () => {
           },
         ],
       }),
+      emptyRouteContext,
     );
 
     expect(dispenseResponse?.status).toBe(201);
