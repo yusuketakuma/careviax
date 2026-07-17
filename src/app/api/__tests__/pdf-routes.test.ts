@@ -33,6 +33,31 @@ const {
 
 vi.mock('@/lib/auth/context', () => ({
   requireAuthContext: requireAuthContextMock,
+  withAuthContext:
+    (
+      handler: (
+        req: NextRequest,
+        ctx: {
+          userId: string;
+          orgId: string;
+          role: string;
+          requestId: string;
+          correlationId: string;
+        },
+        routeContext: { params: Promise<Record<string, string>> },
+      ) => Promise<Response>,
+      options: unknown,
+    ) =>
+    async (req: NextRequest, routeContext: { params: Promise<Record<string, string>> }) => {
+      const authResult = await requireAuthContextMock(req, options);
+      if ('response' in authResult) return authResult.response;
+      const response = await handler(req, authResult.ctx, routeContext);
+      response.headers.set('Cache-Control', 'private, no-store, max-age=0');
+      response.headers.set('Pragma', 'no-cache');
+      response.headers.set('X-Request-Id', authResult.ctx.requestId);
+      response.headers.set('X-Correlation-Id', authResult.ctx.correlationId);
+      return response;
+    },
 }));
 
 vi.mock('@/server/services/export-audit', () => ({
@@ -83,6 +108,8 @@ describe('PDF routes', () => {
         userId: 'user_1',
         orgId: 'org_1',
         role: 'admin',
+        requestId: 'request_pdf_routes_1',
+        correlationId: 'correlation_pdf_routes_1',
       },
     });
     recordDataExportAuditMock.mockResolvedValue(undefined);
