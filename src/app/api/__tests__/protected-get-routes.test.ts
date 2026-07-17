@@ -576,6 +576,7 @@ const routes: Array<{ name: string; handler: Handler; setupSuccess?: () => void 
         createRequest('http://localhost/api/care-reports/analytics?overdue_days=7', {
           'x-org-id': 'org_1',
         }),
+        emptyRouteContext,
       ),
   },
   {

@@ -1,9 +1,7 @@
 import { NextRequest } from 'next/server';
-import { unstable_rethrow } from 'next/navigation';
 import { z } from 'zod';
-import { requireAuthContext } from '@/lib/auth/context';
-import { internalError, success, validationError } from '@/lib/api/response';
-import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
+import { withAuthContext, type AuthContext } from '@/lib/auth/context';
+import { success, validationError } from '@/lib/api/response';
 import { optionalBoundedIntegerSearchParam } from '@/lib/api/validation';
 import { withOrgContext } from '@/lib/db/rls';
 import { getCareReportDeliveryAnalytics } from '@/server/services/report-reminders';
@@ -33,14 +31,7 @@ function findInvalidCareReportAnalyticsQueryParams(searchParams: URLSearchParams
   return Object.keys(fieldErrors).length > 0 ? fieldErrors : null;
 }
 
-async function authenticatedGET(req: NextRequest) {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canSendCareReport',
-    message: '報告書分析の閲覧権限がありません',
-  });
-  if ('response' in authResult) return authResult.response;
-  const { ctx } = authResult;
-
+async function careReportAnalyticsGET(req: NextRequest, ctx: AuthContext) {
   const { searchParams } = new URL(req.url);
   const invalidQueryParams = findInvalidCareReportAnalyticsQueryParams(searchParams);
   if (invalidQueryParams) {
@@ -70,11 +61,7 @@ async function authenticatedGET(req: NextRequest) {
   return success({ data: analytics });
 }
 
-export async function GET(req: NextRequest) {
-  try {
-    return withSensitiveNoStore(await authenticatedGET(req));
-  } catch (err) {
-    unstable_rethrow(err);
-    return withSensitiveNoStore(internalError());
-  }
-}
+export const GET = withAuthContext(careReportAnalyticsGET, {
+  permission: 'canSendCareReport',
+  message: '報告書分析の閲覧権限がありません',
+});
