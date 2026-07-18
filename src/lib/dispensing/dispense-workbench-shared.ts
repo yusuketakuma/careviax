@@ -19,7 +19,7 @@ export type WorkbenchComparisonRow = {
   drug_name: string;
   previous_label: string | null;
   current_label: string | null;
-  change_type: 'added' | 'removed' | 'dose_changed' | 'frequency_changed' | null;
+  change_type: 'added' | 'removed' | 'dose_changed' | 'frequency_changed' | 'days_changed' | null;
   direction: 'decrease' | 'increase' | null;
   inquiry_origin: boolean;
 };
@@ -416,6 +416,8 @@ export function buildChangeBadge(row: {
       return { label: '用量変更', tone: 'amber' };
     case 'frequency_changed':
       return { label: '用法変更', tone: 'amber' };
+    case 'days_changed':
+      return { label: '日数変更', tone: 'amber' };
     case 'added':
       return { label: '新規', tone: 'blue' };
     case 'removed':

@@ -255,7 +255,7 @@ describe('/api/handoff-board', () => {
         },
       });
       await expect(res!.json()).resolves.toMatchObject({
-        data: { id: 'board_today' },
+        data: { id: 'board_today', shift_date: '2026-07-01' },
       });
     } finally {
       vi.useRealTimers();

@@ -637,6 +637,22 @@ describe('workbenchFromApi — comparison 写像', () => {
     expect(workbenchFromApi(data).groups[0].drugs[0].chg).toBe('changed');
   });
 
+  it('days_changed も chg=changed として扱う', () => {
+    const data = workbenchData({
+      count_rows: [countRow({ line_id: 'C4-days', drug_name: '日数変更薬' })],
+      comparison: [
+        comparisonRow({
+          key: 'C4-days',
+          drug_name: '日数変更薬',
+          change_type: 'days_changed',
+          previous_label: '14日分',
+          current_label: '28日分',
+        }),
+      ],
+    });
+    expect(workbenchFromApi(data).groups[0].drugs[0].chg).toBe('changed');
+  });
+
   it('change_type=null の比較行は無視（変更点に出さない）', () => {
     const data = workbenchData({
       count_rows: [countRow({ line_id: 'C5', drug_name: '継続薬' })],

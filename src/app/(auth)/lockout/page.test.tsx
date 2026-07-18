@@ -32,7 +32,7 @@ describe('LockoutPage', () => {
   });
 
   it('falls back to honest facility-admin guidance when no support contact is configured', () => {
-    render(<LockoutPage />);
+    const { container } = render(<LockoutPage />);
 
     expect(
       screen.getByText(
@@ -40,5 +40,6 @@ describe('LockoutPage', () => {
       ),
     ).toBeTruthy();
     expect(screen.getByRole('link', { name: /ログイン画面に戻る/ })).toBeTruthy();
+    expect(container.querySelector('a button')).toBeNull();
   });
 });

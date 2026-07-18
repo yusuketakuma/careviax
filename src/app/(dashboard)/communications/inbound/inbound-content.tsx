@@ -1659,12 +1659,14 @@ export function InboundCommunicationsContent() {
 
             <div className="space-y-3" role="list" aria-label="他職種受信一覧">
               {items.length === 0 ? (
-                <EmptyState
-                  icon={Inbox}
-                  title="確認待ちの他職種受信はありません"
-                  description="現在の条件に該当する受信情報はありません。取得失敗時はこの空状態ではなくエラーとして表示します。"
-                  headingLevel={3}
-                />
+                <div role="listitem">
+                  <EmptyState
+                    icon={Inbox}
+                    title="確認待ちの他職種受信はありません"
+                    description="現在の条件に該当する受信情報はありません。取得失敗時はこの空状態ではなくエラーとして表示します。"
+                    headingLevel={3}
+                  />
+                </div>
               ) : (
                 items.map((item) => {
                   const badge = priorityBadge(item);

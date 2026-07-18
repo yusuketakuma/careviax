@@ -276,21 +276,11 @@ function planHasMissingGeocodeNote(plan: VisitRoutePlan) {
 }
 
 function planVehicleConstraintStatus(plan: VisitRoutePlan) {
-  const maybeVehicle = (
-    plan as VisitRoutePlan & {
-      vehicle_resource?: { constraint_status?: string; label?: string | null } | null;
-    }
-  ).vehicle_resource;
-  return maybeVehicle?.constraint_status ?? null;
+  return plan.vehicle_resource?.constraint_status ?? null;
 }
 
 function planVehicleLabel(plan: VisitRoutePlan) {
-  const maybeVehicle = (
-    plan as VisitRoutePlan & {
-      vehicle_resource?: { label?: string | null } | null;
-    }
-  ).vehicle_resource;
-  return maybeVehicle?.label ?? '車両';
+  return plan.vehicle_resource?.label ?? '車両';
 }
 
 function orderedVisitsFromPlan(args: {

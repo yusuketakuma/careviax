@@ -581,7 +581,7 @@ function ProcessNowSection({ tiles }: { tiles: ProcessNowTile[] }) {
           → ハンドオフで再配分
         </Link>
       </div>
-      <ol className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-5 xl:grid-cols-9">
+      <ol className="mt-3 grid gap-2 [grid-template-columns:repeat(auto-fit,minmax(5rem,1fr))]">
         {tiles.map((tile) => (
           <li key={tile.key} data-tone={tile.tone}>
             <Link

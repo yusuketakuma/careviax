@@ -496,6 +496,7 @@ describe('WorkflowDashboardContent', () => {
             items: [
               {
                 id: 'cq_portal',
+                patient_id: 'patient_1',
                 queue_type: 'self_report',
                 title: '自己申告の確認',
                 summary: '連絡サマリ甲',
@@ -509,6 +510,7 @@ describe('WorkflowDashboardContent', () => {
               },
               {
                 id: 'cq_collab',
+                patient_id: 'patient_2',
                 queue_type: 'request',
                 title: '依頼の確認',
                 summary: '連絡サマリ乙',
@@ -522,6 +524,7 @@ describe('WorkflowDashboardContent', () => {
               },
               {
                 id: 'cq_external',
+                patient_id: 'patient_3',
                 queue_type: 'external_share',
                 title: '共有期限の確認',
                 summary: '連絡サマリ丙',
@@ -608,6 +611,7 @@ describe('WorkflowDashboardContent', () => {
             timeline: [
               {
                 id: 'tracing_report:tracing_1',
+                patient_id: 'patient_1',
                 source_type: 'tracing_report',
                 patient_name: '佐藤花子',
                 title: '服薬情報提供書',

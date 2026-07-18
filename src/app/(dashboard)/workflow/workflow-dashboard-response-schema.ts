@@ -36,6 +36,7 @@ const communicationQueueSchema = z
         z
           .object({
             id: text(255),
+            patient_id: text(255),
             queue_type: text(200),
             title: text(),
             summary: text(4_000),
@@ -54,6 +55,7 @@ const communicationQueueSchema = z
         z
           .object({
             id: text(255),
+            patient_id: text(255),
             source_type: z.enum([
               'care_report',
               'tracing_report',

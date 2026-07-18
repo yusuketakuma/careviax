@@ -22,6 +22,18 @@ const stopSummarySchema = z
   })
   .strict();
 
+const vehicleResourceSchema = z
+  .object({
+    vehicle_id: nonEmptyText(255).nullable(),
+    label: nonEmptyText(500),
+    max_stops: z.number().int().positive().nullable(),
+    max_route_duration_minutes: z.number().int().positive().nullable(),
+    stop_count: z.number().int().nonnegative(),
+    route_duration_minutes: nullableNonnegativeNumber,
+    constraint_status: z.enum(['ok', 'exceeded', 'unverified']),
+  })
+  .strict();
+
 const routePlanSchema = z
   .object({
     status: z.enum(['ok', 'unavailable']),
@@ -41,6 +53,7 @@ const routePlanSchema = z
     totalDurationSeconds: nullableNonnegativeNumber,
     distanceSource: z.enum(['road', 'straight_line', 'mixed']).nullable().optional(),
     stopSummaries: z.array(stopSummarySchema).max(50),
+    vehicle_resource: vehicleResourceSchema.optional(),
   })
   .strict()
   .superRefine((plan, context) => {

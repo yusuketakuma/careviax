@@ -172,6 +172,7 @@ function LoginForm() {
               <Label htmlFor="password">パスワード</Label>
               <Link
                 href="/password/reset"
+                aria-label="パスワードを忘れた方"
                 className="inline-flex min-h-11 items-center rounded px-2 text-sm font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 忘れた方

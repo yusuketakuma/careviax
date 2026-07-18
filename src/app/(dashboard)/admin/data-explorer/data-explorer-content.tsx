@@ -38,8 +38,6 @@ type ExplorerField = {
   name: string;
   type: string;
   kind: string;
-  isList: boolean;
-  isRequired: boolean;
   isEditable: boolean;
 };
 
@@ -510,8 +508,6 @@ export function DataExplorerContent() {
                         ) : (
                           <Badge variant="outline">readonly</Badge>
                         )}
-                        {column.isList ? <Badge variant="outline">list</Badge> : null}
-                        {!column.isRequired ? <Badge variant="outline">nullable</Badge> : null}
                       </div>
                     </div>
                   ))}

@@ -452,6 +452,7 @@ function toSafeInvoiceDraft(invoice: PharmacyInvoiceDraftRow, reused: boolean) {
     tax_amount: invoice.tax_amount,
     total: invoice.total,
     status: invoice.status,
+    version: invoice.version,
     reused_existing_draft: reused,
     item_count: invoice.items.length,
     has_issuer_snapshot: invoice.issuer_snapshot !== null,
