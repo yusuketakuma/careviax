@@ -1366,7 +1366,11 @@ test.describe('dispense → audit flow', () => {
     await routeMockDispenseWorkbench(page);
     await page.route(apiPathPattern('/api/dispense-results'), async (route) => {
       submitted = readRouteBody<DispenseResultsPayload>(route);
-      await fulfillJson(route, { task_id: ROUTE_MOCK_TASK_ID }, 201);
+      await fulfillJson(
+        route,
+        { data: { task_id: ROUTE_MOCK_TASK_ID, partial: false, results: [] } },
+        201,
+      );
     });
 
     await openStableRoute(page, '/dispense');
@@ -1405,6 +1409,9 @@ test.describe('dispense → audit flow', () => {
       );
     });
     await expect.poll(() => submitted, { timeout: 15_000 }).not.toBeNull();
+    await expect(
+      main.getByRole('navigation', { name: '現在の工程' }).locator('[aria-current="page"]'),
+    ).toContainText('監査');
     expect(submitted).toMatchObject({
       task_id: ROUTE_MOCK_TASK_ID,
       expected_version: 9,
