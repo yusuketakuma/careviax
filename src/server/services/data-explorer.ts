@@ -9,7 +9,6 @@ import { redactAuditLogChangesForResponse } from '@/lib/audit-logs/redaction';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { withOrgContext } from '@/lib/db/rls';
 import type { RequestAuthContext } from '@/lib/auth/request-context';
-import { runSequentially } from '@/lib/utils/concurrency';
 
 /**
  * data-explorer mutation を行うアクターのコンテキスト。監査ログ (createAuditLogEntry)
@@ -345,6 +344,8 @@ export type DataExplorerField = {
   name: string;
   type: string;
   kind: string;
+  isList: boolean;
+  isRequired: boolean;
   isEditable: boolean;
 };
 
@@ -448,6 +449,8 @@ function buildTableMeta(modelName: string): TableMeta {
       name: field.dbName ?? field.name,
       type: String(field.type),
       kind: field.kind,
+      isList: field.isList,
+      isRequired: field.isRequired,
       isEditable:
         !isReadOnlyModel(model.name) &&
         scope !== 'global' &&
@@ -460,7 +463,7 @@ function buildTableMeta(modelName: string): TableMeta {
   const fieldByName = new Map(fields.map((field) => [field.name, field]));
   const searchableFields = SEARCH_CANDIDATE_FIELDS.filter((fieldName) => {
     const field = fieldByName.get(fieldName);
-    return field?.kind === 'scalar' && field.type === 'String';
+    return field?.kind === 'scalar' && field.type === 'String' && !field.isList;
   });
 
   return {
@@ -693,9 +696,9 @@ export async function listDataExplorerRows(
   const rowParams = [...baseParams, rowLimit, offset];
 
   const [countRows, rows] = await withOrgContext(orgId, async (tx) => {
-    const [countResult, rowResult] = await runSequentially([
-      () => tx.$queryRawUnsafe<RowCount[]>(countQuery, ...countParams),
-      () => tx.$queryRawUnsafe<JsonRow[]>(rowsQuery, ...rowParams),
+    const [countResult, rowResult] = await Promise.all([
+      tx.$queryRawUnsafe<RowCount[]>(countQuery, ...countParams),
+      tx.$queryRawUnsafe<JsonRow[]>(rowsQuery, ...rowParams),
     ]);
     return [countResult, rowResult] as const;
   });

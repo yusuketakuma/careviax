@@ -33,23 +33,3 @@ export async function mapWithConcurrency<T, R>(
 
   return results;
 }
-
-type SequentialTask = () => unknown;
-type SequentialResults<Tasks extends readonly SequentialTask[]> = {
-  [Index in keyof Tasks]: Awaited<ReturnType<Tasks[Index]>>;
-};
-
-/**
- * Executes heterogeneous async work in declaration order.
- *
- * Interactive transaction clients backed by a single database connection must
- * not receive overlapping queries. This helper preserves tuple result types
- * without constructing every query promise up front.
- */
-export async function runSequentially<const Tasks extends readonly SequentialTask[]>(
-  tasks: Tasks,
-): Promise<SequentialResults<Tasks>> {
-  const results: unknown[] = [];
-  for (const task of tasks) results.push(await task());
-  return results as SequentialResults<Tasks>;
-}

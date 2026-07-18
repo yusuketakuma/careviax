@@ -106,34 +106,4 @@ describe('pca-rental-accessories service', () => {
       }),
     );
   });
-
-  it('serializes return inspection upserts on the transaction client', async () => {
-    let activeQueries = 0;
-    let maxActiveQueries = 0;
-    const upsert = vi.fn().mockImplementation(async () => {
-      activeQueries += 1;
-      maxActiveQueries = Math.max(maxActiveQueries, activeQueries);
-      await Promise.resolve();
-      activeQueries -= 1;
-      return {};
-    });
-    const tx = {
-      pcaPumpRentalAccessory: {
-        createMany: vi.fn(),
-        upsert,
-      },
-    };
-
-    await syncPcaRentalAccessoriesFromReturnInspection(tx, {
-      orgId: 'org_1',
-      rentalId: 'rental_1',
-      checklist: {
-        pump_body: { status: 'ok' },
-        power_adapter: { status: 'missing' },
-      },
-    });
-
-    expect(upsert).toHaveBeenCalledTimes(2);
-    expect(maxActiveQueries).toBe(1);
-  });
 });

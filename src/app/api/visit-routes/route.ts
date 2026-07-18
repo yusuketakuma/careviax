@@ -9,7 +9,6 @@ import {
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { ACTIVE_VISIT_SCHEDULE_STATUSES } from '@/lib/constants/visit';
 import { withOrgContext } from '@/lib/db/rls';
-import { runSequentially } from '@/lib/utils/concurrency';
 import { internalError, notFound, success, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { OPEN_VISIT_SCHEDULE_PROPOSAL_STATUSES as OPEN_PROPOSAL_STATUSES } from '@/lib/visit-schedule-proposals/route-order';
@@ -120,113 +119,110 @@ const authenticatedPOST = withAuthContext(
         const scheduleAssignmentWhere = buildVisitScheduleAssignmentWhere(ctx);
         const proposalAssignmentWhere = buildVisitScheduleProposalAssignmentWhere(ctx);
 
-        const [schedules, proposals, persistedVehicleResource] = await runSequentially([
-          () =>
-            parsed.data.schedule_ids.length > 0
-              ? tx.visitSchedule.findMany({
-                  where: {
-                    org_id: ctx.orgId,
-                    id: { in: parsed.data.schedule_ids },
-                    schedule_status: { in: [...ACTIVE_VISIT_SCHEDULE_STATUSES] },
-                    ...(scheduleAssignmentWhere ? { AND: [scheduleAssignmentWhere] } : {}),
-                  },
-                  select: {
-                    id: true,
-                    priority: true,
-                    time_window_start: true,
-                    time_window_end: true,
-                    site: {
-                      select: {
-                        id: true,
-                        name: true,
-                        lat: true,
-                        lng: true,
-                      },
+        const [schedules, proposals, persistedVehicleResource] = await Promise.all([
+          parsed.data.schedule_ids.length > 0
+            ? tx.visitSchedule.findMany({
+                where: {
+                  org_id: ctx.orgId,
+                  id: { in: parsed.data.schedule_ids },
+                  schedule_status: { in: [...ACTIVE_VISIT_SCHEDULE_STATUSES] },
+                  ...(scheduleAssignmentWhere ? { AND: [scheduleAssignmentWhere] } : {}),
+                },
+                select: {
+                  id: true,
+                  priority: true,
+                  time_window_start: true,
+                  time_window_end: true,
+                  site: {
+                    select: {
+                      id: true,
+                      name: true,
+                      lat: true,
+                      lng: true,
                     },
-                    case_: {
-                      select: {
-                        patient: {
-                          select: {
-                            name: true,
-                            residences: {
-                              where: { is_primary: true },
-                              select: {
-                                address: true,
-                                lat: true,
-                                lng: true,
-                              },
-                              take: 1,
+                  },
+                  case_: {
+                    select: {
+                      patient: {
+                        select: {
+                          name: true,
+                          residences: {
+                            where: { is_primary: true },
+                            select: {
+                              address: true,
+                              lat: true,
+                              lng: true,
                             },
+                            take: 1,
                           },
                         },
                       },
                     },
                   },
-                })
-              : Promise.resolve([]),
-          () =>
-            parsed.data.proposal_ids.length > 0
-              ? tx.visitScheduleProposal.findMany({
-                  where: {
-                    org_id: ctx.orgId,
-                    id: { in: parsed.data.proposal_ids },
-                    finalized_schedule_id: null,
-                    proposal_status: { in: OPEN_PROPOSAL_STATUSES },
-                    ...(proposalAssignmentWhere ? { AND: [proposalAssignmentWhere] } : {}),
-                  },
-                  select: {
-                    id: true,
-                    priority: true,
-                    time_window_start: true,
-                    time_window_end: true,
-                    site: {
-                      select: {
-                        id: true,
-                        name: true,
-                        lat: true,
-                        lng: true,
-                      },
+                },
+              })
+            : Promise.resolve([]),
+          parsed.data.proposal_ids.length > 0
+            ? tx.visitScheduleProposal.findMany({
+                where: {
+                  org_id: ctx.orgId,
+                  id: { in: parsed.data.proposal_ids },
+                  finalized_schedule_id: null,
+                  proposal_status: { in: OPEN_PROPOSAL_STATUSES },
+                  ...(proposalAssignmentWhere ? { AND: [proposalAssignmentWhere] } : {}),
+                },
+                select: {
+                  id: true,
+                  priority: true,
+                  time_window_start: true,
+                  time_window_end: true,
+                  site: {
+                    select: {
+                      id: true,
+                      name: true,
+                      lat: true,
+                      lng: true,
                     },
-                    case_: {
-                      select: {
-                        patient: {
-                          select: {
-                            name: true,
-                            residences: {
-                              where: { is_primary: true },
-                              select: {
-                                address: true,
-                                lat: true,
-                                lng: true,
-                              },
-                              take: 1,
+                  },
+                  case_: {
+                    select: {
+                      patient: {
+                        select: {
+                          name: true,
+                          residences: {
+                            where: { is_primary: true },
+                            select: {
+                              address: true,
+                              lat: true,
+                              lng: true,
                             },
+                            take: 1,
                           },
                         },
                       },
                     },
                   },
-                })
-              : Promise.resolve([]),
-          () =>
-            parsed.data.vehicle_resource_id
-              ? tx.visitVehicleResource.findFirst({
-                  where: {
-                    org_id: ctx.orgId,
-                    id: parsed.data.vehicle_resource_id,
-                    available: true,
-                  },
-                  select: {
-                    id: true,
-                    site_id: true,
-                    label: true,
-                    travel_mode: true,
-                    max_stops: true,
-                    max_route_duration_minutes: true,
-                  },
-                })
-              : Promise.resolve(null),
-        ] as const);
+                },
+              })
+            : Promise.resolve([]),
+          parsed.data.vehicle_resource_id
+            ? tx.visitVehicleResource.findFirst({
+                where: {
+                  org_id: ctx.orgId,
+                  id: parsed.data.vehicle_resource_id,
+                  available: true,
+                },
+                select: {
+                  id: true,
+                  site_id: true,
+                  label: true,
+                  travel_mode: true,
+                  max_stops: true,
+                  max_route_duration_minutes: true,
+                },
+              })
+            : Promise.resolve(null),
+        ]);
 
         if (parsed.data.vehicle_resource_id && !persistedVehicleResource) {
           return { error: 'vehicle_resource_not_found' } satisfies RoutePlanLookupError;

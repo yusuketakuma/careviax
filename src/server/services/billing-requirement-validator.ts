@@ -14,7 +14,6 @@
 import { formatUtcDateKey } from '@/lib/date-key';
 import { prisma } from '@/lib/db/client';
 import { addUtcDays } from '@/lib/utils/date-boundary';
-import { runSequentially } from '@/lib/utils/concurrency';
 import { findActiveVisitConsent, findCurrentManagementPlan } from './management-plans';
 import { getBillingCadencePolicy } from './billing-runtime-context';
 import { OPEN_VISIT_SCHEDULE_PROPOSAL_STATUSES } from '@/lib/visit-schedule-proposals/route-order';
@@ -479,22 +478,20 @@ export async function validateBillingRequirements(
   const monthEnd = endOfBillingMonth(args.proposedDate);
   const weekStart = startOfBillingWeek(args.proposedDate);
   const weekEnd = endOfBillingWeek(args.proposedDate);
-  const loadCadenceProposalRows = () =>
-    args.cadenceProposalRows
-      ? Promise.resolve(args.cadenceProposalRows)
-      : args.cadenceScheduleRows
-        ? Promise.resolve([])
-        : loadBillingCadenceProposalRows({
-            db,
-            orgId: args.orgId,
-            patientId: args.patientId,
-            pharmacistId: args.pharmacistId,
-            dateFrom: new Date(Math.min(monthStart.getTime(), weekStart.getTime())),
-            dateTo: new Date(Math.max(monthEnd.getTime(), weekEnd.getTime())),
-          });
+  const cadenceProposalRows =
+    args.cadenceProposalRows ??
+    (args.cadenceScheduleRows
+      ? Promise.resolve([])
+      : loadBillingCadenceProposalRows({
+          db,
+          orgId: args.orgId,
+          patientId: args.patientId,
+          pharmacistId: args.pharmacistId,
+          dateFrom: new Date(Math.min(monthStart.getTime(), weekStart.getTime())),
+          dateTo: new Date(Math.max(monthEnd.getTime(), weekEnd.getTime())),
+        }));
 
-  // The RLS interactive transaction uses one database connection, so queries
-  // must be started only after the previous query has settled.
+  // Parallel data fetches
   const [
     monthlyScheduleCount,
     weeklyPharmacistCount,
@@ -503,15 +500,81 @@ export async function validateBillingRequirements(
     proposalRows,
     consent,
     managementPlan,
-  ] = await runSequentially([
+  ] = await Promise.all([
     // Monthly schedule count for patient
-    () =>
-      args.cadenceScheduleRows
+    args.cadenceScheduleRows
+      ? Promise.resolve(
+          countScheduleRows(
+            args.cadenceScheduleRows,
+            (row) =>
+              row.patient_id === args.patientId &&
+              row.scheduled_date >= monthStart &&
+              row.scheduled_date <= monthEnd,
+            { excludeScheduleId: args.excludeScheduleId },
+          ),
+        )
+      : db.visitSchedule.count({
+          where: {
+            org_id: args.orgId,
+            case_: { patient_id: args.patientId },
+            ...(args.excludeScheduleId ? { id: { not: args.excludeScheduleId } } : {}),
+            scheduled_date: { gte: monthStart, lte: monthEnd },
+            schedule_status: { in: ACTIVE_BILLING_SCHEDULE_STATUSES },
+          },
+        }),
+    // Weekly visit count for pharmacist
+    args.cadenceScheduleRows
+      ? Promise.resolve(
+          countScheduleRows(
+            args.cadenceScheduleRows,
+            (row) =>
+              row.pharmacist_id === args.pharmacistId &&
+              row.scheduled_date >= weekStart &&
+              row.scheduled_date <= weekEnd,
+            { excludeScheduleId: args.excludeScheduleId },
+          ),
+        )
+      : db.visitSchedule.count({
+          where: {
+            org_id: args.orgId,
+            pharmacist_id: args.pharmacistId,
+            ...(args.excludeScheduleId ? { id: { not: args.excludeScheduleId } } : {}),
+            scheduled_date: { gte: weekStart, lte: weekEnd },
+            schedule_status: { in: ACTIVE_BILLING_SCHEDULE_STATUSES },
+          },
+        }),
+    // Weekly visit count for patient (special cap check)
+    args.specialCapEligible
+      ? args.cadenceScheduleRows
         ? Promise.resolve(
             countScheduleRows(
               args.cadenceScheduleRows,
               (row) =>
                 row.patient_id === args.patientId &&
+                row.scheduled_date >= weekStart &&
+                row.scheduled_date <= weekEnd,
+              { excludeScheduleId: args.excludeScheduleId },
+            ),
+          )
+        : db.visitSchedule.count({
+            where: {
+              org_id: args.orgId,
+              case_: { patient_id: args.patientId },
+              ...(args.excludeScheduleId ? { id: { not: args.excludeScheduleId } } : {}),
+              scheduled_date: { gte: weekStart, lte: weekEnd },
+              schedule_status: { in: ACTIVE_BILLING_SCHEDULE_STATUSES },
+            },
+          })
+      : Promise.resolve(0),
+    // Existing regular visits in month (for concurrent check)
+    args.visitType === 'emergency'
+      ? args.cadenceScheduleRows
+        ? Promise.resolve(
+            countScheduleRows(
+              args.cadenceScheduleRows,
+              (row) =>
+                row.patient_id === args.patientId &&
+                row.visit_type === 'regular' &&
                 row.scheduled_date >= monthStart &&
                 row.scheduled_date <= monthEnd,
               { excludeScheduleId: args.excludeScheduleId },
@@ -522,110 +585,38 @@ export async function validateBillingRequirements(
               org_id: args.orgId,
               case_: { patient_id: args.patientId },
               ...(args.excludeScheduleId ? { id: { not: args.excludeScheduleId } } : {}),
+              visit_type: 'regular',
               scheduled_date: { gte: monthStart, lte: monthEnd },
               schedule_status: { in: ACTIVE_BILLING_SCHEDULE_STATUSES },
             },
-          }),
-    // Weekly visit count for pharmacist
-    () =>
-      args.cadenceScheduleRows
-        ? Promise.resolve(
-            countScheduleRows(
-              args.cadenceScheduleRows,
-              (row) =>
-                row.pharmacist_id === args.pharmacistId &&
-                row.scheduled_date >= weekStart &&
-                row.scheduled_date <= weekEnd,
-              { excludeScheduleId: args.excludeScheduleId },
-            ),
-          )
-        : db.visitSchedule.count({
-            where: {
-              org_id: args.orgId,
-              pharmacist_id: args.pharmacistId,
-              ...(args.excludeScheduleId ? { id: { not: args.excludeScheduleId } } : {}),
-              scheduled_date: { gte: weekStart, lte: weekEnd },
-              schedule_status: { in: ACTIVE_BILLING_SCHEDULE_STATUSES },
-            },
-          }),
-    // Weekly visit count for patient (special cap check)
-    () =>
-      args.specialCapEligible
-        ? args.cadenceScheduleRows
-          ? Promise.resolve(
-              countScheduleRows(
-                args.cadenceScheduleRows,
-                (row) =>
-                  row.patient_id === args.patientId &&
-                  row.scheduled_date >= weekStart &&
-                  row.scheduled_date <= weekEnd,
-                { excludeScheduleId: args.excludeScheduleId },
-              ),
-            )
-          : db.visitSchedule.count({
-              where: {
-                org_id: args.orgId,
-                case_: { patient_id: args.patientId },
-                ...(args.excludeScheduleId ? { id: { not: args.excludeScheduleId } } : {}),
-                scheduled_date: { gte: weekStart, lte: weekEnd },
-                schedule_status: { in: ACTIVE_BILLING_SCHEDULE_STATUSES },
-              },
-            })
-        : Promise.resolve(0),
-    // Existing regular visits in month (for concurrent check)
-    () =>
-      args.visitType === 'emergency'
-        ? args.cadenceScheduleRows
-          ? Promise.resolve(
-              countScheduleRows(
-                args.cadenceScheduleRows,
-                (row) =>
-                  row.patient_id === args.patientId &&
-                  row.visit_type === 'regular' &&
-                  row.scheduled_date >= monthStart &&
-                  row.scheduled_date <= monthEnd,
-                { excludeScheduleId: args.excludeScheduleId },
-              ),
-            )
-          : db.visitSchedule.count({
-              where: {
-                org_id: args.orgId,
-                case_: { patient_id: args.patientId },
-                ...(args.excludeScheduleId ? { id: { not: args.excludeScheduleId } } : {}),
-                visit_type: 'regular',
-                scheduled_date: { gte: monthStart, lte: monthEnd },
-                schedule_status: { in: ACTIVE_BILLING_SCHEDULE_STATUSES },
-              },
-            })
-        : Promise.resolve(0),
-    loadCadenceProposalRows,
+          })
+      : Promise.resolve(0),
+    cadenceProposalRows,
     // Consent check
-    () =>
-      args.workflowSnapshot
-        ? Promise.resolve(
-            args.workflowSnapshot.resolveConsent({
-              patientId: args.patientId,
-              asOf: args.proposedDate,
-            }),
-          )
-        : findActiveVisitConsent(db, {
-            orgId: args.orgId,
+    args.workflowSnapshot
+      ? Promise.resolve(
+          args.workflowSnapshot.resolveConsent({
             patientId: args.patientId,
+            asOf: args.proposedDate,
           }),
+        )
+      : findActiveVisitConsent(db, {
+          orgId: args.orgId,
+          patientId: args.patientId,
+        }),
     // Management plan check
-    () =>
-      args.workflowSnapshot
-        ? Promise.resolve(
-            args.workflowSnapshot.resolveManagementPlan({
-              caseId: args.caseId,
-              asOf: args.proposedDate,
-            }),
-          )
-        : findCurrentManagementPlan(db, {
-            orgId: args.orgId,
+    args.workflowSnapshot
+      ? Promise.resolve(
+          args.workflowSnapshot.resolveManagementPlan({
             caseId: args.caseId,
+            asOf: args.proposedDate,
           }),
-  ] as const);
+        )
+      : findCurrentManagementPlan(db, {
+          orgId: args.orgId,
+          caseId: args.caseId,
+        }),
+  ]);
   const monthlyProposalCount = countProposalRows(
     proposalRows,
     (row) =>
