@@ -57,8 +57,6 @@ const explorerFieldSchema = z
     name: boundedText(200),
     type: boundedText(200),
     kind: boundedText(100),
-    isList: z.boolean(),
-    isRequired: z.boolean(),
     isEditable: z.boolean(),
   })
   .strict();

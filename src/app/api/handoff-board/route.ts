@@ -201,6 +201,7 @@ const authenticatedGET = withAuthContext(
 
     const data = {
       ...board,
+      shift_date: dateStr,
       items,
       recipient_options: recipientOptions,
       month_item_count: monthItemCount,

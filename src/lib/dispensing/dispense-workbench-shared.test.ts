@@ -165,6 +165,9 @@ describe('dispense-workbench-shared', () => {
     );
     expect(buildChangeBadge({ change_type: 'added', direction: null })?.label).toBe('新規');
     expect(buildChangeBadge({ change_type: 'removed', direction: null })?.label).toBe('中止');
+    expect(buildChangeBadge({ change_type: 'days_changed', direction: null })?.label).toBe(
+      '日数変更',
+    );
     expect(buildChangeBadge({ change_type: null, direction: null })).toBeNull();
   });
 

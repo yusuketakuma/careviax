@@ -188,7 +188,7 @@ export function buildVisitBillingCandidatesResponseSchema(expectedPatientId: str
               confirmed: countSchema,
               excluded: countSchema,
               exported: countSchema,
-              unresolved: countSchema,
+              reviewed: countSchema,
               ready_to_close: countSchema,
               blocked_from_close: countSchema,
               blocker_reasons: z.array(
@@ -270,11 +270,34 @@ const visitConferenceContextSchema = z
   })
   .strict();
 
+const visitPreparationRecordSchema = z
+  .object({
+    id: idSchema,
+    org_id: idSchema,
+    display_id: nullableTextSchema,
+    schedule_id: idSchema,
+    checklist: z.record(z.string(), z.unknown()),
+    medication_changes_reviewed: z.boolean(),
+    carry_items_confirmed: z.boolean(),
+    previous_issues_reviewed: z.boolean(),
+    route_confirmed: z.boolean(),
+    route_plan_snapshot: z.unknown().nullable(),
+    offline_synced: z.boolean(),
+    prepared_by: idSchema.nullable(),
+    prepared_at: nullableDateSchema,
+    created_at: dateSchema,
+    updated_at: dateSchema,
+  })
+  .strict();
+
 export function buildVisitPreparationDetailResponseSchema(expectedScheduleId: string) {
   return z
     .object({
       data: z
         .object({
+          preparation: visitPreparationRecordSchema
+            .extend({ schedule_id: z.literal(expectedScheduleId) })
+            .nullable(),
           pack: z
             .object({
               care_team: z.array(
@@ -318,7 +341,8 @@ export function buildVisitPreparationDetailResponseSchema(expectedScheduleId: st
               intake_context: pack.intake_context,
             })),
         })
-        .strict(),
+        .strict()
+        .transform(({ pack }) => ({ pack })),
     })
     .strict();
 }

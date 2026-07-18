@@ -97,6 +97,8 @@ test.describe('admin users failed site-list route-mocked recovery', () => {
           hidden_count: 0,
           truncated: false,
           count_basis: 'unique_users',
+          filters_applied: { site_id: null, include_collaborators: true },
+          limit: 500,
         },
       });
     });

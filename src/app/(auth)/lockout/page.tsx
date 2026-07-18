@@ -2,7 +2,8 @@
 
 import Link from 'next/link';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Button } from '@/components/ui/button';
+import { buttonVariants } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 import { ArrowLeft, Clock, Lock, Phone } from 'lucide-react';
 
 import { resolveSupportContact } from './support-contact';
@@ -104,15 +105,15 @@ export default function LockoutPage() {
           )}
         </div>
 
-        <Link href="/login">
-          <Button
-            variant="outline"
-            size="lg"
-            className="h-11 min-h-[44px] w-full sm:h-11 sm:min-h-[44px]"
-          >
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            ログイン画面に戻る
-          </Button>
+        <Link
+          href="/login"
+          className={cn(
+            buttonVariants({ variant: 'outline', size: 'lg' }),
+            'h-11 min-h-[44px] w-full sm:h-11 sm:min-h-[44px]',
+          )}
+        >
+          <ArrowLeft className="mr-2 h-4 w-4" aria-hidden="true" />
+          ログイン画面に戻る
         </Link>
       </div>
     </section>

@@ -17,7 +17,10 @@ const { runWithRequestAuthContextMock } = vi.hoisted(() => ({
   runWithRequestAuthContextMock: vi.fn(),
 }));
 const { recordBreakGlassAuditMock } = vi.hoisted(() => ({
-  recordBreakGlassAuditMock: vi.fn(async (_tx: unknown, _input: unknown) => {}),
+  recordBreakGlassAuditMock: vi.fn(async (tx: unknown, input: unknown) => {
+    void tx;
+    void input;
+  }),
 }));
 const prismaMocks = vi.hoisted(() => ({
   breakGlassSessionFindFirst: vi.fn(),
@@ -172,12 +175,7 @@ describe('assertSessionUsable (via withBreakGlassOrgContext / readViaBreakGlass)
   it('rejects a write when the session scope is read_only (scope_denied)', async () => {
     const session = makeSession({ scope: BreakGlassScope.read_only });
     await expect(
-      withBreakGlassOrgContext(
-        makeOperator(),
-        session,
-        { ...access, requireWrite: true },
-        vi.fn(),
-      ),
+      withBreakGlassOrgContext(makeOperator(), session, { ...access, requireWrite: true }, vi.fn()),
     ).rejects.toMatchObject({ code: 'scope_denied' });
     expect(withOrgContextMock).not.toHaveBeenCalled();
   });
@@ -185,9 +183,9 @@ describe('assertSessionUsable (via withBreakGlassOrgContext / readViaBreakGlass)
   it('surfaces the guard through readViaBreakGlass too (reader never runs)', async () => {
     const session = makeSession({ status: BreakGlassStatus.revoked });
     const reader = vi.fn();
-    await expect(readViaBreakGlass(makeOperator(), session, access, reader)).rejects.toMatchObject(
-      { code: 'revoked' },
-    );
+    await expect(readViaBreakGlass(makeOperator(), session, access, reader)).rejects.toMatchObject({
+      code: 'revoked',
+    });
     expect(reader).not.toHaveBeenCalled();
     expect(recordBreakGlassAuditMock).not.toHaveBeenCalled();
   });
@@ -269,11 +267,13 @@ describe('readViaBreakGlass', () => {
       order.push('audit');
     });
     let capturedCtx: { orgId?: string } | undefined;
-    runWithRequestAuthContextMock.mockImplementation((ctx: { orgId?: string }, fn: () => unknown) => {
-      capturedCtx = ctx;
-      order.push('reader');
-      return fn();
-    });
+    runWithRequestAuthContextMock.mockImplementation(
+      (ctx: { orgId?: string }, fn: () => unknown) => {
+        capturedCtx = ctx;
+        order.push('reader');
+        return fn();
+      },
+    );
     const reader = vi.fn(async () => ({ patient: 'redacted' }));
 
     const result = await readViaBreakGlass(makeOperator(), makeSession(), access, reader);
@@ -290,9 +290,9 @@ describe('readViaBreakGlass', () => {
     recordBreakGlassAuditMock.mockRejectedValue(new Error('audit failed'));
     const reader = vi.fn();
 
-    await expect(
-      readViaBreakGlass(makeOperator(), makeSession(), access, reader),
-    ).rejects.toThrow('audit failed');
+    await expect(readViaBreakGlass(makeOperator(), makeSession(), access, reader)).rejects.toThrow(
+      'audit failed',
+    );
     expect(reader).not.toHaveBeenCalled();
     expect(runWithRequestAuthContextMock).not.toHaveBeenCalled();
   });
@@ -384,7 +384,9 @@ describe('createBreakGlassSession', () => {
 
   it('allows platform_admin to open a read_write session', async () => {
     prismaMocks.organizationFindUnique.mockResolvedValue({ id: TARGET_ORG });
-    prismaMocks.breakGlassSessionCreate.mockResolvedValue(makeSession({ scope: BreakGlassScope.read_write }));
+    prismaMocks.breakGlassSessionCreate.mockResolvedValue(
+      makeSession({ scope: BreakGlassScope.read_write }),
+    );
     await expect(
       createBreakGlassSession({ ...baseInput(), scope: BreakGlassScope.read_write }),
     ).resolves.toBeDefined();

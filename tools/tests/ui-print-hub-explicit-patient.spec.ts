@@ -147,7 +147,7 @@ test('keeps missing targets zero-fetch and verifies the exact print flow at mobi
   await page.keyboard.press('Enter');
   const dialog = page.getByRole('alertdialog', { name: '印刷対象を確認' });
   await expect(dialog).toBeVisible();
-  expect(await dialog.evaluate((node) => node.contains(document.activeElement))).toBe(true);
+  await expect(dialog.locator('input').first()).toBeFocused();
   await page.keyboard.press('Escape');
   await expect(dialog).toBeHidden();
 

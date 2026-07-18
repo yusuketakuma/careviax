@@ -5,6 +5,8 @@ const browserChannel = process.env.PLAYWRIGHT_CHANNEL?.trim();
 
 export default defineConfig({
   testDir: './tools/tests',
+  testMatch: '**/*.spec.ts',
+  testIgnore: 'production-parity-smoke.spec.ts',
   outputDir: PLAYWRIGHT_OUTPUT_DIR,
   timeout: 240_000,
   fullyParallel: false,

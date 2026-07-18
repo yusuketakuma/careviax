@@ -1,6 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type APIResponse, type Page } from '@playwright/test';
 import { Client } from 'pg';
 import { PLAYWRIGHT_UI_SCREENSHOT_DIR } from './helpers/artifacts';
 import {
@@ -10,12 +10,19 @@ import {
   reloadStablePage,
   shouldIgnoreConsoleError,
 } from './helpers/local-auth';
+import { localPlaywrightDatabaseConnectionString } from './helpers/e2e-database-target';
 const SCREENSHOT_DIR = PLAYWRIGHT_UI_SCREENSHOT_DIR;
-const DB_CONNECTION_STRING = (
-  process.env.DATABASE_URL ?? 'postgresql://ph_os:ph_os@localhost:5433/ph-os_dev?schema=public'
-).replace(/\?.*$/, '');
+
+function uiMajorScreensDatabaseConnectionString() {
+  return localPlaywrightDatabaseConnectionString('Major screens UI fixtures');
+}
 
 test.setTimeout(180_000);
+
+async function readApiData<T>(response: APIResponse): Promise<T> {
+  const payload = (await response.json()) as { data: T };
+  return payload.data;
+}
 
 const ROOT_ROUTES = [
   { name: 'dashboard', route: '/dashboard' },
@@ -123,7 +130,7 @@ function billingMonthFromDateKey(dateKey: string) {
 }
 
 async function ensureUiDemoData() {
-  const client = new Client({ connectionString: DB_CONNECTION_STRING });
+  const client = new Client({ connectionString: uiMajorScreensDatabaseConnectionString() });
   await client.connect();
 
   try {
@@ -1232,7 +1239,7 @@ async function clearUiDemoPatientShareCases({
   partnershipId?: string;
   contractId?: string;
 } = {}) {
-  const client = new Client({ connectionString: DB_CONNECTION_STRING });
+  const client = new Client({ connectionString: uiMajorScreensDatabaseConnectionString() });
   await client.connect();
 
   try {
@@ -1392,7 +1399,7 @@ async function clearUiDemoPatientShareCases({
 }
 
 async function readUiDemoPharmacyVisitRequest(shareCaseId: string) {
-  const client = new Client({ connectionString: DB_CONNECTION_STRING });
+  const client = new Client({ connectionString: uiMajorScreensDatabaseConnectionString() });
   await client.connect();
 
   try {
@@ -1438,7 +1445,7 @@ async function readUiDemoPharmacyVisitRequest(shareCaseId: string) {
 }
 
 async function readUiDemoPartnerVisitRecord(visitRequestId: string) {
-  const client = new Client({ connectionString: DB_CONNECTION_STRING });
+  const client = new Client({ connectionString: uiMajorScreensDatabaseConnectionString() });
   await client.connect();
 
   try {
@@ -1498,7 +1505,7 @@ async function readUiDemoPartnerVisitRecord(visitRequestId: string) {
 }
 
 async function readUiDemoVisitBillingCandidate(partnerVisitRecordId: string) {
-  const client = new Client({ connectionString: DB_CONNECTION_STRING });
+  const client = new Client({ connectionString: uiMajorScreensDatabaseConnectionString() });
   await client.connect();
 
   try {
@@ -1537,7 +1544,7 @@ async function readUiDemoVisitBillingCandidate(partnerVisitRecordId: string) {
 }
 
 async function readUiDemoPharmacyInvoice(invoiceId: string) {
-  const client = new Client({ connectionString: DB_CONNECTION_STRING });
+  const client = new Client({ connectionString: uiMajorScreensDatabaseConnectionString() });
   await client.connect();
 
   try {
@@ -1658,7 +1665,7 @@ async function readUiDemoPharmacyCooperationMessageThread({
   shareCaseId: string;
   visitRequestId: string | null;
 }) {
-  const client = new Client({ connectionString: DB_CONNECTION_STRING });
+  const client = new Client({ connectionString: uiMajorScreensDatabaseConnectionString() });
   await client.connect();
 
   try {
@@ -1744,7 +1751,7 @@ async function readUiDemoPharmacyCooperationMessageThread({
 }
 
 async function readUiDemoPatientShareCase(partnershipId: string = DEMO_IDS.pharmacyPartnership) {
-  const client = new Client({ connectionString: DB_CONNECTION_STRING });
+  const client = new Client({ connectionString: uiMajorScreensDatabaseConnectionString() });
   await client.connect();
 
   try {
@@ -1759,6 +1766,7 @@ async function readUiDemoPatientShareCase(partnershipId: string = DEMO_IDS.pharm
       has_partner_approval: boolean;
       has_activated_at: boolean;
       active_consent_count: number;
+      base_patient_updated_at: Date;
     }>(
       `
         SELECT
@@ -1776,6 +1784,7 @@ async function readUiDemoPatientShareCase(partnershipId: string = DEMO_IDS.pharm
           (pl."approved_by_base" IS NOT NULL) AS has_base_approval,
           (pl."approved_by_partner" IS NOT NULL) AS has_partner_approval,
           (psc."activated_at" IS NOT NULL) AS has_activated_at,
+          patient."updated_at" AT TIME ZONE 'UTC' AS base_patient_updated_at,
           (
             SELECT COUNT(*)::int
             FROM "PatientShareConsent" consent
@@ -1787,6 +1796,9 @@ async function readUiDemoPatientShareCase(partnershipId: string = DEMO_IDS.pharm
         LEFT JOIN "PatientLink" pl
           ON pl."share_case_id" = psc."id"
          AND pl."org_id" = psc."org_id"
+        JOIN "Patient" patient
+          ON patient."id" = psc."base_patient_id"
+         AND patient."org_id" = psc."org_id"
         WHERE psc."base_patient_id" = $1
           AND psc."partnership_id" = $2
         ORDER BY psc."created_at" DESC
@@ -1855,8 +1867,8 @@ test('login screen renders without runtime errors', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'PH-OS' })).toBeVisible();
   await expect(page.getByText('在宅薬局オペレーション').first()).toBeVisible();
   await expect(page.getByLabel('メールアドレス')).toBeVisible();
-  await expect(page.getByLabel('パスワード')).toBeVisible();
-  await expect(page.getByRole('button', { name: 'ログインする' })).toBeVisible();
+  await expect(page.getByLabel('パスワード', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'ログイン', exact: true })).toBeVisible();
   await writeScreenshot(page, 'login');
   expect(errors).toEqual([]);
 });
@@ -1881,7 +1893,7 @@ test.describe('major authenticated screens', () => {
     const { page, errors } = await createInstrumentedPage(context);
     await openStableRoute(page, '/patients');
 
-    await page.getByLabel('氏名・状態で検索').fill(demoContext.patientName);
+    await page.getByLabel('氏名・カナ・住所・施設で検索').fill(demoContext.patientName);
 
     const patientLink = page
       .locator(`main a[href="/patients/${demoContext.patientId}"]:visible`)
@@ -1909,6 +1921,7 @@ test.describe('major authenticated screens', () => {
     await page.setViewportSize({ width: 1600, height: 900 });
     await openPatientDetailRoute(page, demoContext.patientId);
     await dismissSheetOverlayIfPresent(page);
+    await page.getByRole('tab', { name: /正本・在宅運用/ }).click();
 
     await expect(page.locator('main').getByText(demoContext.patientName).first()).toBeVisible({
       timeout: 60_000,
@@ -2047,6 +2060,7 @@ test.describe('major authenticated screens', () => {
     await page.setViewportSize({ width: 1600, height: 900 });
     await openPatientDetailRoute(page, demoContext.patientId);
     await dismissSheetOverlayIfPresent(page);
+    await page.getByRole('tab', { name: /共有・文書/ }).click();
 
     const panel = page.getByTestId('patient-share-case-create-panel');
     await expect(panel).toBeVisible({ timeout: 60_000 });
@@ -2092,16 +2106,20 @@ test.describe('major authenticated screens', () => {
       },
     );
     expect(consentResponse.status()).toBe(201);
+    let currentShareCase = await readUiDemoPatientShareCase();
+    expect(currentShareCase?.id).toBe(shareCase!.id);
 
     const baseApproveResponse = await page.request.patch(
       `/api/patient-share-cases/${shareCase!.id}/patient-link`,
       {
         data: {
           decision: 'base_approve',
+          expected_patient_updated_at: currentShareCase!.base_patient_updated_at.toISOString(),
         },
       },
     );
     expect(baseApproveResponse.status()).toBe(200);
+    currentShareCase = await readUiDemoPatientShareCase();
 
     const partnerAcceptResponse = await page.request.patch(
       `/api/patient-share-cases/${shareCase!.id}/patient-link`,
@@ -2115,13 +2133,20 @@ test.describe('major authenticated screens', () => {
             birth_date: '1948-04-12',
             address: demoContext.address,
           },
+          expected_patient_updated_at: currentShareCase!.base_patient_updated_at.toISOString(),
         },
       },
     );
     expect(partnerAcceptResponse.status()).toBe(200);
+    currentShareCase = await readUiDemoPatientShareCase();
 
     const activationResponse = await page.request.post(
       `/api/patient-share-cases/${shareCase!.id}/activate`,
+      {
+        data: {
+          expected_patient_updated_at: currentShareCase!.base_patient_updated_at.toISOString(),
+        },
+      },
     );
     expect(activationResponse.status()).toBe(200);
 
@@ -2172,6 +2197,7 @@ test.describe('major authenticated screens', () => {
         data: {
           decision: 'accept',
           expected_updated_at: visitRequest!.updated_at.toISOString(),
+          expected_patient_updated_at: activatedShareCase!.base_patient_updated_at.toISOString(),
         },
       },
     );
@@ -2195,7 +2221,7 @@ test.describe('major authenticated screens', () => {
       },
     );
     expect(patientMessageResponse.status()).toBe(201);
-    const patientMessagePayload = (await patientMessageResponse.json()) as {
+    const patientMessagePayload = await readApiData<{
       thread: {
         id: string;
         share_case_id: string;
@@ -2204,7 +2230,7 @@ test.describe('major authenticated screens', () => {
         messages: Array<{ body: string; sender_side: string }>;
       };
       notification_count: number;
-    };
+    }>(patientMessageResponse);
     expect(patientMessagePayload).toMatchObject({
       thread: {
         share_case_id: shareCase!.id,
@@ -2227,7 +2253,7 @@ test.describe('major authenticated screens', () => {
         context_type: string;
         messages: Array<{ body: string; sender_side: string }>;
       }>;
-      hasMore: boolean;
+      meta: { has_more: boolean; next_cursor: string | null };
     };
     expect(patientMessageList).toMatchObject({
       data: [
@@ -2239,7 +2265,7 @@ test.describe('major authenticated screens', () => {
           messages: [{ body: patientMessageBody, sender_side: 'base_pharmacy' }],
         },
       ],
-      hasMore: false,
+      meta: { has_more: false, next_cursor: null },
     });
 
     const storedPatientThread = await readUiDemoPharmacyCooperationMessageThread({
@@ -2273,7 +2299,7 @@ test.describe('major authenticated screens', () => {
       },
     );
     expect(visitMessageResponse.status()).toBe(201);
-    const visitMessagePayload = (await visitMessageResponse.json()) as {
+    const visitMessagePayload = await readApiData<{
       thread: {
         id: string;
         share_case_id: string;
@@ -2282,7 +2308,7 @@ test.describe('major authenticated screens', () => {
         messages: Array<{ body: string; sender_side: string }>;
       };
       notification_count: number;
-    };
+    }>(visitMessageResponse);
     expect(visitMessagePayload).toMatchObject({
       thread: {
         share_case_id: shareCase!.id,
@@ -2307,7 +2333,7 @@ test.describe('major authenticated screens', () => {
         context_type: string;
         messages: Array<{ body: string; sender_side: string }>;
       }>;
-      hasMore: boolean;
+      meta: { has_more: boolean; next_cursor: string | null };
     };
     expect(visitMessageList).toMatchObject({
       data: [
@@ -2319,7 +2345,7 @@ test.describe('major authenticated screens', () => {
           messages: [{ body: visitMessageBody, sender_side: 'base_pharmacy' }],
         },
       ],
-      hasMore: false,
+      meta: { has_more: false, next_cursor: null },
     });
 
     const storedVisitThread = await readUiDemoPharmacyCooperationMessageThread({
@@ -2358,12 +2384,12 @@ test.describe('major authenticated screens', () => {
       },
     });
     expect(partnerRecordResponse.status()).toBe(201);
-    const partnerRecord = (await partnerRecordResponse.json()) as {
+    const partnerRecord = await readApiData<{
       id: string;
       status: string;
       source_visit_record_id: string | null;
       has_record_content: boolean;
-    };
+    }>(partnerRecordResponse);
     expect(partnerRecord).toMatchObject({
       status: 'draft',
       source_visit_record_id: demoContext.visitRecordId,
@@ -2389,18 +2415,20 @@ test.describe('major authenticated screens', () => {
       {
         data: {
           expected_updated_at: storedPartnerRecord!.updated_at.toISOString(),
+          expected_patient_updated_at: activatedShareCase!.base_patient_updated_at.toISOString(),
         },
       },
     );
     expect(submitRecordResponse.status()).toBe(200);
-    const submittedRecord = (await submitRecordResponse.json()) as {
+    const submittedRecord = await readApiData<{
       partner_visit_record: {
         id: string;
         status: string;
+        version: number;
         has_record_content: boolean;
       };
       notify_base_pharmacy: boolean;
-    };
+    }>(submitRecordResponse);
     expect(submittedRecord.partner_visit_record).toMatchObject({
       id: partnerRecord.id,
       status: 'submitted',
@@ -2416,17 +2444,18 @@ test.describe('major authenticated screens', () => {
           decision: 'confirm',
           doctor_report_required: true,
           expected_updated_at: recordAfterSubmit!.updated_at.toISOString(),
+          expected_patient_updated_at: activatedShareCase!.base_patient_updated_at.toISOString(),
         },
       },
     );
     expect(reviewRecordResponse.status()).toBe(200);
-    const reviewedRecord = (await reviewRecordResponse.json()) as {
+    const reviewedRecord = await readApiData<{
       id: string;
       status: string;
       confirmed_by: string | null;
       has_base_confirmation_snapshot: boolean;
       claim_note: { id: string } | null;
-    };
+    }>(reviewRecordResponse);
     expect(reviewedRecord).toMatchObject({
       id: partnerRecord.id,
       status: 'confirmed',
@@ -2449,9 +2478,14 @@ test.describe('major authenticated screens', () => {
 
     const reportDraftResponse = await page.request.post(
       `/api/partner-visit-records/${partnerRecord.id}/physician-report-draft`,
+      {
+        data: {
+          expected_patient_updated_at: activatedShareCase!.base_patient_updated_at.toISOString(),
+        },
+      },
     );
     expect(reportDraftResponse.status()).toBe(201);
-    const reportDraft = (await reportDraftResponse.json()) as {
+    const reportDraft = await readApiData<{
       reused_existing_draft: boolean;
       report: {
         id: string;
@@ -2459,7 +2493,7 @@ test.describe('major authenticated screens', () => {
         report_type: string;
         status: string;
       };
-    };
+    }>(reportDraftResponse);
     expect(reportDraft).toMatchObject({
       reused_existing_draft: false,
       report: {
@@ -2484,13 +2518,13 @@ test.describe('major authenticated screens', () => {
       },
     });
     expect(billingCandidateResponse.status()).toBe(200);
-    const billingCandidateBatch = (await billingCandidateResponse.json()) as {
+    const billingCandidateBatch = await readApiData<{
       billing_month: string;
       scanned_confirmed_records: number;
       generated_candidates: number;
       billable_count: number;
       excluded_count: number;
-    };
+    }>(billingCandidateResponse);
     expect(billingCandidateBatch).toMatchObject({
       billing_month: billingMonth,
       scanned_confirmed_records: 1,
@@ -2523,6 +2557,7 @@ test.describe('major authenticated screens', () => {
         id: string;
         document_kind: string;
         status: string;
+        version: number;
         subtotal: number;
         tax_amount: number;
         total: number;
@@ -2544,8 +2579,10 @@ test.describe('major authenticated screens', () => {
     const issueInvoiceResponse = await page.request.patch(
       `/api/pharmacy-invoices/${invoiceDraft.id}`,
       {
+        headers: { 'Idempotency-Key': `ui-demo-invoice-issue-${invoiceDraft.id}` },
         data: {
           action: 'issue',
+          version: invoiceDraft.version,
           occurred_at: visitDate,
         },
       },
@@ -2557,6 +2594,7 @@ test.describe('major authenticated screens', () => {
         status: string;
         invoice_no: string | null;
         item_count: number;
+        version: number;
       };
     };
     const issuedInvoice = issuedInvoiceResponseBody.data;
@@ -2569,8 +2607,10 @@ test.describe('major authenticated screens', () => {
 
     const paidDate = dateKeyFromOffset(2);
     const paymentResponse = await page.request.patch(`/api/pharmacy-invoices/${invoiceDraft.id}`, {
+      headers: { 'Idempotency-Key': `ui-demo-invoice-payment-${invoiceDraft.id}` },
       data: {
         action: 'record_payment',
+        version: issuedInvoice.version,
         occurred_at: paidDate,
       },
     });
@@ -2579,6 +2619,7 @@ test.describe('major authenticated screens', () => {
       data: {
         id: string;
         status: string;
+        version: number;
         paid_at: string | null;
       };
     };
@@ -2723,16 +2764,20 @@ test.describe('major authenticated screens', () => {
       },
     );
     expect(consentResponse.status()).toBe(201);
+    let currentShareCase = await readUiDemoPatientShareCase(demoContext.freePartnershipId);
+    expect(currentShareCase?.id).toBe(shareCase!.id);
 
     const baseApproveResponse = await page.request.patch(
       `/api/patient-share-cases/${shareCase!.id}/patient-link`,
       {
         data: {
           decision: 'base_approve',
+          expected_patient_updated_at: currentShareCase!.base_patient_updated_at.toISOString(),
         },
       },
     );
     expect(baseApproveResponse.status()).toBe(200);
+    currentShareCase = await readUiDemoPatientShareCase(demoContext.freePartnershipId);
 
     const partnerAcceptResponse = await page.request.patch(
       `/api/patient-share-cases/${shareCase!.id}/patient-link`,
@@ -2746,13 +2791,20 @@ test.describe('major authenticated screens', () => {
             birth_date: '1948-04-12',
             address: demoContext.address,
           },
+          expected_patient_updated_at: currentShareCase!.base_patient_updated_at.toISOString(),
         },
       },
     );
     expect(partnerAcceptResponse.status()).toBe(200);
+    currentShareCase = await readUiDemoPatientShareCase(demoContext.freePartnershipId);
 
     const activationResponse = await page.request.post(
       `/api/patient-share-cases/${shareCase!.id}/activate`,
+      {
+        data: {
+          expected_patient_updated_at: currentShareCase!.base_patient_updated_at.toISOString(),
+        },
+      },
     );
     expect(activationResponse.status()).toBe(200);
 
@@ -2803,6 +2855,7 @@ test.describe('major authenticated screens', () => {
         data: {
           decision: 'accept',
           expected_updated_at: visitRequest!.updated_at.toISOString(),
+          expected_patient_updated_at: activatedShareCase!.base_patient_updated_at.toISOString(),
         },
       },
     );
@@ -2832,12 +2885,12 @@ test.describe('major authenticated screens', () => {
       },
     });
     expect(partnerRecordResponse.status()).toBe(201);
-    const partnerRecord = (await partnerRecordResponse.json()) as {
+    const partnerRecord = await readApiData<{
       id: string;
       status: string;
       source_visit_record_id: string | null;
       has_record_content: boolean;
-    };
+    }>(partnerRecordResponse);
     expect(partnerRecord).toMatchObject({
       status: 'draft',
       source_visit_record_id: demoContext.visitRecordId,
@@ -2850,6 +2903,7 @@ test.describe('major authenticated screens', () => {
       {
         data: {
           expected_updated_at: storedFreeRecordBeforeSubmit!.updated_at.toISOString(),
+          expected_patient_updated_at: activatedShareCase!.base_patient_updated_at.toISOString(),
         },
       },
     );
@@ -2863,17 +2917,18 @@ test.describe('major authenticated screens', () => {
           decision: 'confirm',
           doctor_report_required: false,
           expected_updated_at: freeRecordAfterSubmit!.updated_at.toISOString(),
+          expected_patient_updated_at: activatedShareCase!.base_patient_updated_at.toISOString(),
         },
       },
     );
     expect(reviewRecordResponse.status()).toBe(200);
-    const reviewedRecord = (await reviewRecordResponse.json()) as {
+    const reviewedRecord = await readApiData<{
       id: string;
       status: string;
       confirmed_by: string | null;
       has_base_confirmation_snapshot: boolean;
       claim_note: { id: string } | null;
-    };
+    }>(reviewRecordResponse);
     expect(reviewedRecord).toMatchObject({
       id: partnerRecord.id,
       status: 'confirmed',
@@ -2902,13 +2957,13 @@ test.describe('major authenticated screens', () => {
       },
     });
     expect(billingCandidateResponse.status()).toBe(200);
-    const billingCandidateBatch = (await billingCandidateResponse.json()) as {
+    const billingCandidateBatch = await readApiData<{
       billing_month: string;
       scanned_confirmed_records: number;
       generated_candidates: number;
       billable_count: number;
       excluded_count: number;
-    };
+    }>(billingCandidateResponse);
     expect(billingCandidateBatch).toMatchObject({
       billing_month: billingMonth,
       scanned_confirmed_records: 1,
@@ -2941,6 +2996,7 @@ test.describe('major authenticated screens', () => {
         id: string;
         document_kind: string;
         status: string;
+        version: number;
         subtotal: number;
         tax_amount: number;
         total: number;
@@ -2962,8 +3018,10 @@ test.describe('major authenticated screens', () => {
     const issueReportResponse = await page.request.patch(
       `/api/pharmacy-invoices/${reportDraft.id}`,
       {
+        headers: { 'Idempotency-Key': `ui-demo-free-report-issue-${reportDraft.id}` },
         data: {
           action: 'issue',
+          version: reportDraft.version,
           occurred_at: visitDate,
         },
       },
@@ -2975,6 +3033,7 @@ test.describe('major authenticated screens', () => {
         status: string;
         invoice_no: string | null;
         item_count: number;
+        version: number;
       };
     };
     const issuedReport = issuedReportResponseBody.data;

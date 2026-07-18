@@ -1,8 +1,5 @@
 import { Client } from 'pg';
-
-const DB_CONNECTION_STRING = (
-  process.env.DATABASE_URL ?? 'postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public'
-).replace(/\?.*$/, '');
+import { localPlaywrightDatabaseConnectionString } from './e2e-database-target';
 
 export const GROUPED_VISIT_IDS = {
   facility: 'e2e_grouped_facility',
@@ -19,24 +16,9 @@ export const GROUPED_VISIT_IDS = {
   homeSchedules: ['e2e_grouped_home_schedule_1', 'e2e_grouped_home_schedule_2'],
 } as const;
 
-function assertSafeE2eDatabase() {
-  if (process.env.PLAYWRIGHT !== '1' && process.env.PLAYWRIGHT_REUSE_SERVER !== '1') {
-    throw new Error('Grouped visit fixtures require PLAYWRIGHT=1 or PLAYWRIGHT_REUSE_SERVER=1');
-  }
-
-  const url = new URL(DB_CONNECTION_STRING);
-  const allowedHosts = new Set(['localhost', '127.0.0.1', '::1']);
-  const databaseName = url.pathname.replace(/^\//, '');
-
-  if (!allowedHosts.has(url.hostname) || databaseName !== 'ph_os_e2e') {
-    throw new Error('Grouped visit fixtures can only run against local ph_os_e2e');
-  }
-}
-
 export async function ensureGroupedVisitFixtures() {
-  assertSafeE2eDatabase();
-
-  const client = new Client({ connectionString: DB_CONNECTION_STRING });
+  const connectionString = localPlaywrightDatabaseConnectionString('Grouped visit fixtures');
+  const client = new Client({ connectionString });
   await client.connect();
 
   try {
@@ -314,9 +296,10 @@ export async function ensureGroupedVisitFixtures() {
 
 export async function ensureTodayVisitPreparationBoardFixtures(scheduledDate: string) {
   await ensureGroupedVisitFixtures();
-  assertSafeE2eDatabase();
-
-  const client = new Client({ connectionString: DB_CONNECTION_STRING });
+  const connectionString = localPlaywrightDatabaseConnectionString(
+    'Visits today preparation fixtures',
+  );
+  const client = new Client({ connectionString });
   await client.connect();
 
   try {
@@ -369,6 +352,7 @@ export async function ensureTodayVisitPreparationBoardFixtures(scheduledDate: st
             "schedule_status" = 'ready',
             "pharmacist_id" = $3,
             "assignment_mode" = 'primary',
+            "route_order" = 10000 + array_position($4::text[], "id"),
             "confirmed_at" = NOW(),
             "confirmed_by" = $3,
             "carry_items_status" = 'ready',
@@ -408,7 +392,10 @@ export async function ensureConfirmedScheduleActionFixture(
   const carryItemsStatus = options.carryItemsStatus ?? 'ready';
   const carryItemsConfirmed = options.carryItemsConfirmed ?? true;
 
-  const client = new Client({ connectionString: DB_CONNECTION_STRING });
+  const connectionString = localPlaywrightDatabaseConnectionString(
+    'Confirmed schedule action fixtures',
+  );
+  const client = new Client({ connectionString });
   await client.connect();
 
   try {

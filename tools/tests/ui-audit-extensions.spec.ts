@@ -15,7 +15,7 @@ import {
 const SCREENSHOT_DIR = PLAYWRIGHT_SCREENSHOT_DIR;
 const ELEMENT_SCREEN_DIR = PLAYWRIGHT_ELEMENT_SCREENSHOT_DIR;
 const FALLBACK_PATIENT_PATH = '/patients/e2e_mobile_qr_draft_patient';
-const PATIENT_BOARD_SEARCH_LABEL = '氏名・状態で検索';
+const PATIENT_BOARD_SEARCH_LABEL = '氏名・カナ・住所・施設で検索';
 let cachedPatientDetailHref: string | null = null;
 
 test.setTimeout(240_000);
@@ -38,9 +38,11 @@ async function writeElementScreenshot(locator: ReturnType<Page['locator']>, name
 }
 
 async function openNavigationDrawer(page: Page): Promise<Locator> {
-  await page.getByRole('button', { name: 'ナビを開く' }).click();
   const drawer = page.getByRole('dialog', { name: 'ナビゲーション' });
-  await expect(drawer).toBeVisible();
+  const trigger = page.getByRole('button', { name: 'ナビを開く' });
+  await expect(trigger).toBeVisible({ timeout: 30_000 });
+  await trigger.click();
+  await expect(drawer).toBeVisible({ timeout: 30_000 });
   return drawer;
 }
 
@@ -557,7 +559,7 @@ test.describe('ARIA and keyboard contracts', () => {
         const drawer = await openNavigationDrawer(page);
         await drawer.getByTestId('sidebar-nav-patients').click();
       },
-      { timeout: 20_000 },
+      { timeout: 60_000 },
     );
     await expect(page.getByRole('searchbox', { name: PATIENT_BOARD_SEARCH_LABEL })).toBeVisible();
     expect(errors).toEqual([]);

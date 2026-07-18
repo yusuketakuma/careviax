@@ -1301,6 +1301,8 @@ describe('InboundCommunicationsContent', () => {
     render(<InboundCommunicationsContent />);
 
     expect(screen.getByText('確認待ちの他職種受信はありません')).toBeTruthy();
+    const list = screen.getByRole('list', { name: '他職種受信一覧' });
+    expect(list.querySelector(':scope > [role="listitem"]')).toBeTruthy();
   });
 
   it('updates the query key when channel and priority filters change', () => {

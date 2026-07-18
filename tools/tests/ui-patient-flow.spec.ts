@@ -9,7 +9,7 @@ import {
 
 test.setTimeout(120_000);
 
-const PATIENT_BOARD_SEARCH_LABEL = '氏名・状態で検索';
+const PATIENT_BOARD_SEARCH_LABEL = '氏名・カナ・住所・施設で検索';
 const PATIENT_BOARD_CARD_TIMEOUT_MS = 60_000;
 
 async function openFirstPatientDetail(page: Page, options: { mode?: 'click' | 'open' } = {}) {
@@ -180,7 +180,10 @@ test.describe('patient list filters', () => {
     await openStableRoute(page, '/patients');
 
     await expect(page.getByLabel('対応カテゴリの絞り込み')).toBeVisible();
-    await page.getByRole('button', { name: '本日訪問' }).click();
+    await page
+      .getByLabel('対応カテゴリの絞り込み')
+      .getByRole('button', { name: /本日訪問/ })
+      .click();
     await waitForStableUi(page);
 
     await expect(page.getByTestId('patients-board')).toBeVisible();
@@ -214,6 +217,7 @@ test.describe('patient detail page', () => {
     await openStableRoute(page, '/patients');
 
     await openFirstPatientDetail(page);
+    await page.getByRole('tab', { name: /正本・在宅運用/ }).click();
     const profileSummary = page.getByTestId('patient-profile-summary');
     await expect(profileSummary).toBeVisible();
     await expect(profileSummary).toContainText(/男性|女性|その他/);
@@ -227,6 +231,7 @@ test.describe('patient detail page', () => {
     await openStableRoute(page, '/patients');
 
     await openFirstPatientDetail(page, { mode: 'open' });
+    await page.getByRole('tab', { name: /正本・在宅運用/ }).click();
 
     const editLink = page.getByRole('link', { name: '基本情報を編集' });
     await expect(editLink).toHaveAttribute('href', /\/patients\/.+\/edit$/);
@@ -340,22 +345,39 @@ test.describe('patient creation form', () => {
     const { page, errors } = await createInstrumentedPage(context);
     await openNewPatientFormFromList(page);
 
-    // Fill some data
-    await page.getByLabel(/氏名/).first().fill('テスト患者');
+    let patientCreateRequests = 0;
+    page.on('request', (request) => {
+      if (request.method() === 'POST' && new URL(request.url()).pathname === '/api/patients') {
+        patientCreateRequests += 1;
+      }
+    });
+
+    const nameInput = page.getByLabel(/氏名/).first();
+    await nameInput.fill('テスト患者');
     await waitForStableUi(page);
 
-    // Use the current page-header back link. The new patient form does not expose a separate
-    // legacy cancel button.
     const backLink = page.getByRole('link', { name: '患者一覧へ戻る' });
     await expect(backLink).toHaveAttribute('href', '/patients');
-    await backLink.focus();
-    await page.keyboard.press('Enter');
-    await expect.poll(() => new URL(page.url()).pathname, { timeout: 30_000 }).toBe('/patients');
+
+    await backLink.click();
+    const leaveDialog = page.getByRole('alertdialog', { name: '未保存の変更があります' });
+    await expect(leaveDialog).toBeVisible();
+    await leaveDialog.getByRole('button', { name: 'とどまる' }).click();
+    await expect(page).toHaveURL(/\/patients\/new$/);
+    await expect(nameInput).toHaveValue('テスト患者');
+    expect(patientCreateRequests).toBe(0);
+
+    await backLink.click();
+    await expect(leaveDialog).toBeVisible();
+    await clickAndWaitForStableRoute(page, /\/patients$/, () =>
+      leaveDialog.getByRole('button', { name: '移動する' }).click(),
+    );
     await waitForStableUi(page);
 
     // Should navigate away from new patient page
     await expect(page).toHaveURL(/\/patients$/);
     await expect(page.getByTestId('patients-board')).toBeVisible({ timeout: 30_000 });
+    expect(patientCreateRequests).toBe(0);
 
     expect(errors).toEqual([]);
   });

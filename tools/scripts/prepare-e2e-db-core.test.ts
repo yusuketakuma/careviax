@@ -55,6 +55,11 @@ describe('prepare-e2e-db-core', () => {
       'postgresql://postgres:postgres@localhost:5433/ph_os_e2e?schema=public',
       'postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=private',
       'postgres://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public',
+      'postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public&host=example.invalid',
+      'postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public&port=5432',
+      'postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public&user=postgres',
+      'postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public&password=override',
+      'postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public&schema=public',
     ]) {
       expect(() => parseLocalE2eDatabaseTarget(unsafeUrl, 'DATABASE_URL')).toThrow(
         /must point to postgresql:\/\/ph_os@localhost:5433\/ph_os_e2e/,

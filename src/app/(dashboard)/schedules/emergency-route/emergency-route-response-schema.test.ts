@@ -28,6 +28,15 @@ function buildPayload() {
           timeWindow: { from: '10:00', to: '11:00' },
         },
       ],
+      vehicle_resource: {
+        vehicle_id: 'vehicle_1',
+        label: '社用車A',
+        max_stops: 6,
+        max_route_duration_minutes: 180,
+        stop_count: 1,
+        route_duration_minutes: 10,
+        constraint_status: 'ok',
+      },
     },
   };
 }
@@ -42,6 +51,12 @@ describe('emergencyRouteResponseSchema', () => {
     { ...buildPayload(), debug: true },
     { data: { ...buildPayload().data, travelMode: 'FLY' } },
     { data: { ...buildPayload().data, totalDurationSeconds: -1 } },
+    {
+      data: {
+        ...buildPayload().data,
+        vehicle_resource: { ...buildPayload().data.vehicle_resource, constraint_status: 'unknown' },
+      },
+    },
     {
       data: {
         ...buildPayload().data,

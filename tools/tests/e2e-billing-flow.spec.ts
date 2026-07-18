@@ -8,6 +8,7 @@ type MockBillingCandidate = {
   id: string;
   patient_id: string;
   patient_name: string;
+  billing_domain: 'home_care';
   billing_month: string;
   billing_code: string;
   billing_name: string;
@@ -95,6 +96,7 @@ function createMockCandidate(
     id: input.id,
     patient_id: input.patient_id,
     patient_name: input.patient_name,
+    billing_domain: 'home_care',
     billing_month: `${BILLING_MONTH}T00:00:00.000Z`,
     billing_code: input.billing_code,
     billing_name: input.billing_name,
@@ -157,6 +159,7 @@ function updateCandidateForAction(
   candidate: MockBillingCandidate,
   action: 'confirm' | 'exclude' | 'reopen',
 ) {
+  const nextUpdatedAt = new Date(new Date(candidate.updated_at).getTime() + 60_000).toISOString();
   if (action === 'reopen') {
     candidate.status = 'candidate';
     candidate.exclusion_reason = null;
@@ -173,13 +176,13 @@ function updateCandidateForAction(
     candidate.workflow_state = {
       review_state: 'reviewed',
       resolution_state: action === 'confirm' ? 'confirmed' : 'excluded',
-      reviewed_at: '2026-04-25T02:00:00.000Z',
+      reviewed_at: nextUpdatedAt,
       reviewed_by: 'e2e-user',
       note: action === 'confirm' ? 'E2E confirmed' : 'E2E excluded',
     };
   }
 
-  candidate.updated_at = '2026-04-25T02:00:00.000Z';
+  candidate.updated_at = nextUpdatedAt;
   candidate.source_snapshot.billing_close = { ...candidate.workflow_state };
   candidate.source_snapshot.selection_mode = action === 'reopen' ? 'manual' : 'automatic';
   candidate.source_snapshot.validation_layers.close_review = {
@@ -258,6 +261,35 @@ async function installBillingCandidateRouteMocks(page: Page) {
 
   await page.route(apiPathPattern('/api/billing-candidates/export'), async (route) => {
     await recordRequest(route);
+    const url = new URL(route.request().url());
+    if (url.searchParams.get('preview') === '1') {
+      const exportable = candidates.filter((candidate) =>
+        ['confirmed', 'exported'].includes(candidate.status),
+      );
+      await fulfillJson(route, {
+        data: {
+          billing_month: BILLING_MONTH,
+          billing_domain: 'home_care',
+          total_count: candidates.length,
+          exportable_count: exportable.length,
+          total_points: exportable.reduce(
+            (total, candidate) => total + candidate.points * candidate.quantity,
+            0,
+          ),
+          total_amount_yen: 0,
+          status_counts: {
+            candidate: candidates.filter((candidate) => candidate.status === 'candidate').length,
+            confirmed: candidates.filter((candidate) => candidate.status === 'confirmed').length,
+            excluded: candidates.filter((candidate) => candidate.status === 'excluded').length,
+            exported: candidates.filter((candidate) => candidate.status === 'exported').length,
+          },
+          insurance_type_counts: { medical: exportable.length, care: 0, self: 0 },
+          exclusion_reasons: [],
+          generated_at: '2026-04-25T03:00:00.000Z',
+        },
+      });
+      return;
+    }
     await fulfillCsv(
       route,
       'billing_month,billing_code,billing_name\n2026-04,MED_HOME_VISIT_CONFIRMED,確定\n',
@@ -273,9 +305,11 @@ async function installBillingCandidateRouteMocks(page: Page) {
       }
     });
     await fulfillJson(route, {
-      message: `${BILLING_MONTH} を月次締めしました`,
-      exported_count: candidates.filter((candidate) => candidate.status === 'exported').length,
-      summary: summarizeCandidates(candidates),
+      data: {
+        message: `${BILLING_MONTH} を月次締めしました`,
+        billing_domain: 'home_care',
+        exported_count: candidates.filter((candidate) => candidate.status === 'exported').length,
+      },
     });
   });
 
@@ -314,8 +348,12 @@ async function installBillingCandidateRouteMocks(page: Page) {
     await recordRequest(route);
     await fulfillJson(route, {
       data: candidates,
-      hasMore: false,
-      summary: summarizeCandidates(candidates),
+      meta: {
+        limit: 50,
+        has_more: false,
+        next_cursor: null,
+        summary: summarizeCandidates(candidates),
+      },
     });
   });
 
@@ -483,7 +521,7 @@ test.describe('billing: candidates page', () => {
     await expect(confirmedRow.getByRole('button', { name: '差戻し' })).toBeVisible();
     await expect(candidateRow(page, '請求E2E 除外').getByText('施設同時算定対象外')).toBeVisible();
 
-    const closeButton = page.getByRole('button', { name: '月次締め' });
+    const closeButton = page.getByRole('button', { name: '医療・介護月次締め' });
     await expect(closeButton).toBeDisabled();
 
     await pendingRow.getByRole('button', { name: '確定' }).click();

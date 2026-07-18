@@ -186,7 +186,12 @@ function noteOf(row: WorkbenchCountRow): string {
 /** comparison 行の change_type → SeedDrug の chg（'new' / 'changed' / undefined）。 */
 function changeKindOf(changeType: WorkbenchComparisonRow['change_type']): ChangeKind | undefined {
   if (changeType === 'added') return 'new';
-  if (changeType === 'dose_changed' || changeType === 'frequency_changed') return 'changed';
+  if (
+    changeType === 'dose_changed' ||
+    changeType === 'frequency_changed' ||
+    changeType === 'days_changed'
+  )
+    return 'changed';
   return undefined;
 }
 

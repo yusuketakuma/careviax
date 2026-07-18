@@ -1,5 +1,97 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import { attachLocalSession, openStableRoute } from './helpers/local-auth';
+
+const stableWaitingReplies = [
+  {
+    id: 'visual_waiting_1',
+    kind: 'report_delivery',
+    waiting_days: 3,
+    title: '表示確認 一郎 様 — ケアマネへの服薬状況報告',
+    subtitle: '再送は前回送付の記録つきで送られます',
+    actions: [
+      { label: '再送する', href: '/reports/visual_waiting_1?action=resend', kind: 'button' },
+    ],
+  },
+  {
+    id: 'visual_waiting_2',
+    kind: 'inquiry',
+    waiting_days: 2,
+    title: '表示確認 二郎 様 — 主治医への疑義照会',
+    subtitle: null,
+    actions: [
+      { label: '依頼を確認', href: '/reports/visual_waiting_2', kind: 'button' },
+      { label: '→ カードへ', href: '/patients/visual_patient_2', kind: 'link' },
+    ],
+  },
+  {
+    id: 'visual_waiting_3',
+    kind: 'report_delivery',
+    waiting_days: 1,
+    title: '表示確認 三郎 様 — 施設看護師への残薬報告',
+    subtitle: null,
+    actions: [
+      { label: '依頼を確認', href: '/reports/visual_waiting_3', kind: 'button' },
+      { label: '→ 報告書詳細', href: '/reports/visual_waiting_3', kind: 'link' },
+    ],
+  },
+  {
+    id: 'visual_waiting_4',
+    kind: 'report_delivery',
+    waiting_days: 0,
+    title: '表示確認 四郎 様 — 訪問後フォローアップ',
+    subtitle: null,
+    actions: [
+      { label: '依頼を確認', href: '/reports/visual_waiting_4', kind: 'button' },
+      { label: '→ 報告書詳細', href: '/reports/visual_waiting_4', kind: 'link' },
+    ],
+  },
+  {
+    id: 'visual_waiting_5',
+    kind: 'inquiry',
+    waiting_days: 4,
+    title: '表示確認 五郎 様 — 退院時共同指導の確認',
+    subtitle: null,
+    actions: [
+      { label: '依頼を確認', href: '/reports/visual_waiting_5', kind: 'button' },
+      { label: '→ カードへ', href: '/patients/visual_patient_5', kind: 'link' },
+    ],
+  },
+] as const;
+
+async function stabilizeReportWaitingReplies(page: Page) {
+  await page.route('**/api/care-reports/today-workspace*', async (route) => {
+    const response = await route.fetch();
+    if (!response.ok()) {
+      await route.fulfill({ response });
+      return;
+    }
+
+    const body = (await response.json()) as {
+      data?: {
+        waiting_replies?: unknown[];
+        counts?: Record<string, number>;
+        count_metadata?: { waiting?: Record<string, unknown> };
+      };
+    };
+    if (!body.data) {
+      await route.fulfill({ response });
+      return;
+    }
+
+    body.data.waiting_replies = stableWaitingReplies.map((reply) => ({ ...reply }));
+    if (body.data.counts) body.data.counts.waiting = stableWaitingReplies.length;
+    if (body.data.count_metadata?.waiting) {
+      body.data.count_metadata.waiting = {
+        ...body.data.count_metadata.waiting,
+        total_count: stableWaitingReplies.length,
+        visible_count: stableWaitingReplies.length,
+        hidden_count: 0,
+        truncated: false,
+      };
+    }
+    await route.fulfill({ response, json: body });
+  });
+}
 
 test.beforeEach(async ({ context }) => {
   await attachLocalSession(context);
@@ -13,10 +105,14 @@ test.describe('limited visual comparison', () => {
 
     const processNow = page.getByTestId('dashboard-process-now');
     await expect(processNow).toBeVisible({ timeout: 20_000 });
+    const dynamicCounts = processNow.locator('ol > li p:nth-of-type(2)');
+    const dynamicBottleneckNote = processNow.locator(':scope > p');
 
     await expect(processNow).toHaveScreenshot('dashboard-process-now.png', {
       animations: 'disabled',
       caret: 'hide',
+      mask: [dynamicCounts, dynamicBottleneckNote],
+      maskColor: '#d1d5db',
     });
   });
 
@@ -41,6 +137,7 @@ test.describe('limited visual comparison', () => {
   test('reports workspace layout stays stable', async ({ page }, testInfo) => {
     test.skip(testInfo.project.name !== 'chromium');
 
+    await stabilizeReportWaitingReplies(page);
     await openStableRoute(page, '/reports');
 
     const workspace = page.getByTestId('report-share-workspace');
@@ -62,6 +159,7 @@ test.describe('limited visual comparison', () => {
   test('reports waiting section layout stays stable', async ({ page }, testInfo) => {
     test.skip(testInfo.project.name !== 'chromium');
 
+    await stabilizeReportWaitingReplies(page);
     await openStableRoute(page, '/reports');
 
     const waitingBox = page.getByTestId('report-waiting-box');
