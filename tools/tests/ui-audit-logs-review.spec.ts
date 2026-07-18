@@ -54,39 +54,39 @@ const AUDIT_LOGS_RESPONSE = {
       reason_code: null,
     },
   ],
-  pagination: {
-    page: 1,
-    pageSize: 100,
-    total: 2,
-    totalPages: 1,
-  },
-  summary: {
-    high_risk_unreviewed_count: 1,
-    review_dashboard: {
-      total_count: 2,
-      filters: {
-        risk_tier: null,
-        review_state: null,
-        target_type: null,
-        action: null,
-        date_from: null,
-        date_to: null,
-        actor_used: false,
-        reviewed_by_used: false,
-      },
-      high_risk: {
-        total: 1,
-        pending_review: 1,
-        reviewed: 0,
-      },
-      standard: {
-        total: 1,
-        pending_review: 1,
-        reviewed: 0,
-      },
-      review_state: {
-        pending: 2,
-        reviewed: 0,
+  meta: {
+    pagination: {
+      page: 1,
+      limit: 100,
+      total: 2,
+      totalPages: 1,
+    },
+    summary: {
+      high_risk_unreviewed_count: 1,
+      review_dashboard: {
+        scope: 'filtered',
+        generated_at: '2026-07-05T09:06:00.000Z',
+        total_count: 2,
+        risk_tier: { high: 1, standard: 1 },
+        review_state: { pending: 2, reviewed: 0 },
+        high_risk: {
+          total: 1,
+          pending_review: 1,
+          reviewed: 0,
+        },
+        filters: {
+          risk_tier: null,
+          review_state: null,
+          target_type: null,
+          action: null,
+          date_from: null,
+          date_to: null,
+          actor_used: false,
+          actor_pharmacy_used: false,
+          actor_site_used: false,
+          patient_used: false,
+          reviewed_by_used: false,
+        },
       },
     },
   },
@@ -217,7 +217,7 @@ test.describe('admin audit log review dashboard', () => {
       .first();
     await standardReviewButton.click();
     await expect(
-      page.getByRole('alert').filter({ hasText: '監査ログレビューを更新できませんでした' }).first(),
+      page.getByRole('alert').filter({ hasText: '監査ログレビューの更新に失敗しました' }).first(),
     ).toBeVisible();
     await expect(
       page

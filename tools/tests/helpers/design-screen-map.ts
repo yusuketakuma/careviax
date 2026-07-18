@@ -92,6 +92,7 @@ export const DESIGN_SCREENS: DesignScreenEntry[] = [
     // prisma/seed-design-demo.ts の田中一郎(セット監査待ちサイクル)
     route: '/patients/cmnhdemopt001amq9ph-os',
     setup: async (page) => {
+      await page.getByRole('tab', { name: /^薬剤・訪問:/ }).click();
       await page.waitForSelector('[data-testid="card-prescription-section"]', {
         timeout: 60_000,
       });
@@ -268,6 +269,7 @@ export const DESIGN_SCREENS: DesignScreenEntry[] = [
     // prisma/seed-design-demo.ts の田中一郎(セット監査待ちサイクル)固定 ID
     route: '/patients/cmnhdemopt001amq9ph-os',
     setup: async (page) => {
+      await page.getByRole('tab', { name: /^薬剤・訪問:/ }).click();
       await page.waitForSelector('[data-testid="card-prescription-section"]', { timeout: 120_000 });
       await page.waitForTimeout(400);
     },
@@ -517,7 +519,7 @@ export const DESIGN_SCREENS: DesignScreenEntry[] = [
     screenId: 'p0_28_report_composer_share',
     targetImage: 'images/P0/p0_28_report_composer_share.png',
     // 加藤ミサのケアマネ向け報告書(seed-design-demo 固定 ID)を標準詳細から composer state へ進める
-    route: '/reports/cmnhdemorep001amq9ph-os',
+    route: '/reports/cmnhdemorep003amq9ph-os',
     setup: async (page) => {
       await page.getByRole('button', { name: '共有を作成' }).click();
       await page.waitForSelector('[data-testid="report-composer"]', { timeout: 120_000 });
@@ -632,30 +634,22 @@ export const DESIGN_SCREENS: DesignScreenEntry[] = [
     route: '/offline-sync',
     setup: async (page) => {
       // デモ注入後、競合行の「内容を確認」から比較ビューを開く
-      await page
-        .waitForFunction(
-          () =>
-            typeof (window as unknown as Record<string, unknown>).__phosSeedOfflineSyncDemo ===
-            'function',
-          undefined,
-          { timeout: 30_000 },
-        )
-        .catch(() => {});
-      await page
-        .evaluate(() =>
-          (
-            window as unknown as { __phosSeedOfflineSyncDemo?: (mode?: string) => Promise<void> }
-          ).__phosSeedOfflineSyncDemo?.('conflict'),
-        )
-        .catch(() => {});
-      await page
-        .getByRole('button', { name: '内容を確認' })
-        .first()
-        .click()
-        .catch(() => {});
-      await page
-        .waitForSelector('[data-testid="offline-sync-conflict-view"]', { timeout: 20_000 })
-        .catch(() => {});
+      await page.waitForFunction(
+        () =>
+          typeof (window as unknown as Record<string, unknown>).__phosSeedOfflineSyncDemo ===
+          'function',
+        undefined,
+        { timeout: 30_000 },
+      );
+      await page.evaluate(() =>
+        (
+          window as unknown as { __phosSeedOfflineSyncDemo?: (mode?: string) => Promise<void> }
+        ).__phosSeedOfflineSyncDemo?.('conflict'),
+      );
+      await page.getByRole('button', { name: '内容を確認' }).first().click();
+      await page.waitForSelector('[data-testid="offline-sync-conflict-view"]', {
+        timeout: 20_000,
+      });
       await page.waitForTimeout(400);
     },
   },
@@ -667,9 +661,7 @@ export const DESIGN_SCREENS: DesignScreenEntry[] = [
     setup: async (page) => {
       // 旧 audit-workbench の差戻しボタン → 共通 ReasonDialog 経路は撤去済み。
       // 新 workbench（phase="audit"）の工程タブ active 描画のみ待機する。
-      await page
-        .waitForSelector('a[aria-current="page"]', { timeout: 30_000 })
-        .catch(() => {});
+      await page.waitForSelector('a[aria-current="page"]', { timeout: 30_000 }).catch(() => {});
       await page.waitForTimeout(400);
     },
   },
@@ -687,6 +679,7 @@ export const DESIGN_SCREENS: DesignScreenEntry[] = [
     route: '/patients/cmnhdemopt001amq9ph-os',
     setup: async (page) => {
       await page.waitForSelector('[data-testid="card-workspace"]', { timeout: 60_000 });
+      await page.getByRole('tab', { name: /^正本・在宅運用:/ }).click();
       await page.waitForSelector('[data-testid="patient-profile-summary"]', { timeout: 60_000 });
       await page.waitForTimeout(400);
     },
@@ -696,7 +689,10 @@ export const DESIGN_SCREENS: DesignScreenEntry[] = [
     targetImage: 'images/P0/p0_39_medication_master.png',
     route: '/admin/drug-masters',
     setup: async (page) => {
-      await page.waitForSelector('[data-testid="drug-master-editor"]', { timeout: 60_000 });
+      await page
+        .getByRole('heading', { name: /医薬品マスター/ })
+        .first()
+        .waitFor({ timeout: 60_000 });
       await page.waitForTimeout(400);
     },
   },
@@ -705,7 +701,7 @@ export const DESIGN_SCREENS: DesignScreenEntry[] = [
     targetImage: 'images/P0/p0_40_medical_professional_master.png',
     route: '/admin/external-professionals',
     setup: async (page) => {
-      await page.waitForSelector('[data-testid="external-professionals-master-editor"]', {
+      await page.waitForSelector('[data-testid="external-professionals-master-content"]', {
         timeout: 60_000,
       });
       await page.waitForTimeout(400);
@@ -716,7 +712,7 @@ export const DESIGN_SCREENS: DesignScreenEntry[] = [
     targetImage: 'images/P0/p0_41_facility_master.png',
     route: '/admin/facilities',
     setup: async (page) => {
-      await page.waitForSelector('[data-testid="facility-master-editor"]', { timeout: 60_000 });
+      await page.waitForSelector('[data-testid="facility-master-content"]', { timeout: 60_000 });
       await page.waitForTimeout(400);
     },
   },
@@ -725,7 +721,7 @@ export const DESIGN_SCREENS: DesignScreenEntry[] = [
     targetImage: 'images/P0/p0_42_staff_role_management.png',
     route: '/admin/staff',
     setup: async (page) => {
-      await page.waitForSelector('[data-testid="staff-master-editor"]', { timeout: 60_000 });
+      await page.waitForSelector('[data-testid="staff-kpi-panel"]', { timeout: 60_000 });
       await page.waitForTimeout(400);
     },
   },
@@ -735,7 +731,7 @@ export const DESIGN_SCREENS: DesignScreenEntry[] = [
     // 車両マスター 3 カラム(一覧先頭がデフォルト選択済み)
     route: '/admin/vehicles',
     setup: async (page) => {
-      await page.waitForSelector('[data-testid="vehicle-master-editor"]', { timeout: 60_000 });
+      await page.waitForSelector('[data-testid="vehicles-master-content"]', { timeout: 60_000 });
       await page.waitForTimeout(400);
     },
   },
@@ -756,7 +752,7 @@ export const DESIGN_SCREENS: DesignScreenEntry[] = [
     setup: async (page) => {
       // BFF 集計の取得完了 → KPI とバーの描画まで待つ
       await page
-        .waitForSelector('[data-testid="capacity-page"]', { timeout: 30_000 })
+        .waitForSelector('[data-testid="capacity-kpis"]', { timeout: 30_000 })
         .catch(() => {});
       await page.waitForTimeout(400);
     },
@@ -771,7 +767,8 @@ export const DESIGN_SCREENS: DesignScreenEntry[] = [
     screenId: 'p0_47_print_preview',
     targetImage: 'images/P0/p0_47_print_preview.png',
     // 帳票・印刷プレビューハブ(既定 ?type=set_instruction 相当)
-    route: '/reports/print',
+    route:
+      '/reports/print?type=set_instruction&patient_id=cmnhdemopt001amq9ph-os&set_plan_id=cmnhdemosetpl001amq9ph-os',
     setup: async (page) => {
       // set-plans + prescriptions の取得完了 → A4 プレビューの描画まで待つ
       await page.waitForSelector('[data-testid="print-preview-sheet"]', { timeout: 30_000 });

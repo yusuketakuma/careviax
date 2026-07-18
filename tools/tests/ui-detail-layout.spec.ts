@@ -84,48 +84,8 @@ const structuredPhysicianReportContent = {
 };
 
 async function openFirstPatientCard(page: Page) {
-  const firstLink = page.getByTestId('patient-board-card-link').first();
-  const loading = page.locator('main').getByText('患者一覧を読み込み中');
-  const empty = page.locator('main').getByText('条件に一致する患者がいません');
-
-  for (let attempt = 0; attempt < 4; attempt += 1) {
-    if (attempt === 0) {
-      await openStableRoute(page, '/patients');
-    } else {
-      await reloadStablePage(page);
-    }
-
-    if (await firstLink.isVisible({ timeout: 30_000 }).catch(() => false)) {
-      break;
-    }
-
-    const allPatientsButton = page.getByRole('button', { name: '全員', exact: true });
-    if (
-      (await empty.isVisible({ timeout: 1_000 }).catch(() => false)) ||
-      (await allPatientsButton.isVisible({ timeout: 1_000 }).catch(() => false))
-    ) {
-      await allPatientsButton.click().catch(() => undefined);
-      if (await firstLink.isVisible({ timeout: 30_000 }).catch(() => false)) {
-        break;
-      }
-    }
-
-    await expect(loading)
-      .toBeVisible({ timeout: 1_000 })
-      .catch(() => undefined);
-  }
-
-  let href: string | null = null;
-  if (await firstLink.isVisible({ timeout: 60_000 }).catch(() => false)) {
-    href = await firstLink.getAttribute('href');
-  }
-
-  if (!href) {
-    const ids = await ensureVisitWorkflowFixture();
-    href = `/patients/${ids.patient}`;
-  }
-
-  await openStableRoute(page, href);
+  const ids = await ensureVisitWorkflowFixture();
+  await openStableRoute(page, `/patients/${ids.patient}`);
 
   const cardWorkspace = page.getByTestId('card-workspace');
   const detailLoading = page.locator('main').getByText('読み込み中...');

@@ -1,8 +1,27 @@
 import { Client } from 'pg';
+import { localPlaywrightDatabaseConnectionString } from './e2e-database-target';
 
-const DB_CONNECTION_STRING = (
-  process.env.DATABASE_URL ?? 'postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public'
-).replace(/\?.*$/, '');
+function addJapanDays(dateKey: string, days: number) {
+  const date = new Date(`${dateKey}T12:00:00+09:00`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+function nextJapanTuesday() {
+  const today = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Tokyo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date());
+  const weekday = new Date(`${today}T12:00:00+09:00`).getUTCDay();
+  const daysUntilTuesday = (2 - weekday + 7) % 7 || 7;
+  return addJapanDays(today, daysUntilTuesday);
+}
+
+const FIRST_FIXTURE_TUESDAY = nextJapanTuesday();
+const FIXTURE_PRESCRIPTION_START = addJapanDays(FIRST_FIXTURE_TUESDAY, -30);
+const FIXTURE_PRESCRIPTION_END = addJapanDays(FIRST_FIXTURE_TUESDAY, 90);
 
 export const SCHEDULE_VEHICLE_FIXTURE_IDS = {
   baseVehicle: 'cmnhseedveh001amq9ph-os',
@@ -36,25 +55,11 @@ export const SCHEDULE_VEHICLE_FIXTURE_IDS = {
   patientId: 'cmnhseedpt001amq9ph-os',
   userId: 'cmnb3swgz0008wgq9gfpgjq6r',
   siteId: 'cmnhseedsite000amq9ph-os',
-  acceptanceDate: '2026-07-14',
-  rejectionDate: '2026-07-07',
-  sharedCapacityDate: '2026-07-28',
-  substituteDate: '2026-07-21',
+  rejectionDate: FIRST_FIXTURE_TUESDAY,
+  acceptanceDate: addJapanDays(FIRST_FIXTURE_TUESDAY, 7),
+  substituteDate: addJapanDays(FIRST_FIXTURE_TUESDAY, 14),
+  sharedCapacityDate: addJapanDays(FIRST_FIXTURE_TUESDAY, 21),
 } as const;
-
-function assertSafeE2eDatabase() {
-  if (process.env.PLAYWRIGHT !== '1' && process.env.PLAYWRIGHT_REUSE_SERVER !== '1') {
-    throw new Error('Schedule vehicle fixtures require PLAYWRIGHT=1 or PLAYWRIGHT_REUSE_SERVER=1');
-  }
-
-  const url = new URL(DB_CONNECTION_STRING);
-  const allowedHosts = new Set(['localhost', '127.0.0.1', '::1']);
-  const databaseName = url.pathname.replace(/^\//, '');
-
-  if (!allowedHosts.has(url.hostname) || databaseName !== 'ph_os_e2e') {
-    throw new Error('Schedule vehicle fixtures can only run against local ph_os_e2e');
-  }
-}
 
 async function upsertSchedulableMedicationCycle(
   client: Client,
@@ -89,7 +94,7 @@ async function upsertSchedulableMedicationCycle(
     `
       INSERT INTO "PrescriptionIntake" (
         "id","org_id","cycle_id","source_type","external_prescription_id","rx_number","prescribed_date","prescriber_name","prescriber_institution","prescription_category","created_at","updated_at"
-      ) VALUES ($1,'cmnhseedorg0000amq9ph-os',$2,'paper',$3,$4,'2026-07-01','E2E 医師','E2E 在宅クリニック','regular',NOW(),NOW())
+      ) VALUES ($1,'cmnhseedorg0000amq9ph-os',$2,'paper',$3,$4,$5,'E2E 医師','E2E 在宅クリニック','regular',NOW(),NOW())
       ON CONFLICT ("id") DO UPDATE
       SET "cycle_id" = EXCLUDED."cycle_id",
           "source_type" = 'paper',
@@ -101,14 +106,20 @@ async function upsertSchedulableMedicationCycle(
           "prescription_category" = 'regular',
           "updated_at" = NOW()
     `,
-    [fixture.intakeId, fixture.cycleId, fixture.externalPrescriptionId, fixture.rxNumber],
+    [
+      fixture.intakeId,
+      fixture.cycleId,
+      fixture.externalPrescriptionId,
+      fixture.rxNumber,
+      FIXTURE_PRESCRIPTION_START,
+    ],
   );
 
   await client.query(
     `
       INSERT INTO "PrescriptionLine" (
         "id","org_id","intake_id","line_number","drug_name","drug_code","dose","frequency","days","quantity","unit","start_date","end_date","created_at","updated_at"
-      ) VALUES ($1,'cmnhseedorg0000amq9ph-os',$2,1,$3,NULL,'1錠','1日1回 朝食後',62,62,'錠','2026-07-01','2026-08-31',NOW(),NOW())
+      ) VALUES ($1,'cmnhseedorg0000amq9ph-os',$2,1,$3,NULL,'1錠','1日1回 朝食後',62,62,'錠',$4,$5,NOW(),NOW())
       ON CONFLICT ("id") DO UPDATE
       SET "intake_id" = EXCLUDED."intake_id",
           "line_number" = 1,
@@ -123,17 +134,49 @@ async function upsertSchedulableMedicationCycle(
           "end_date" = EXCLUDED."end_date",
           "updated_at" = NOW()
     `,
-    [fixture.lineId, fixture.intakeId, fixture.drugName],
+    [
+      fixture.lineId,
+      fixture.intakeId,
+      fixture.drugName,
+      FIXTURE_PRESCRIPTION_START,
+      FIXTURE_PRESCRIPTION_END,
+    ],
   );
 }
 
 export async function ensureScheduleVehicleResourceFixtures() {
-  assertSafeE2eDatabase();
-
-  const client = new Client({ connectionString: DB_CONNECTION_STRING });
+  const connectionString = localPlaywrightDatabaseConnectionString('Schedule vehicle fixtures');
+  const client = new Client({ connectionString });
   await client.connect();
 
   try {
+    await client.query(
+      `
+        DELETE FROM "PharmacistShift"
+        WHERE "org_id" = 'cmnhseedorg0000amq9ph-os'
+          AND (
+            "id" IN ($1,$2,$3,$4)
+            OR (
+              "date" IN ($5,$6,$7,$8)
+              AND "user_id" IN ($9,$10,$11)
+            )
+          )
+      `,
+      [
+        SCHEDULE_VEHICLE_FIXTURE_IDS.sharedCapacityShift,
+        `${SCHEDULE_VEHICLE_FIXTURE_IDS.sharedCapacityShift}_other`,
+        SCHEDULE_VEHICLE_FIXTURE_IDS.substituteShift,
+        `shift_${SCHEDULE_VEHICLE_FIXTURE_IDS.rejectionDate.replaceAll('-', '_')}_vehicle_fixture`,
+        SCHEDULE_VEHICLE_FIXTURE_IDS.rejectionDate,
+        SCHEDULE_VEHICLE_FIXTURE_IDS.acceptanceDate,
+        SCHEDULE_VEHICLE_FIXTURE_IDS.substituteDate,
+        SCHEDULE_VEHICLE_FIXTURE_IDS.sharedCapacityDate,
+        SCHEDULE_VEHICLE_FIXTURE_IDS.userId,
+        SCHEDULE_VEHICLE_FIXTURE_IDS.sharedCapacityUser,
+        SCHEDULE_VEHICLE_FIXTURE_IDS.substituteBackupUser,
+      ],
+    );
+
     await client.query(
       `
         DELETE FROM "VisitSchedule"
@@ -147,7 +190,7 @@ export async function ensureScheduleVehicleResourceFixtures() {
       `
         INSERT INTO "ConsentRecord" (
           "id","org_id","patient_id","case_id","consent_type","method","obtained_date","expiry_date","revoked_date","is_active","created_at","updated_at"
-        ) VALUES ($1,'cmnhseedorg0000amq9ph-os',$2,$3,'visit_medication_management','paper_scan','2026-01-01','2026-12-31',NULL,true,NOW(),NOW())
+        ) VALUES ($1,'cmnhseedorg0000amq9ph-os',$2,$3,'visit_medication_management','paper_scan','2000-01-01','2099-12-31',NULL,true,NOW(),NOW())
         ON CONFLICT ("id") DO UPDATE
         SET "patient_id" = EXCLUDED."patient_id",
             "case_id" = EXCLUDED."case_id",
@@ -170,7 +213,7 @@ export async function ensureScheduleVehicleResourceFixtures() {
       `
         INSERT INTO "ManagementPlan" (
           "id","org_id","case_id","status","version","title","summary","content","created_by","approved_by","approved_at","effective_from","next_review_date","created_at","updated_at"
-        ) VALUES ($1,'cmnhseedorg0000amq9ph-os',$2,'approved',991,'E2E車両制約用計画書','E2E vehicle constraint management plan','{"sections":[]}'::jsonb,$3,$3,'2026-01-01','2026-01-01','2026-12-31',NOW(),NOW())
+        ) VALUES ($1,'cmnhseedorg0000amq9ph-os',$2,'approved',991,'E2E車両制約用計画書','E2E vehicle constraint management plan','{"sections":[]}'::jsonb,$3,$3,'2000-01-01','2000-01-01','2099-12-31',NOW(),NOW())
         ON CONFLICT ("id") DO UPDATE
         SET "case_id" = EXCLUDED."case_id",
             "status" = 'approved',
@@ -515,7 +558,7 @@ export async function ensureScheduleVehicleResourceFixtures() {
       `
         INSERT INTO "CareCase" (
           "id","org_id","patient_id","status","referral_date","start_date","primary_pharmacist_id","backup_pharmacist_id","required_visit_support","notes","created_at","updated_at"
-        ) VALUES ($1,'cmnhseedorg0000amq9ph-os',$2,'active','2026-01-01','2026-01-01',$3,$4,'{}'::jsonb,'E2E substitute pharmacist case',NOW(),NOW())
+        ) VALUES ($1,'cmnhseedorg0000amq9ph-os',$2,'active','2000-01-01','2000-01-01',$3,$4,'{}'::jsonb,'E2E substitute pharmacist case',NOW(),NOW())
         ON CONFLICT ("id") DO UPDATE
         SET "patient_id" = EXCLUDED."patient_id",
             "status" = 'active',
@@ -537,7 +580,7 @@ export async function ensureScheduleVehicleResourceFixtures() {
       `
         INSERT INTO "ConsentRecord" (
           "id","org_id","patient_id","case_id","consent_type","method","obtained_date","expiry_date","revoked_date","is_active","created_at","updated_at"
-        ) VALUES ($1,'cmnhseedorg0000amq9ph-os',$2,$3,'visit_medication_management','paper_scan','2026-01-01','2026-12-31',NULL,true,NOW(),NOW())
+        ) VALUES ($1,'cmnhseedorg0000amq9ph-os',$2,$3,'visit_medication_management','paper_scan','2000-01-01','2099-12-31',NULL,true,NOW(),NOW())
         ON CONFLICT ("id") DO UPDATE
         SET "patient_id" = EXCLUDED."patient_id",
             "case_id" = EXCLUDED."case_id",
@@ -557,7 +600,7 @@ export async function ensureScheduleVehicleResourceFixtures() {
       `
         INSERT INTO "ManagementPlan" (
           "id","org_id","case_id","status","version","title","summary","content","created_by","approved_by","approved_at","effective_from","next_review_date","created_at","updated_at"
-        ) VALUES ($1,'cmnhseedorg0000amq9ph-os',$2,'approved',992,'E2E代理薬剤師計画書','E2E substitute pharmacist management plan','{"sections":[]}'::jsonb,$3,$3,'2026-01-01','2026-01-01','2026-12-31',NOW(),NOW())
+        ) VALUES ($1,'cmnhseedorg0000amq9ph-os',$2,'approved',992,'E2E代理薬剤師計画書','E2E substitute pharmacist management plan','{"sections":[]}'::jsonb,$3,$3,'2000-01-01','2000-01-01','2099-12-31',NOW(),NOW())
         ON CONFLICT ("id") DO UPDATE
         SET "case_id" = EXCLUDED."case_id",
             "status" = 'approved',
