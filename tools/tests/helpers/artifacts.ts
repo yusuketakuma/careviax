@@ -10,7 +10,9 @@ const ARTIFACT_ROOT =
 
 const auditRunId = process.env.PLAYWRIGHT_AUDIT_RUN_ID?.trim();
 if (auditRunId && !/^[A-Za-z0-9_-]+$/.test(auditRunId)) {
-  throw new Error('PLAYWRIGHT_AUDIT_RUN_ID must contain only letters, numbers, hyphens, or underscores');
+  throw new Error(
+    'PLAYWRIGHT_AUDIT_RUN_ID must contain only letters, numbers, hyphens, or underscores',
+  );
 }
 
 export const PLAYWRIGHT_OUTPUT_DIR = path.join(ARTIFACT_ROOT, 'results');
@@ -20,7 +22,7 @@ export const PLAYWRIGHT_AUDIT_REPORT_DIR = path.join(ARTIFACT_ROOT, 'audit', 're
 export const PLAYWRIGHT_AUDIT_JSON_REPORT = path.join(
   ARTIFACT_ROOT,
   'audit',
-  'report',
+  'evidence',
   auditRunId ? `report-${auditRunId}.json` : 'report.json',
 );
 export const PLAYWRIGHT_SCREENSHOT_DIR = path.join(ARTIFACT_ROOT, 'screenshots');
