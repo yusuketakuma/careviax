@@ -38,17 +38,10 @@ pnpm db:migrate:deploy
 
 ### Step 2 — Backfill（データ移行）
 
-```bash
-pnpm tsx tools/scripts/migration-verify-template.ts --phase p01-allergy
-pnpm tsx tools/scripts/migration-verify-template.ts --phase p04-insurance
-pnpm tsx tools/scripts/migration-verify-template.ts --phase p06-gender
-pnpm tsx tools/scripts/migration-verify-template.ts --phase p07-packaging
-pnpm tsx tools/scripts/migration-verify-template.ts --phase p08-archive
-```
-
-- 各スクリプトは pre-count → backfill SQL → post-integrity check の順で実行
-- エラーが発生した時点で中断し、該当フェーズのロールバック SQL を実行（PRE-05）
-- **所要時間目安**: 患者数に依存（1,000 件で 2〜5 分）
+この旧計画のdirect backfill commandは退役した。`migration-verify-template.ts`はread-only pre-checkだけを
+許可し、`--dry-run`なしと`--rollback`をDB接続前に拒否する。データ移行が必要な場合は、対象rowを
+provenanceで識別し、単一transaction、post-check failure時のrollback、Human approvalを備えた
+新しいforward migration / 専用runbookを作成する。歴史templateのmutationを再有効化してはならない。
 
 ### Step 3 — アプリ同時デプロイ
 

@@ -147,9 +147,17 @@ describe('check-fhir-native-legacy-inventory', () => {
   it('keeps executable repository tooling inside the checked-in live scope', () => {
     const manifest = readManifest(REPO_ROOT);
     const scope = manifest.scope as { production_source_roots?: unknown };
+    const codeSurfaces = manifest.code_surfaces as Array<{ path?: unknown }>;
 
     expect(scope.production_source_roots).toEqual(
       expect.arrayContaining(['src', 'prisma', 'tools/scripts']),
+    );
+    expect(codeSurfaces).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          path: 'tools/sql/management-plan-audit-history-inventory.sql',
+        }),
+      ]),
     );
   });
 

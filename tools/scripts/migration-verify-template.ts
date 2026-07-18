@@ -4,18 +4,12 @@
  * 各 Phase 5 マイグレーションの pre-count check / backfill / post-integrity check を実行する。
  *
  * 使用方法:
- *   pnpm tsx tools/scripts/migration-verify-template.ts --phase p01-allergy
- *   pnpm tsx tools/scripts/migration-verify-template.ts --phase p03-lab-values
- *   pnpm tsx tools/scripts/migration-verify-template.ts --phase p04-insurance
- *   pnpm tsx tools/scripts/migration-verify-template.ts --phase p06-gender
- *   pnpm tsx tools/scripts/migration-verify-template.ts --phase p07-packaging
- *   pnpm tsx tools/scripts/migration-verify-template.ts --phase p08-archive
+ *   pnpm tsx tools/scripts/migration-verify-template.ts --phase p03-lab-values --dry-run
  *
- * オプション:
- *   --dry-run   preCheck(読み取りのみ)実行後に停止。変更 SQL は実行しない
- *   --rollback  backfill を逆実行（ロールバック用）
+ * This historical template is read-only. Mutation and rollback execution were retired because the
+ * phases do not provide an approved, atomic, provenance-safe production migration contract.
  *
- * 【2026-07-03 監査】現行 schema で実行可能なのは p03-lab-values のみ。
+ * 【2026-07-03 監査】現行 schema でread-only pre-check可能なのは p03-lab-values のみ。
  * p01/p04/p06/p07/p08 は 2026-04-04 適用済み migration 時点の歴史的記録で、
  * 現行 schema では前提が失われている（詳細は docs/phase5-migration-verification-framework.md の
  * フェーズ一覧表を参照: p01=対象テーブル不存在 / p04=カラム名不一致 / p06=enum 化適用済み /
@@ -24,6 +18,17 @@
 
 import { PrismaPg } from '@prisma/adapter-pg';
 import { LabAnalyteCode, Prisma, PrismaClient } from '@prisma/client';
+
+const args = process.argv.slice(2);
+const isDryRun = args.includes('--dry-run');
+const isRollback = args.includes('--rollback');
+const MUTATION_DISABLED_MESSAGE =
+  'Mutation and rollback are disabled for this historical template; use --dry-run for read-only pre-checks.';
+
+if (!isDryRun || isRollback) {
+  console.error(MUTATION_DISABLED_MESSAGE);
+  process.exit(1);
+}
 
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) {
@@ -35,11 +40,8 @@ if (!connectionString) {
 const adapter = new PrismaPg({ connectionString });
 const prisma = new PrismaClient({ adapter });
 
-const args = process.argv.slice(2);
 const phase =
   args.find((a) => a.startsWith('--phase='))?.split('=')[1] ?? args[args.indexOf('--phase') + 1];
-const isDryRun = args.includes('--dry-run');
-const isRollback = args.includes('--rollback');
 
 // ---------------------------------------------------------------------------
 // フェーズ定義
@@ -607,41 +609,14 @@ async function run() {
 
   const migration = phases[phase];
   console.log(`\n📋 ${migration.name}`);
-  if (isDryRun) console.log('🔍 DRY RUN モード（SQL は実行されません）');
-  if (isRollback) console.log('⏪ ROLLBACK モード');
+  console.log('🔍 DRY RUN モード（SQL は実行されません）');
 
   // Pre-check
   console.log('\n[1/3] Pre-check ...');
   const pre = await migration.preCheck();
   console.log('  結果:', pre);
 
-  if (isDryRun) {
-    console.log('\n✅ Dry run 完了。実際の変更はありません。');
-    return;
-  }
-
-  // Backfill or Rollback
-  if (isRollback) {
-    console.log('\n[2/3] Rollback SQL 実行中 ...');
-    await migration.rollbackSql();
-    console.log('  ロールバック完了');
-  } else {
-    console.log('\n[2/3] Backfill 実行中 ...');
-    await migration.backfill();
-    console.log('  バックフィル完了');
-  }
-
-  // Post-check
-  console.log('\n[3/3] Post-integrity check ...');
-  const post = await migration.postCheck();
-  if (post.ok) {
-    console.log(`  ✅ ${post.details}`);
-  } else {
-    console.error(`  ❌ ${post.details}`);
-    process.exit(1);
-  }
-
-  console.log('\n🎉 完了\n');
+  console.log('\n✅ Dry run 完了。実際の変更はありません。');
 }
 
 run()

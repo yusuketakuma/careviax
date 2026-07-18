@@ -3223,6 +3223,24 @@
       }
     },
     {
+      "id": "code:management-plan-audit-history:aggregate-sql",
+      "path": "tools/sql/management-plan-audit-history-inventory.sql",
+      "symbol": "PHI-free aggregate legacy management-plan audit history inventory",
+      "category": "operational_sql",
+      "activity": "schema_reader_writer",
+      "direction": "read",
+      "disposition": "owner_review_required",
+      "owner_review": {
+        "status": "pending",
+        "reason": "Production execution remains blocked on privacy, retention, and database-owner approval."
+      },
+      "anchor": {
+        "pattern": "FROM\\s+\"AuditLog\"",
+        "flags": "gm",
+        "expected_count": 1
+      }
+    },
+    {
       "id": "code:data-explorer:dynamic-clinical-table-access",
       "path": "src/server/services/data-explorer.ts",
       "symbol": "Prisma DMMF allowlist backed dynamic SQL reader/writer surface",
@@ -3386,5 +3404,5 @@
       "disposition": "replace_at_cutover"
     }
   ],
-  "expected_inventory_sha256": "3f0c81804c95359379e1c561343ca129a79c199b633ae5c7d00e64679c22f6db"
+  "expected_inventory_sha256": "d886802bda53d3b3a322d84cee6f3d721262fbc40e30989b676c7b2e37ba84dc"
 }
