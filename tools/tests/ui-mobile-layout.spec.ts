@@ -33,7 +33,7 @@ const MOBILE_ROUTES = [
     name: 'patients-mobile-layout',
     path: '/patients',
     readyTestId: 'patients-board',
-    primaryTarget: { role: 'heading' as const, name: '患者一覧', level: 1 },
+    primaryTarget: { role: 'heading' as const, name: '患者一覧', level: 2 },
   },
   {
     name: 'reports-mobile-layout',
@@ -51,7 +51,7 @@ const MOBILE_ROUTES = [
     name: 'billing-mobile-layout',
     path: '/billing',
     readyTestId: 'billing-check',
-    primaryTarget: { role: 'heading' as const, name: '算定チェック', level: 1 },
+    primaryTarget: { role: 'heading' as const, name: '算定チェック', level: 2 },
   },
 ] as const;
 

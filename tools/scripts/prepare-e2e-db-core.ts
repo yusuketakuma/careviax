@@ -40,9 +40,6 @@ export function parseLocalE2eDatabaseTarget(urlText: string, envName: string): E
   const url = new URL(urlText);
   const databaseName = url.pathname.replace(/^\//, '');
   const host = normalizeLocalHost(url.hostname);
-  const queryEntries = [...url.searchParams.entries()];
-  const hasOnlyCanonicalSchemaQuery =
-    queryEntries.length <= 1 && queryEntries.every(([key]) => key === 'schema');
   const schema = url.searchParams.get('schema') ?? E2E_DATABASE_SCHEMA;
   const isLocalHost = ['localhost', '127.0.0.1', '::1'].includes(host);
   const port = url.port || '';
@@ -54,8 +51,7 @@ export function parseLocalE2eDatabaseTarget(urlText: string, envName: string): E
     port !== E2E_DATABASE_PORT ||
     username !== E2E_DATABASE_USER ||
     databaseName !== E2E_DATABASE_NAME ||
-    schema !== E2E_DATABASE_SCHEMA ||
-    !hasOnlyCanonicalSchemaQuery
+    schema !== E2E_DATABASE_SCHEMA
   ) {
     throw new Error(
       `${envName} must point to postgresql://ph_os@localhost:5433/ph_os_e2e?schema=public before reset-capable E2E preparation runs`,

@@ -119,9 +119,7 @@ const comparisonRowSchema = z
     drug_name: z.string().trim().min(1),
     previous_label: nullableTextSchema,
     current_label: nullableTextSchema,
-    change_type: z
-      .enum(['added', 'removed', 'dose_changed', 'frequency_changed', 'days_changed'])
-      .nullable(),
+    change_type: z.enum(['added', 'removed', 'dose_changed', 'frequency_changed']).nullable(),
     direction: z.enum(['decrease', 'increase']).nullable(),
     inquiry_origin: z.boolean(),
   })

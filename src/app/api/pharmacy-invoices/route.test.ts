@@ -290,7 +290,6 @@ describe('/api/pharmacy-invoices POST', () => {
         tax_amount: 550,
         total: 6050,
         status: 'draft',
-        version: 1,
         reused_existing_draft: false,
         item_count: 1,
         items: [],
@@ -330,7 +329,6 @@ describe('/api/pharmacy-invoices POST', () => {
         message: '薬局間請求書ドラフトを作成しました',
         id: 'invoice_1',
         total: 6050,
-        version: 1,
       },
     });
     expect(body).not.toHaveProperty('id');
@@ -349,7 +347,6 @@ describe('/api/pharmacy-invoices POST', () => {
         tax_amount: 0,
         total: 0,
         status: 'draft',
-        version: 1,
         reused_existing_draft: true,
         item_count: 1,
         items: [],
@@ -370,7 +367,6 @@ describe('/api/pharmacy-invoices POST', () => {
       data: {
         message: '既存の薬局間請求書ドラフトを返しました',
         id: 'invoice_existing',
-        version: 1,
         reused_existing_draft: true,
       },
     });

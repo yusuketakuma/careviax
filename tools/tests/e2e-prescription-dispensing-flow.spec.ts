@@ -10,13 +10,15 @@ import {
   waitForStableUi,
 } from './helpers/local-auth';
 import { apiPathPattern, fulfillJson, readRouteBody } from './helpers/route-mocks';
-import { localPlaywrightDatabaseConnectionString } from './helpers/e2e-database-target';
 import type {
   DispenseWorkbenchPatientRow,
   DispenseWorkbenchPatientsResponse,
   DispenseWorkbenchPhase,
 } from '@/lib/dispensing/dispense-workbench-shared';
 
+const E2E_DB_CONNECTION_STRING = (
+  process.env.DATABASE_URL ?? 'postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public'
+).replace(/\?.*$/, '');
 const SET_AUDIT_SUCCESS_PLAN_ID = 'cmnhdemosetpl002amq9ph-os';
 const E2E_SETTER_USER_ID = 'e2e-independent-setter-user';
 
@@ -89,11 +91,6 @@ function summarizeSeriousAxeViolations(
         )
         .slice(0, 6),
     }));
-}
-
-async function openSidebarNavigation(page: Page) {
-  const openButton = page.getByRole('button', { name: 'ナビを開く' });
-  if (await openButton.isVisible().catch(() => false)) await openButton.click();
 }
 
 async function expectNoSeriousAxeViolations(page: Page) {
@@ -453,7 +450,7 @@ function formatSetCalendarPeriod(start: string, dayCount: number) {
   const endDate = new Date(startDate);
   endDate.setDate(startDate.getDate() + Math.max(1, dayCount) - 1);
   const weekdays = ['日', '月', '火', '水', '木', '金', '土'];
-  return `${startDate.getFullYear()}年${startDate.getMonth() + 1}月${startDate.getDate()}日（${weekdays[startDate.getDay()]}）〜${endDate.getFullYear()}年${endDate.getMonth() + 1}月${endDate.getDate()}日（${weekdays[endDate.getDay()]}）`;
+  return `${startDate.getFullYear()}/${startDate.getMonth() + 1}/${startDate.getDate()}（${weekdays[startDate.getDay()]}）〜${endDate.getMonth() + 1}/${endDate.getDate()}（${weekdays[endDate.getDay()]}）`;
 }
 
 async function waitForSetCalendarResponse(page: Page, planId: string) {
@@ -467,7 +464,6 @@ async function waitForSetCalendarResponse(page: Page, planId: string) {
 }
 
 async function openSetWorkbenchWithRealData(page: Page, path: string) {
-  const phase = path === '/set-audit' ? 'set-audit' : 'set';
   await page.addInitScript(() => {
     try {
       const resetKey = 'chouzai-workbench-reset-once';
@@ -483,16 +479,15 @@ async function openSetWorkbenchWithRealData(page: Page, path: string) {
 
   const patientsResponse = await getWithTransientRetry(
     page,
-    `/api/dispense-workbench/patients?include_set_plan=1&phase=${phase}`,
+    '/api/dispense-workbench/patients?include_set_plan=1',
   );
   expect(patientsResponse.ok()).toBe(true);
   const patients = (await patientsResponse.json()) as WorkbenchPatientsPayload;
   expect(patients.data.length).toBeGreaterThan(0);
 
   const fallbackPlan = patients.data.find((row) => row.latest_set_plan_id);
-  const planId =
-    phase === 'set-audit' ? SET_AUDIT_SUCCESS_PLAN_ID : fallbackPlan?.latest_set_plan_id;
-  if (!planId) throw new Error(`No ${phase} plan was returned by the phase-scoped patient list`);
+  const planId = SET_AUDIT_SUCCESS_PLAN_ID || fallbackPlan?.latest_set_plan_id;
+  expect(planId).toBeTruthy();
   const targetPatient = patients.data.find((row) => row.latest_set_plan_id === planId);
   expect(
     targetPatient,
@@ -547,19 +542,6 @@ async function waitForSetAuditApprovalReady(main: Locator) {
   await expect(main.getByRole('button', { name: '監査承認（薬剤師）✓' })).toBeEnabled({
     timeout: 15_000,
   });
-}
-
-async function submitSetAuditApproval(page: Page, main: Locator) {
-  await main.getByRole('button', { name: '監査承認（薬剤師）✓' }).click();
-  const dialog = page.getByRole('alertdialog', { name: 'セット監査を承認します' });
-  await expect(dialog).toBeVisible();
-
-  const responsePromise = page.waitForResponse((response) => {
-    const url = new URL(response.url());
-    return url.pathname === '/api/set-audits' && response.request().method() === 'POST';
-  });
-  await dialog.getByRole('button', { name: 'セット監査承認' }).click();
-  return responsePromise;
 }
 
 async function waitForVisibleSetAuditCell(main: Locator) {
@@ -667,34 +649,10 @@ async function confirmVisitCarryPacketOnSetPage(main: Locator) {
   await pressAllUnpressedToggleButtons(carryPacket, { required: true });
 }
 
-async function completeVisibleSetCells(page: Page, main: Locator, planId: string) {
-  const bulkSetPath = `/api/set-plans/${planId}/batches/bulk-set`;
-  await page.route(
-    apiPathPattern(bulkSetPath),
-    async (route) => {
-      const upstream = await route.fetch();
-      if (upstream.ok()) await assignIndependentSetterForAuditFixture(planId);
-      await route.fulfill({ response: upstream });
-    },
-    { times: 1 },
-  );
-  const responsePromise = page.waitForResponse((response) => {
-    const url = new URL(response.url());
-    return url.pathname === bulkSetPath && response.request().method() === 'POST';
-  });
-  await main.getByRole('button', { name: '表示中セルをすべてセット済' }).click();
-  const response = await responsePromise;
-  expect(response.ok()).toBe(true);
-  await expect(main.getByRole('button', { name: 'セット完了 → 監査へ ▶' })).toBeEnabled({
-    timeout: 30_000,
-  });
-}
-
 async function navigateToSetAuditViaLeftMenuUntilStable(page: Page, main: Locator) {
   // 工程切替は左メニュー（navigation-config.ts）の href ベースリンクで行う。
   // 旧 in-workbench クリック可能タブ <Link> は撤去済み。
   for (let attempt = 0; attempt < 3; attempt += 1) {
-    await openSidebarNavigation(page);
     const setAuditLink = page.locator('a[href="/set-audit"]').first();
     await expect(setAuditLink).toBeVisible({ timeout: 45_000 });
 
@@ -722,52 +680,40 @@ async function navigateToSetAuditViaLeftMenuUntilStable(page: Page, main: Locato
 }
 
 async function openSetAuditViaSetWithCarryEvidence(page: Page) {
-  await resetSetWorkFixture();
   const data = await openSetWorkbenchWithRealData(page, '/set');
   const main = page.locator('main');
   await expect(main.getByRole('navigation', { name: '現在の工程' })).toBeVisible();
   await waitForVisibleSetAuditCell(main);
   await confirmVisitCarryPacketOnSetPage(main);
-  await completeVisibleSetCells(page, main, data.planId);
 
-  const calendarResponsePromise = page.waitForResponse((response) => {
-    const url = new URL(response.url());
-    return (
-      url.pathname === `/api/set-plans/${data.planId}/calendar` &&
-      response.request().method() === 'GET'
-    );
-  });
   await navigateToSetAuditViaLeftMenuUntilStable(page, main);
-  const calendarResponse = await calendarResponsePromise;
-  expect(calendarResponse.ok()).toBe(true);
   await expect(main).toContainText(data.periodLabel, { timeout: 30_000 });
   await waitForVisibleSetAuditCell(main);
   return data;
 }
 
+function assertSafeE2eDatabase() {
+  if (process.env.PLAYWRIGHT !== '1' && process.env.PLAYWRIGHT_REUSE_SERVER !== '1') {
+    throw new Error('Set-audit success E2E requires PLAYWRIGHT=1 or PLAYWRIGHT_REUSE_SERVER=1');
+  }
+
+  const url = new URL(E2E_DB_CONNECTION_STRING);
+  const databaseName = url.pathname.replace(/^\//, '');
+  const isLocalHost = ['localhost', '127.0.0.1', '::1'].includes(url.hostname);
+  if (!isLocalHost || databaseName !== 'ph_os_e2e') {
+    throw new Error('Set-audit success E2E requires a local ph_os_e2e DATABASE_URL');
+  }
+}
+
 async function withE2eDb<T>(fn: (client: Client) => Promise<T>) {
-  const connectionString = localPlaywrightDatabaseConnectionString('Set-audit success E2E');
-  const client = new Client({ connectionString });
+  assertSafeE2eDatabase();
+  const client = new Client({ connectionString: E2E_DB_CONNECTION_STRING });
   await client.connect();
   try {
     return await fn(client);
   } finally {
     await client.end();
   }
-}
-
-async function assignIndependentSetterForAuditFixture(planId: string) {
-  await withE2eDb(async (client) => {
-    await client.query(
-      `
-        UPDATE "SetBatch"
-        SET set_by = $2
-        WHERE plan_id = $1
-          AND org_id = (SELECT org_id FROM "SetPlan" WHERE id = $1)
-      `,
-      [planId, E2E_SETTER_USER_ID],
-    );
-  });
 }
 
 async function resetSetAuditSuccessFixture(planId = SET_AUDIT_SUCCESS_PLAN_ID) {
@@ -831,45 +777,6 @@ async function resetSetAuditSuccessFixture(planId = SET_AUDIT_SUCCESS_PLAN_ID) {
       await client.query('ROLLBACK');
       throw error;
     }
-  });
-}
-
-async function resetSetWorkFixture(planId = SET_AUDIT_SUCCESS_PLAN_ID) {
-  await withE2eDb(async (client) => {
-    const plan = await client.query<{ cycle_id: string; org_id: string }>(
-      'SELECT cycle_id, org_id FROM "SetPlan" WHERE id = $1',
-      [planId],
-    );
-    const target = plan.rows[0];
-    if (!target) throw new Error(`Set work E2E plan fixture not found: ${planId}`);
-
-    await client.query(
-      `
-        UPDATE "SetBatch"
-        SET set_state = 'pending',
-            audit_state = 'unaudited',
-            ng_code = NULL,
-            set_by = NULL,
-            set_at = NULL,
-            audited_by = NULL,
-            audited_at = NULL,
-            held_reason = NULL,
-            held_by = NULL,
-            held_at = NULL,
-            version = version + 1
-        WHERE plan_id = $1 AND org_id = $2
-      `,
-      [planId, target.org_id],
-    );
-    await client.query(
-      `
-        UPDATE "MedicationCycle"
-        SET overall_status = 'setting',
-            version = version + 1
-        WHERE id = $1 AND org_id = $2
-      `,
-      [target.cycle_id, target.org_id],
-    );
   });
 }
 
@@ -1170,11 +1077,7 @@ test.describe('dispense → audit flow', () => {
     await routeMockDispenseWorkbench(page);
     await page.route(apiPathPattern('/api/dispense-results'), async (route) => {
       submitted = readRouteBody<DispenseResultsPayload>(route);
-      await fulfillJson(
-        route,
-        { data: { task_id: ROUTE_MOCK_TASK_ID, partial: false, results: [] } },
-        201,
-      );
+      await fulfillJson(route, { task_id: ROUTE_MOCK_TASK_ID }, 201);
     });
 
     await openStableRoute(page, '/dispense');
@@ -1288,7 +1191,6 @@ test.describe('dispense → audit flow', () => {
     await expect(compareDialog).toBeHidden();
 
     const tabletQuantityInput = main.getByLabel('アムロジピン錠5mg 実数量');
-    await expect(tabletQuantityInput).toBeVisible({ timeout: 15_000 });
     await tabletQuantityInput.scrollIntoViewIfNeeded();
     await expect(tabletQuantityInput).toBeVisible();
     await tabletQuantityInput.fill('12.5');
@@ -1609,7 +1511,6 @@ test.describe('dispense → audit flow', () => {
       timeout: 45_000,
     });
     // 工程切替は左メニュー（href ベース。'監査' は critical バッジを持つためラベル一致を避ける）。
-    await openSidebarNavigation(page);
     const auditLink = page.locator('a[href="/audit"]').first();
     await expect(auditLink).toBeVisible({ timeout: 45_000 });
     await openStableRoute(page, '/audit');
@@ -1665,7 +1566,6 @@ test.describe('dispense → audit flow', () => {
     });
 
     // → audit via 左メニュー（href ベース。'監査' は critical バッジを持つ）
-    await openSidebarNavigation(page);
     await expect(page.locator('a[href="/audit"]').first()).toBeVisible({ timeout: 45_000 });
     await openStableRoute(page, '/audit');
     await expect(page).toHaveURL(/\/audit/);
@@ -1675,7 +1575,6 @@ test.describe('dispense → audit flow', () => {
     });
 
     // → back to dispense via 左メニュー（調剤 → /dispense）
-    await openSidebarNavigation(page);
     await expect(page.locator('a[href="/dispense"]').first()).toBeVisible({ timeout: 45_000 });
     await openStableRoute(page, '/dispense');
     await expect(page).toHaveURL(/\/dispense/);
@@ -1693,7 +1592,6 @@ test.describe('set → set-audit real-data direct entry', () => {
 
   test.beforeEach(async ({ context }) => {
     await attachLocalSession(context);
-    await resetSetAuditSuccessFixture();
   });
 
   test('route-mocked set workbench shows narcotic classification review chip', async ({
@@ -1738,7 +1636,6 @@ test.describe('set → set-audit real-data direct entry', () => {
   test('set workbench resolves patient SetPlan calendar data on direct entry', async ({
     context,
   }) => {
-    await resetSetWorkFixture();
     const { page, errors } = await createInstrumentedPage(context);
     await openSetWorkbenchWithRealData(page, '/set');
 
@@ -1852,7 +1749,13 @@ test.describe('set → set-audit real-data direct entry', () => {
       });
     });
 
-    const response = await submitSetAuditApproval(page, main);
+    const [response] = await Promise.all([
+      page.waitForResponse((response) => {
+        const url = new URL(response.url());
+        return url.pathname === '/api/set-audits' && response.request().method() === 'POST';
+      }),
+      main.getByRole('button', { name: '監査承認（薬剤師）✓' }).click(),
+    ]);
     expect(response.status()).toBe(409);
     await expect(page).toHaveURL(/\/set-audit/);
     expect(approvalPayload).toMatchObject({
@@ -1890,8 +1793,7 @@ test.describe('set → set-audit real-data direct entry', () => {
       errors.filter(
         (entry) =>
           !entry.includes('http:409 http://localhost:3012/api/set-audits') &&
-          !entry.includes('Failed to load resource: the server responded with a status of 409') &&
-          !entry.includes('"event":"dispense_workbench.write_conflict"'),
+          !entry.includes('Failed to load resource: the server responded with a status of 409'),
       ),
     ).toEqual([]);
   });
@@ -1915,7 +1817,13 @@ test.describe('set → set-audit real-data direct entry', () => {
     await completeSetAuditChecklist(main);
     await waitForSetAuditApprovalReady(main);
 
-    const response = await submitSetAuditApproval(page, main);
+    const [response] = await Promise.all([
+      page.waitForResponse((response) => {
+        const url = new URL(response.url());
+        return url.pathname === '/api/set-audits' && response.request().method() === 'POST';
+      }),
+      main.getByRole('button', { name: '監査承認（薬剤師）✓' }).click(),
+    ]);
     expect(response.status()).toBe(201);
     const responsePayload = (await response.json()) as { data?: { id?: string } };
     expect(responsePayload.data?.id).toBeTruthy();

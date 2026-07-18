@@ -57,17 +57,6 @@ describe('billingCheckResponseSchema', () => {
     expect(parsed).toEqual(payload);
   });
 
-  it('accepts official MHLW evidence URLs but rejects untrusted external evidence URLs', () => {
-    const official = validResponse();
-    official.data.review_rows[0].evidence_href =
-      'https://www.mhlw.go.jp/content/12400000/001665294.pdf';
-    expect(billingCheckResponseSchema.safeParse(official).success).toBe(true);
-
-    const untrusted = validResponse();
-    untrusted.data.review_rows[0].evidence_href = 'https://example.test/billing-rule';
-    expect(billingCheckResponseSchema.safeParse(untrusted).success).toBe(false);
-  });
-
   it.each([
     [
       'negative count',

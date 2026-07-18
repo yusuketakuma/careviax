@@ -14,7 +14,7 @@ test.describe('schedule vehicle resource constraints', () => {
     await attachLocalSession(context);
   });
 
-  test('retired direct generation returns the replacement contract for a same-site vehicle', async ({
+  test('recurring generation accepts a same-site selected vehicle resource', async ({
     context,
   }) => {
     const { page, errors } = await createApiPage(context);
@@ -33,19 +33,20 @@ test.describe('schedule vehicle resource constraints', () => {
       },
     });
 
-    expect(response.status).toBe(410);
-    expect(response.body).toMatchObject({
-      code: 'ENDPOINT_REMOVED',
-      details: {
-        replacement_endpoint: '/api/visit-schedule-proposals',
-        reason_code: 'DIRECT_CONFIRMED_GENERATION_REMOVED',
-        creates_confirmed_schedules: false,
-      },
-    });
+    expect(response.status).toBe(201);
+    expect(response.body.data).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          vehicle_resource_id: IDS.acceptanceVehicle,
+          site_id: IDS.siteId,
+          pharmacist_id: IDS.userId,
+        }),
+      ]),
+    );
     expect(withoutExpectedValidationConsole(errors)).toEqual([]);
   });
 
-  test('retired direct generation does not run legacy vehicle capacity validation', async ({
+  test('recurring generation rejects a selected vehicle resource at stop capacity', async ({
     context,
   }) => {
     const { page, errors } = await createApiPage(context);
@@ -64,15 +65,14 @@ test.describe('schedule vehicle resource constraints', () => {
       },
     });
 
-    expect(response.status).toBe(410);
+    expect(response.status).toBe(400);
     expect(response.body).toMatchObject({
-      code: 'ENDPOINT_REMOVED',
-      details: { replacement_endpoint: '/api/visit-schedule-proposals' },
+      message: 'E2E上限1台 で訪問できる件数は最大 1 件です',
     });
     expect(withoutExpectedValidationConsole(errors)).toEqual([]);
   });
 
-  test('retired direct generation does not expose legacy cross-site validation', async ({
+  test('recurring generation rejects a selected vehicle resource from another site', async ({
     context,
   }) => {
     const { page, errors } = await createApiPage(context);
@@ -91,10 +91,9 @@ test.describe('schedule vehicle resource constraints', () => {
       },
     });
 
-    expect(response.status).toBe(410);
+    expect(response.status).toBe(400);
     expect(response.body).toMatchObject({
-      code: 'ENDPOINT_REMOVED',
-      details: { replacement_endpoint: '/api/visit-schedule-proposals' },
+      message: '選択した車両リソースは訪問予定の拠点では利用できません',
     });
     expect(withoutExpectedValidationConsole(errors)).toEqual([]);
   });
@@ -156,15 +155,13 @@ test.describe('schedule vehicle resource constraints', () => {
     expect(response.body).toMatchObject({
       message: 'シフト・休日・期限条件に合う候補を生成できませんでした',
       details: {
-        diagnostics: {
-          rejected: expect.arrayContaining([
-            expect.objectContaining({
-              pharmacist_id: IDS.userId,
-              reason_code: 'vehicle_capacity',
-              detail: 'E2E共有上限1台 で訪問できる件数は最大 1 件です',
-            }),
-          ]),
-        },
+        rejections: expect.arrayContaining([
+          expect.objectContaining({
+            pharmacist_id: IDS.userId,
+            reason_code: 'vehicle_capacity',
+            detail: 'E2E共有上限1台 で訪問できる件数は最大 1 件です',
+          }),
+        ]),
       },
     });
     expect(withoutExpectedValidationConsole(errors)).toEqual([]);
@@ -173,13 +170,6 @@ test.describe('schedule vehicle resource constraints', () => {
 
 async function createApiPage(context: BrowserContext) {
   const { page, errors } = await createInstrumentedPage(context, { captureHttpErrors: false });
-  await page.route('**/api/health', async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({ data: { status: 'ok' } }),
-    });
-  });
   await page.goto('/api/health', { waitUntil: 'domcontentloaded' });
   return { page, errors };
 }
@@ -218,9 +208,6 @@ function withoutExpectedValidationConsole(errors: string[]) {
     (message) =>
       !message.includes(
         'console:Failed to load resource: the server responded with a status of 400',
-      ) &&
-      !message.includes(
-        'console:Failed to load resource: the server responded with a status of 410',
       ),
   );
 }

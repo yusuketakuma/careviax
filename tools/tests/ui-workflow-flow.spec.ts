@@ -18,9 +18,9 @@ async function fetchFirstPatientOption(page: Page) {
   expect(response.ok()).toBeTruthy();
 
   const payload = (await response.json()) as {
-    data?: { data?: Array<{ id?: unknown; name?: unknown; name_kana?: unknown }> };
+    data?: Array<{ id?: unknown; name?: unknown; name_kana?: unknown }>;
   };
-  const patient = payload.data?.data?.find(
+  const patient = payload.data?.find(
     (item) =>
       typeof item.id === 'string' &&
       item.id.length > 0 &&
@@ -30,14 +30,6 @@ async function fetchFirstPatientOption(page: Page) {
   expect(patient).toBeTruthy();
 
   return patient as { id: string; name: string; name_kana?: string };
-}
-
-async function openSidebarNavigation(page: Page) {
-  const openButton = page.getByRole('button', { name: 'ナビを開く' });
-  if (await openButton.isVisible().catch(() => false)) {
-    await openButton.click();
-    await expect(page.getByRole('dialog', { name: 'ナビゲーション' })).toBeVisible();
-  }
 }
 
 test.describe('prescription intake flow', () => {
@@ -185,9 +177,8 @@ test.describe('dispensing queue', () => {
     const main = page.locator('main');
     await expect(main.getByRole('navigation', { name: '現在の工程' })).toBeVisible();
     // 工程切替は左メニュー（href ベース。'監査' は critical バッジを持つためラベル一致を避ける）。
-    await openSidebarNavigation(page);
     await clickAndWaitForStableRoute(page, /\/audit/, () =>
-      page.locator('a[href="/audit"]:visible').first().click(),
+      page.locator('a[href="/audit"]').first().click(),
     );
 
     // 遷移後は監査画面の静的工程ヘッダが現工程（調剤監査）を表示する。
@@ -257,17 +248,15 @@ test.describe('workflow cross-navigation', () => {
     await expect(phaseHeader).toBeVisible();
 
     // Navigate to audit via 左メニュー（href ベース。'監査' は critical バッジを持つ）
-    await openSidebarNavigation(page);
     await clickAndWaitForStableRoute(page, /\/audit/, () =>
-      page.locator('a[href="/audit"]:visible').first().click(),
+      page.locator('a[href="/audit"]').first().click(),
     );
     await expect(phaseHeader).toBeVisible();
     await expect(phaseHeader.locator('[aria-current="page"]')).toContainText('調剤監査');
 
     // Navigate back to dispense via 左メニュー（調剤 → /dispense）
-    await openSidebarNavigation(page);
     await clickAndWaitForStableRoute(page, /\/dispense/, () =>
-      page.locator('a[href="/dispense"]:visible').first().click(),
+      page.locator('a[href="/dispense"]').first().click(),
     );
     await expect(phaseHeader).toBeVisible();
     await expect(phaseHeader.locator('[aria-current="page"]')).toContainText('調剤');

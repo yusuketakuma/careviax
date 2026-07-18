@@ -60,7 +60,6 @@ export type WorkflowData = {
     };
     items: Array<{
       id: string;
-      patient_id: string;
       queue_type: string;
       title: string;
       summary: string;
@@ -74,7 +73,6 @@ export type WorkflowData = {
     }>;
     timeline: Array<{
       id: string;
-      patient_id: string;
       source_type: 'care_report' | 'tracing_report' | 'communication_request' | 'delivery_record';
       patient_name: string | null;
       title: string;

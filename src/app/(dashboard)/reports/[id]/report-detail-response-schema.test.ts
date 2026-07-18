@@ -147,15 +147,5 @@ describe('report detail response schemas', () => {
         data: [suggestion(), suggestion()],
       }).success,
     ).toBe(false);
-    expect(
-      externalProfessionalSuggestionsResponseSchema.safeParse({
-        data: [suggestion(), suggestion({ id: 'professional_2', profession_type: 'physician' })],
-      }).success,
-    ).toBe(true);
-    expect(
-      externalProfessionalSuggestionsResponseSchema.safeParse({
-        data: [suggestion(), suggestion({ id: 'professional_2' })],
-      }).success,
-    ).toBe(false);
   });
 });

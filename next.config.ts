@@ -21,12 +21,6 @@ const nextConfig: NextConfig = {
     optimizePackageImports: ['lucide-react', 'date-fns', 'recharts'],
   },
   serverExternalPackages: ['@react-pdf/renderer'],
-  webpack: (config, { dev }) => {
-    if (process.env.PLAYWRIGHT === '1' && config.cache && !dev) {
-      config.cache = false;
-    }
-    return config;
-  },
 };
 
 const withSerwist = withSerwistInit({

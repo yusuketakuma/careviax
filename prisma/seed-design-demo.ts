@@ -229,7 +229,6 @@ export const DEMO_SEED_IDS = {
   caseKato: 'cmnhdemocase009amq9ph-os',
   cycleKato: 'cmnhdemocyc009amq9ph-os',
   reportKato: 'cmnhdemorep001amq9ph-os',
-  reportComposerKato: 'cmnhdemorep003amq9ph-os',
   deliveryKato: 'cmnhdemodel001amq9ph-os',
   visitKato: 'cmnhdemovis008amq9ph-os',
   /** p1_05: 加藤のケアチーム(主治医/ケアマネ/訪問看護)+ 家族連絡先 */
@@ -2774,25 +2773,6 @@ export async function seedDesignFidelityDemo(
       created_by: ctx.userId,
     },
   });
-  await prisma.careReport.upsert({
-    where: { id: DEMO_SEED_IDS.reportComposerKato },
-    create: {
-      id: DEMO_SEED_IDS.reportComposerKato,
-      org_id: ctx.orgId,
-      patient_id: DEMO_SEED_IDS.patientKato,
-      case_id: DEMO_SEED_IDS.caseKato,
-      report_type: 'care_manager_report',
-      status: 'confirmed',
-      content: katoReportContent,
-      created_by: ctx.userId,
-    },
-    update: {
-      report_type: 'care_manager_report',
-      status: 'confirmed',
-      content: katoReportContent,
-      created_by: ctx.userId,
-    },
-  });
   await prisma.deliveryRecord.upsert({
     where: { id: DEMO_SEED_IDS.deliveryKato },
     create: {
@@ -2912,7 +2892,7 @@ export async function seedDesignFidelityDemo(
       org_id: ctx.orgId,
       patient_id: DEMO_SEED_IDS.patientKato,
       case_id: DEMO_SEED_IDS.caseKato,
-      request_type: 'care_report_reply_request',
+      request_type: 'report_share',
       recipient_name: '中島 桜',
       recipient_role: 'care_manager',
       related_entity_type: 'care_report',
@@ -2924,7 +2904,6 @@ export async function seedDesignFidelityDemo(
       requested_at: katoSentAt,
     },
     update: {
-      request_type: 'care_report_reply_request',
       recipient_role: 'care_manager',
       related_entity_type: 'care_report',
       related_entity_id: DEMO_SEED_IDS.reportKato,

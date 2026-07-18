@@ -156,7 +156,10 @@ test.describe('global navigation', () => {
     await openStableRoute(page, '/patients');
 
     // Navigate to patient detail (= card workspace)
-    const firstPatientLink = page.getByTestId('patient-board-card-link').first();
+    const firstPatientLink = page
+      .getByRole('region', { name: '患者カード一覧' })
+      .locator('a[href^="/patients/"]:not([href*="#"])')
+      .first();
     const href = await firstPatientLink.getAttribute('href');
     expect(href).toBeTruthy();
     await clickAndWaitForStableRoute(page, new RegExp(`${href}$`), () =>

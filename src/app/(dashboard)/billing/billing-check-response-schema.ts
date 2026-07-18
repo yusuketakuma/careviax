@@ -10,16 +10,6 @@ const internalHref = z
   .refine((value) => value.startsWith('/') && !value.startsWith('//'), {
     message: 'Expected an internal application path',
   });
-const billingEvidenceHref = z.union([
-  internalHref,
-  z
-    .url()
-    .max(2_000)
-    .refine((value) => {
-      const url = new URL(value);
-      return url.protocol === 'https:' && url.hostname === 'www.mhlw.go.jp';
-    }, 'Expected an internal path or an official MHLW HTTPS URL'),
-]);
 
 const billingCheckReviewRowSchema = z
   .object({
@@ -29,7 +19,7 @@ const billingCheckReviewRowSchema = z
     billing_name: nonEmptyText(500),
     confirm_text: nonEmptyText(4_000),
     evidence_label: nonEmptyText(500),
-    evidence_href: billingEvidenceHref,
+    evidence_href: internalHref,
     action_label: nonEmptyText(200),
     action_href: internalHref,
   })

@@ -34,16 +34,6 @@ export type VisitRouteStopSummary = {
   timeWindow?: VisitRouteTimeWindow | null;
 };
 
-export type VisitRouteVehicleResource = {
-  vehicle_id: string | null;
-  label: string;
-  max_stops: number | null;
-  max_route_duration_minutes: number | null;
-  stop_count: number;
-  route_duration_minutes: number | null;
-  constraint_status: 'ok' | 'exceeded' | 'unverified';
-};
-
 export type VisitRoutePlan = {
   status: 'ok' | 'unavailable';
   note: string | null;
@@ -55,5 +45,4 @@ export type VisitRoutePlan = {
   totalDurationSeconds: number | null;
   distanceSource?: VisitRouteDistanceSource | null;
   stopSummaries: VisitRouteStopSummary[];
-  vehicle_resource?: VisitRouteVehicleResource;
 };

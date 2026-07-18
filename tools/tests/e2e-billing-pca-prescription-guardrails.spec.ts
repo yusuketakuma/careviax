@@ -33,7 +33,7 @@ test.describe('billing/PCA/prescription guardrails', () => {
 
     const careApplyingPreview = await fetchBillingPreview(page, IDS.careApplyingCase);
     expect(careApplyingPreview.status).toBe(200);
-    expect(careApplyingPreview.body.data.alerts).toEqual(
+    expect(careApplyingPreview.body.alerts).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           type: 'care_insurance_application_pending',
@@ -51,7 +51,7 @@ test.describe('billing/PCA/prescription guardrails', () => {
       method: 'GET',
     });
     expect(careChangePreview.status).toBe(200);
-    expect(careChangePreview.body.data.alerts).toEqual(
+    expect(careChangePreview.body.alerts).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           type: 'care_insurance_application_pending',
@@ -67,7 +67,7 @@ test.describe('billing/PCA/prescription guardrails', () => {
 
     const publicSubsidy54Preview = await fetchBillingPreview(page, IDS.publicSubsidy54Case);
     expect(publicSubsidy54Preview.status).toBe(200);
-    expect(publicSubsidy54Preview.body.data.alerts).toEqual(
+    expect(publicSubsidy54Preview.body.alerts).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           type: 'public_subsidy_application_pending',
@@ -84,7 +84,7 @@ test.describe('billing/PCA/prescription guardrails', () => {
 
     const publicSubsidy21Preview = await fetchBillingPreview(page, IDS.publicSubsidy21Case);
     expect(publicSubsidy21Preview.status).toBe(200);
-    expect(publicSubsidy21Preview.body.data.alerts).toEqual(
+    expect(publicSubsidy21Preview.body.alerts).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           type: 'public_subsidy_application_pending',
@@ -285,7 +285,7 @@ test.describe('billing/PCA/prescription guardrails', () => {
       }),
     });
     expect(allowed.status).toBe(201);
-    expect(allowed.body.data.lines).toEqual(
+    expect(allowed.body.lines).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           drug_code: '7999401A1010',

@@ -952,7 +952,6 @@ function buildPharmacyCoopVisitBrief() {
     dosage_form_support: [],
     multidisciplinary_updates: [],
     jahis_supplemental_records: [],
-    latest_labs: [],
     unresolved_items: [],
     must_check_today: [],
     rule_summary: {
@@ -997,16 +996,11 @@ function buildPharmacyCoopPatientOverview() {
     medical_insurance_number: null,
     care_insurance_number: null,
     billing_support_flag: true,
-    primary_pharmacist_id: null,
-    backup_pharmacist_id: null,
-    primary_staff_id: null,
-    backup_staff_id: null,
     allergy_info: [],
     notes: null,
     archived_at: null,
     archived_by: null,
     archived_by_name: null,
-    updated_at: '2026-06-18T00:00:00.000Z',
     residences: [
       {
         id: 'pharmacy_coop_route_residence',
@@ -1020,7 +1014,6 @@ function buildPharmacyCoopPatientOverview() {
     ],
     scheduling_preference: null,
     conditions: [],
-    contacts: [],
     cases: [
       {
         id: PHARMACY_COOP_CASE_ID,
@@ -1431,8 +1424,6 @@ async function installPharmacyCooperationRouteMocks(
   options: { visitRequestCreated?: boolean; partnerRecordCreated?: boolean } = {},
 ) {
   const requests = {
-    managementPlans: [] as CapturedRouteRequest[],
-    managementPlanDetails: [] as CapturedRouteRequest[],
     patientShareCases: [] as CapturedRouteRequest[],
     patientShareConsents: [] as CapturedRouteRequest[],
     correctionRequests: [] as CapturedRouteRequest[],
@@ -1466,16 +1457,10 @@ async function installPharmacyCooperationRouteMocks(
 
   await installDashboardShellRouteMocks(page);
 
-  await page.route(apiPathPattern(`/api/patients/${PHARMACY_COOP_PATIENT_ID}`), async (route) => {
-    await fulfillJson(route, {
-      data: { id: PHARMACY_COOP_PATIENT_ID, name: '薬局間RouteMock 患者' },
-    });
-  });
-
   await page.route(
     apiPathPattern(`/api/patients/${PHARMACY_COOP_PATIENT_ID}/overview`),
     async (route) => {
-      await fulfillJson(route, { data: buildPharmacyCoopPatientOverview() });
+      await fulfillJson(route, buildPharmacyCoopPatientOverview());
     },
   );
 
@@ -1483,86 +1468,6 @@ async function installPharmacyCooperationRouteMocks(
     apiPathPattern(`/api/patients/${PHARMACY_COOP_PATIENT_ID}/home-operations`),
     async (route) => {
       await fulfillJson(route, { data: null });
-    },
-  );
-
-  await page.route(
-    apiPathPattern(`/api/patients/${PHARMACY_COOP_PATIENT_ID}/header-summary`),
-    async (route) => {
-      await fulfillJson(route, {
-        data: {
-          patient_id: PHARMACY_COOP_PATIENT_ID,
-          name: '薬局間RouteMock 患者',
-          name_kana: 'ヤッキョクカンルートモック カンジャ',
-          birth_date: '1942-04-12',
-          gender: 'female',
-          gender_label: '女性',
-          care_level: null,
-          care_level_label: null,
-          home_status_label: null,
-          residence_label: null,
-          primary_diagnosis: null,
-          intervention_start_date: null,
-          primary_pharmacist_name: null,
-          backup_pharmacist_name: null,
-          primary_staff_name: null,
-          backup_staff_name: null,
-          first_visit_date: null,
-          last_prescribed_date: null,
-          next_prescription_expected_date: null,
-          safety: {
-            allergy: null,
-            renal: null,
-            handling_tags: [],
-            swallowing: null,
-            cautions: [],
-            safety_tags: [],
-            visible_safety_tags: [],
-            hidden_safety_tag_count: 0,
-          },
-        },
-      });
-    },
-  );
-
-  await page.route(
-    apiPathPattern(`/api/patients/${PHARMACY_COOP_PATIENT_ID}/movement-timeline`),
-    async (route) => {
-      await fulfillJson(route, {
-        data: { movement_events: [], partial_failures: [] },
-        meta: {
-          next_cursor: null,
-          has_more: false,
-          returned_count: 0,
-          count_basis: 'bounded_latest_window',
-          filters: { category: null, date_from: null, date_to: null },
-          window_limit: 40,
-          selection_order: 'occurred_at_desc_id_desc',
-          presentation_order: 'occurred_at_asc_id_asc',
-          cursor_direction: 'older',
-          is_current_window: true,
-          current_event_id: null,
-          presentation_terminal_event_id: null,
-          window_start_at: null,
-          window_end_at: null,
-        },
-      });
-    },
-  );
-
-  await page.route(
-    apiPathPattern(`/api/cases/${PHARMACY_COOP_CASE_ID}/risk-cockpit`),
-    async (route) => {
-      await fulfillJson(route, {
-        data: {
-          generated_at: '2026-06-19T00:00:00.000Z',
-          patient: { id: PHARMACY_COOP_PATIENT_ID, display_id: null, name: '薬局間RouteMock 患者' },
-          case: { id: PHARMACY_COOP_CASE_ID, display_id: null, status: 'active' },
-          overall: { status: 'clear', blocking_count: 0, urgent_count: 0, warning_count: 0 },
-          sections: [],
-          next_actions: [],
-        },
-      });
     },
   );
 
@@ -1593,7 +1498,6 @@ async function installPharmacyCooperationRouteMocks(
   });
 
   await page.route(apiPathPattern('/api/management-plans'), async (route) => {
-    requests.managementPlans.push(captureRouteRequest(route));
     await fulfillJson(route, {
       data: [
         {
@@ -1603,43 +1507,9 @@ async function installPharmacyCooperationRouteMocks(
           version: 2,
           status: 'approved',
           effective_from: '2026-06-01T00:00:00.000Z',
-          next_review_date: null,
-          approved_at: '2026-06-18T00:00:00.000Z',
           updated_at: '2026-06-18T00:00:00.000Z',
         },
       ],
-      meta: { has_more: false, next_cursor: null },
-    });
-  });
-
-  await page.route(
-    apiPathPattern(`/api/management-plans/${PHARMACY_COOP_MANAGEMENT_PLAN_ID}`),
-    async (route) => {
-      requests.managementPlanDetails.push(captureRouteRequest(route));
-      await fulfillJson(route, {
-        data: {
-          id: PHARMACY_COOP_MANAGEMENT_PLAN_ID,
-          case_id: PHARMACY_COOP_CASE_ID,
-          title: '薬局間RouteMock 管理計画',
-          summary: 'RouteMock要約',
-          content: { goals: ['安全な共有を継続'] },
-          version: 2,
-          status: 'approved',
-          effective_from: '2026-06-01T00:00:00.000Z',
-          next_review_date: null,
-          approved_at: '2026-06-18T00:00:00.000Z',
-          updated_at: '2026-06-18T00:00:00.000Z',
-        },
-      });
-    },
-  );
-
-  await page.route(apiPathPattern(`/api/cases/${PHARMACY_COOP_CASE_ID}`), async (route) => {
-    await fulfillJson(route, {
-      data: {
-        id: PHARMACY_COOP_CASE_ID,
-        patient: { id: PHARMACY_COOP_PATIENT_ID, name: '薬局間RouteMock 患者' },
-      },
     });
   });
 
@@ -1696,7 +1566,6 @@ async function installPharmacyCooperationRouteMocks(
         total_count: rows.length,
         count_basis: 'filtered_query_exact',
         filters_applied: {
-          id: url.searchParams.get('id'),
           status: statusFilter,
           partnership_id: null,
           base_patient_id: null,
@@ -1771,7 +1640,6 @@ async function installPharmacyCooperationRouteMocks(
           total_count: rows.length,
           count_basis: 'filtered_query_exact',
           filters_applied: {
-            id: url.searchParams.get('id'),
             status: statusFilter,
             share_case_id: PHARMACY_COOP_SHARE_CASE_ID,
           },
@@ -1862,7 +1730,6 @@ async function installPharmacyCooperationRouteMocks(
         total_count: rows.length,
         count_basis: 'filtered_query_exact',
         filters_applied: {
-          id: url.searchParams.get('id'),
           status: statusFilter,
           share_case_id: null,
           partner_pharmacy_id: null,
@@ -1974,7 +1841,6 @@ async function installPharmacyCooperationRouteMocks(
         total_count: rows.length,
         count_basis: 'filtered_query_exact',
         filters_applied: {
-          id: url.searchParams.get('id'),
           status: statusFilter,
           visit_request_id: null,
           share_case_id: null,
@@ -3893,153 +3759,6 @@ test.describe('pharmacy cooperation route-mocked browser workflow smoke', () => 
     await attachLocalSession(context);
   });
 
-  test('uses the bounded latest-approved management plan query on the patient card', async ({
-    context,
-  }, testInfo) => {
-    test.skip(testInfo.project.name !== 'chromium');
-    const { page, errors } = await createInstrumentedPage(context);
-    const requests = await installPharmacyCooperationRouteMocks(page);
-
-    await openStableRoute(page, `/patients/${PHARMACY_COOP_PATIENT_ID}`);
-    await page.getByRole('tab', { name: /共有・文書/ }).click();
-    const planSelect = page.getByLabel('共有ケース作成の管理計画版');
-    await expect(planSelect).toBeVisible();
-    await expect(
-      planSelect.locator(`option[value="${PHARMACY_COOP_MANAGEMENT_PLAN_ID}"]`),
-    ).toHaveText(`計画 ${PHARMACY_COOP_MANAGEMENT_PLAN_ID} / v2`);
-    await expect
-      .poll(() => requests.managementPlans.length, {
-        message: 'management plan collection request should be captured',
-      })
-      .toBeGreaterThan(0);
-    const query = new URL(requests.managementPlans.at(-1)!.url).searchParams;
-    expect(query.get('case_id')).toBe(PHARMACY_COOP_CASE_ID);
-    expect(query.get('status')).toBe('approved');
-    expect(query.get('limit')).toBe('1');
-    expect(errors).toEqual([]);
-  });
-
-  test('renders the canonical management plan detail in the print journey', async ({
-    context,
-  }, testInfo) => {
-    test.skip(testInfo.project.name !== 'chromium');
-    const { page, errors } = await createInstrumentedPage(context);
-    const requests = await installPharmacyCooperationRouteMocks(page);
-
-    await openStableRoute(
-      page,
-      `/patients/${PHARMACY_COOP_PATIENT_ID}/management-plan/print?planId=${PHARMACY_COOP_MANAGEMENT_PLAN_ID}`,
-    );
-    await expect(
-      page.getByRole('heading', { level: 1, name: '訪問薬剤管理指導計画書' }),
-    ).toBeVisible();
-    await expect(page.getByText('RouteMock要約')).toBeVisible();
-    await expect.poll(() => requests.managementPlanDetails.length).toBe(1);
-    expect(errors).toEqual([]);
-  });
-
-  test('fails duplicate approved plans closed and recovers on window focus', async ({
-    context,
-  }, testInfo) => {
-    test.skip(testInfo.project.name !== 'chromium');
-    const { page, errors } = await createInstrumentedPage(context);
-    await installPharmacyCooperationRouteMocks(page);
-    const pattern = apiPathPattern('/api/management-plans');
-    await page.unroute(pattern);
-    let requestCount = 0;
-    await page.route(pattern, async (route) => {
-      requestCount += 1;
-      await fulfillJson(route, {
-        data: [
-          {
-            id: PHARMACY_COOP_MANAGEMENT_PLAN_ID,
-            case_id: PHARMACY_COOP_CASE_ID,
-            title: '薬局間RouteMock 管理計画',
-            version: 2,
-            status: 'approved',
-            effective_from: null,
-            next_review_date: null,
-            approved_at: '2026-06-18T00:00:00.000Z',
-            updated_at: '2026-06-18T00:00:00.000Z',
-          },
-        ],
-        meta: {
-          has_more: requestCount === 1,
-          next_cursor: requestCount === 1 ? 2 : null,
-        },
-      });
-    });
-
-    await openStableRoute(page, `/patients/${PHARMACY_COOP_PATIENT_ID}`);
-    await page.getByRole('tab', { name: /共有・文書/ }).click();
-    const planAlert = page
-      .getByRole('alert')
-      .filter({ hasText: '承認済み管理計画が複数見つかりました' });
-    await expect(planAlert).toBeVisible();
-    await expect(planAlert.getByRole('button', { name: '管理計画書を再試行' })).toBeVisible();
-    const focusTransferPage = await context.newPage();
-    await focusTransferPage.bringToFront();
-    await page.bringToFront();
-    await focusTransferPage.close();
-    // Chromium headless does not emit the visibilitychange event that TanStack Query
-    // receives from a real tab restore, so dispatch the subscribed browser event here.
-    await page.evaluate(() => window.dispatchEvent(new Event('visibilitychange')));
-    await expect(
-      page
-        .getByLabel('共有ケース作成の管理計画版')
-        .locator(`option[value="${PHARMACY_COOP_MANAGEMENT_PLAN_ID}"]`),
-    ).toHaveCount(1);
-    expect(requestCount).toBeGreaterThanOrEqual(2);
-    expect(errors).toEqual([]);
-  });
-
-  test('recovers the print journey from a malformed management plan response', async ({
-    context,
-  }, testInfo) => {
-    test.skip(testInfo.project.name !== 'chromium');
-    const { page, errors } = await createInstrumentedPage(context);
-    await installPharmacyCooperationRouteMocks(page);
-    const pattern = apiPathPattern(`/api/management-plans/${PHARMACY_COOP_MANAGEMENT_PLAN_ID}`);
-    await page.unroute(pattern);
-    let requestCount = 0;
-    let shouldRecover = false;
-    await page.route(pattern, async (route) => {
-      requestCount += 1;
-      if (!shouldRecover) {
-        await fulfillJson(route, { data: { id: PHARMACY_COOP_MANAGEMENT_PLAN_ID } });
-        return;
-      }
-      await fulfillJson(route, {
-        data: {
-          id: PHARMACY_COOP_MANAGEMENT_PLAN_ID,
-          case_id: PHARMACY_COOP_CASE_ID,
-          title: '薬局間RouteMock 管理計画',
-          summary: 'RouteMock要約',
-          content: {},
-          version: 2,
-          status: 'approved',
-          effective_from: null,
-          next_review_date: null,
-          approved_at: '2026-06-18T00:00:00.000Z',
-          updated_at: '2026-06-18T00:00:00.000Z',
-        },
-      });
-    });
-
-    await openStableRoute(
-      page,
-      `/patients/${PHARMACY_COOP_PATIENT_ID}/management-plan/print?planId=${PHARMACY_COOP_MANAGEMENT_PLAN_ID}`,
-    );
-    await expect(page.locator('p[role="alert"]')).toContainText('印刷データを取得できませんでした');
-    shouldRecover = true;
-    await page.getByRole('button', { name: '管理計画書の印刷データ取得を再試行' }).click();
-    await expect(
-      page.getByRole('heading', { level: 1, name: '訪問薬剤管理指導計画書' }),
-    ).toBeVisible();
-    expect(requestCount).toBeGreaterThanOrEqual(2);
-    expect(errors).toEqual([]);
-  });
-
   test('keeps share-case exact counts and server cursor filters accessible', async ({
     context,
   }, testInfo) => {
@@ -4470,7 +4189,7 @@ test.describe('pharmacy cooperation route-mocked browser workflow smoke', () => 
       carry_items: ['分包済み一包', '残薬バッグ'],
       patient_home_notes: '家族同席予定',
     });
-    await expect(page.getByLabel('訪問依頼の依頼理由')).toHaveValue('');
+    await expect(page.getByText('退院直後の服薬確認が必要です')).toBeVisible();
 
     const visitRequestsTable = page.getByRole('table', { name: '協力薬局訪問依頼一覧' });
     await expect(

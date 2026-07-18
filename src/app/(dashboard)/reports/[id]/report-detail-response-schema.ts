@@ -75,10 +75,8 @@ export const externalProfessionalSuggestionsResponseSchema = z
   .superRefine(({ data }, context) => {
     if (new Set(data.map((item) => item.id)).size !== data.length)
       context.addIssue({ code: 'custom', message: 'External professional identity drift' });
-    const primaryProfessions = data
-      .filter((item) => item.is_primary)
-      .map((item) => item.profession_type);
-    if (new Set(primaryProfessions).size !== primaryProfessions.length)
+    const primaryCount = data.filter((item) => item.is_primary).length;
+    if (primaryCount > 1)
       context.addIssue({ code: 'custom', message: 'Multiple primary professionals' });
   })
   .transform(({ data }): { data: ExternalProfessionalSuggestion[] } => ({

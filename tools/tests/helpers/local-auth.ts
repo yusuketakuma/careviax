@@ -2,9 +2,11 @@ import { encode } from 'next-auth/jwt';
 import type { BrowserContext, Page } from '@playwright/test';
 import type { MemberRole } from '@prisma/client';
 import { Client } from 'pg';
-import { localPlaywrightDatabaseConnectionString } from './e2e-database-target';
 
 export const AUTH_SECRET = 'ph-os-local-auth-secret';
+const DB_CONNECTION_STRING = (
+  process.env.DATABASE_URL ?? 'postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public'
+).replace(/\?.*$/, '');
 const NOTIFICATION_STREAM_PATH = '/api/notifications/stream';
 type LocalSessionIdentity = {
   userId: string;
@@ -22,6 +24,19 @@ export const LOCAL_USER = {
   cognitoSub: 'demo-cognito-sub-001',
   sessionVersion: 0,
 };
+
+function assertSafeE2eDatabase() {
+  if (process.env.PLAYWRIGHT !== '1' && process.env.PLAYWRIGHT_REUSE_SERVER !== '1') {
+    throw new Error('Playwright local auth requires PLAYWRIGHT=1 or PLAYWRIGHT_REUSE_SERVER=1');
+  }
+
+  const url = new URL(DB_CONNECTION_STRING);
+  const databaseName = url.pathname.replace(/^\//, '');
+  const isLocalHost = ['localhost', '127.0.0.1', '::1'].includes(url.hostname);
+  if (!isLocalHost || databaseName !== 'ph_os_e2e') {
+    throw new Error('Playwright local auth requires a local ph_os_e2e DATABASE_URL');
+  }
+}
 
 export function shouldIgnoreConsoleError(message: string) {
   const normalized = message.trim();
@@ -60,8 +75,9 @@ async function resolveLocalSessionIdentity() {
     return cachedLocalSessionIdentity;
   }
 
-  const connectionString = localPlaywrightDatabaseConnectionString('Playwright local auth');
-  const client = new Client({ connectionString });
+  assertSafeE2eDatabase();
+
+  const client = new Client({ connectionString: DB_CONNECTION_STRING });
   await client.connect();
 
   try {

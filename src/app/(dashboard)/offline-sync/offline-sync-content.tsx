@@ -124,10 +124,9 @@ export function OfflineSyncContent() {
     };
   }, [pendingQueue]);
 
-  // 撮影・動作確認用のデモ注入(dev または明示的なローカル E2E 限定)
+  // 撮影・動作確認用のデモ注入(dev 限定)
   React.useEffect(() => {
-    if (process.env.NODE_ENV === 'production' && process.env.NEXT_PUBLIC_ENABLE_E2E_DEMO !== '1')
-      return;
+    if (process.env.NODE_ENV === 'production') return;
     let active = true;
     const target = window;
     target.__phosSeedOfflineSyncDemo = async (mode?: 'queue' | 'conflict') => {

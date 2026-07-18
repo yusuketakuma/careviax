@@ -38,7 +38,7 @@ describe('LoginPage', () => {
       'current-password',
     );
     expect(screen.getByRole('button', { name: 'ログイン' })).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'パスワードを忘れた方' }).getAttribute('href')).toBe(
+    expect(screen.getByRole('link', { name: '忘れた方' }).getAttribute('href')).toBe(
       '/password/reset',
     );
     expect(

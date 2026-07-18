@@ -107,7 +107,7 @@ describe('visit record detail response schema', () => {
           confirmed: 0,
           excluded: 0,
           exported: 0,
-          reviewed: 0,
+          unresolved: 1,
           ready_to_close: 0,
           blocked_from_close: 1,
           blocker_reasons: [],
@@ -157,7 +157,6 @@ describe('visit record detail response schema', () => {
   it('projects the visit preparation fields consumed by detail readiness', () => {
     const parsed = buildVisitPreparationDetailResponseSchema('schedule_1').safeParse({
       data: {
-        preparation: null,
         pack: {
           care_team: [],
           billing_blockers: [],
