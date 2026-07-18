@@ -2031,7 +2031,7 @@
   ],
   "expected_prisma_accesses": [
     "prisma/seed-design-demo.ts|careCase|upsert|dot|2",
-    "prisma/seed-design-demo.ts|careReport|upsert|dot|2",
+    "prisma/seed-design-demo.ts|careReport|upsert|dot|3",
     "prisma/seed-design-demo.ts|dispenseResult|upsert|dot|1",
     "prisma/seed-design-demo.ts|medicationCycle|upsert|dot|3",
     "prisma/seed-design-demo.ts|patient|upsert|dot|4",
@@ -2052,9 +2052,6 @@
     "src/app/api/admin/metrics/route.ts|prescriptionIntake|groupBy|dot|1",
     "src/app/api/admin/metrics/route.ts|prescriptionLine|count|dot|2",
     "src/app/api/admin/metrics/route.ts|visitRecord|count|dot|1",
-    "src/app/api/admin/operations-insights/route.ts|careReport|findMany|dot|1",
-    "src/app/api/admin/operations-insights/route.ts|prescriptionIntake|findMany|dot|1",
-    "src/app/api/admin/operations-insights/route.ts|visitRecord|findMany|dot|2",
     "src/app/api/admin/pharmacist-credentials/route.ts|visitSchedule|findMany|dot|1",
     "src/app/api/admin/staff-metrics/route.ts|careReport|findMany|dot|1",
     "src/app/api/admin/staff-metrics/route.ts|visitRecord|findMany|dot|1",
@@ -2103,7 +2100,6 @@
     "src/app/api/care-reports/today-workspace/route.ts|patient|findMany|dot|1",
     "src/app/api/care-reports/today-workspace/route.ts|visitSchedule|findMany|dot|1",
     "src/app/api/cases/[id]/risk-cockpit/tasks/[taskId]/resolution/route.ts|careCase|findFirst|dot|1",
-    "src/app/api/cases/[id]/risk-cockpit/tasks/[taskId]/resolution/route.ts|task|findFirst|dot|1",
     "src/app/api/cases/[id]/route.ts|careCase|findFirst|dot|3",
     "src/app/api/cases/[id]/route.ts|careCase|updateMany|dot|1",
     "src/app/api/cases/[id]/transition/route.ts|careCase|findFirst|dot|2",
@@ -2176,7 +2172,7 @@
     "src/app/api/inquiry-records/route.ts|medicationCycle|findFirst|dot|1",
     "src/app/api/inquiry-records/route.ts|medicationCycle|update|dot|1",
     "src/app/api/inquiry-records/route.ts|prescriptionLine|findFirst|dot|1",
-    "src/app/api/management-plans/route.ts|careCase|findFirst|dot|1",
+    "src/app/api/management-plans/route.ts|careCase|findFirst|dot|2",
     "src/app/api/me/activity-summary/route.ts|visitRecord|count|dot|2",
     "src/app/api/me/activity-summary/route.ts|visitSchedule|count|dot|2",
     "src/app/api/me/sites/route.ts|visitSchedule|groupBy|dot|1",
@@ -2248,6 +2244,7 @@
     "src/app/api/pharmacy-drug-stocks/history/route.ts|auditLog|findMany|dot|1",
     "src/app/api/platform/tenants/[orgId]/audit/route.ts|auditLog|findMany|dot|1",
     "src/app/api/prescriber-institutions/[id]/route.ts|prescriptionIntake|updateMany|dot|1",
+    "src/app/api/prescription-intakes/[id]/medication-stock/retry/route.ts|prescriptionIntake|findFirst|dot|1",
     "src/app/api/prescription-intakes/[id]/route.ts|prescriptionIntake|findFirst|dot|2",
     "src/app/api/prescription-intakes/[id]/route.ts|prescriptionIntake|update|dot|1",
     "src/app/api/prescription-intakes/facility-batch/route.ts|careCase|findMany|dot|1",
@@ -2274,6 +2271,9 @@
     "src/app/api/settings/operational-policy/route.ts|auditLog|count|dot|1",
     "src/app/api/staff-workload/route.ts|task|groupBy|dot|1",
     "src/app/api/staff-workload/route.ts|visitSchedule|findMany|dot|1",
+    "src/app/api/tasks/[id]/prescription-supply/resolve/route.ts|patient|findFirst|dot|1",
+    "src/app/api/tasks/[id]/prescription-supply/resolve/route.ts|prescriptionLine|findFirst|dot|2",
+    "src/app/api/tasks/[id]/prescription-supply/resolve/route.ts|task|findFirst|dot|2",
     "src/app/api/tasks/[id]/route.ts|task|findFirst|dot|1",
     "src/app/api/tasks/[id]/route.ts|task|findUnique|dot|1",
     "src/app/api/tasks/[id]/route.ts|task|updateMany|dot|1",
@@ -2384,7 +2384,8 @@
     "src/modules/pharmacy/medication-stock/application/apply-inbound-medication-stock-signal.ts|task|updateMany|dot|1",
     "src/modules/pharmacy/medication-stock/application/apply-prescription-supply.ts|medicationStockEvent|create|dot|1",
     "src/modules/pharmacy/medication-stock/application/apply-prescription-supply.ts|medicationStockEvent|findFirst|dot|1",
-    "src/modules/pharmacy/medication-stock/application/apply-prescription-supply.ts|patientMedicationStockItem|findMany|dot|1",
+    "src/modules/pharmacy/medication-stock/application/apply-prescription-supply.ts|patientMedicationStockItem|create|dot|1",
+    "src/modules/pharmacy/medication-stock/application/apply-prescription-supply.ts|patientMedicationStockItem|findMany|dot|2",
     "src/modules/pharmacy/medication-stock/application/apply-prescription-supply.ts|prescriptionIntake|findFirst|dot|1",
     "src/modules/pharmacy/medication-stock/application/apply-visit-medication-stock-observation.ts|medicationStockEvent|create|dot|1",
     "src/modules/pharmacy/medication-stock/application/apply-visit-medication-stock-observation.ts|medicationStockEvent|findMany|dot|1",
@@ -2406,13 +2407,14 @@
     "src/server/collaboration/core-access-providers.ts|careReport|findFirst|dot|2",
     "src/server/collaboration/core-access-providers.ts|patient|findFirst|dot|1",
     "src/server/collaboration/core-access-providers.ts|visitRecord|findFirst|dot|1",
-    "src/server/jobs/daily-helpers.ts|task|findMany|dot|1",
+    "src/server/jobs/daily-helpers.ts|task|findMany|dot|2",
     "src/server/jobs/daily-helpers.ts|task|updateMany|dot|1",
     "src/server/jobs/daily-prescription-original-retention.ts|prescriptionIntake|findMany|dot|2",
     "src/server/jobs/daily/billing.ts|visitRecord|findMany|dot|1",
     "src/server/jobs/daily/case-risk-tasks.ts|careCase|findMany|dot|1",
     "src/server/jobs/daily/conferences.ts|careCase|findMany|dot|1",
     "src/server/jobs/daily/followups.ts|patient|findMany|dot|1",
+    "src/server/jobs/daily/patient-status.ts|patient|findMany|dot|1",
     "src/server/jobs/daily/preparation.ts|visitSchedule|findMany|dot|3",
     "src/server/jobs/daily/prescriptions.ts|prescriptionIntake|findMany|dot|3",
     "src/server/jobs/daily/prescriptions.ts|visitSchedule|findMany|dot|1",
@@ -2641,8 +2643,7 @@
     "src/server/services/standard-clinical-sync-queue.ts|clinicalFhirResourceCache|findFirst|dot|1",
     "src/server/services/standard-clinical-sync-queue.ts|clinicalProvenanceRecord|createMany|dot|1",
     "src/server/services/standard-clinical-sync-queue.ts|clinicalSyncQueueItem|findMany|dot|1",
-    "src/server/services/standard-clinical-sync-queue.ts|clinicalSyncQueueItem|update|dot|3",
-    "src/server/services/standard-clinical-sync-queue.ts|clinicalSyncQueueItem|updateMany|dot|1",
+    "src/server/services/standard-clinical-sync-queue.ts|clinicalSyncQueueItem|updateMany|dot|4",
     "src/server/services/standard-clinical-sync-queue.ts|medicationTimelineItem|upsert|dot|1",
     "src/server/services/standard-medication-timeline.ts|medicationTimelineItem|findMany|dot|1",
     "src/server/services/task-write-guard.ts|careCase|findFirst|dot|1",
@@ -2694,6 +2695,8 @@
     "src/server/services/workflow-dashboard-queries.ts|visitSchedule|findMany|dot|3"
   ],
   "expected_raw_sql_accesses": [
+    "src/app/api/admin/operations-insights/route.ts|CareReport|CareReport|queryRaw|read|1",
+    "src/app/api/admin/operations-insights/route.ts|VisitRecord|VisitRecord|queryRaw|read|3",
     "src/app/api/care-reports/route.ts|VisitRecord|VisitRecord|queryRaw|read|1",
     "src/app/api/dispense-results/route.ts|MedicationCycle|MedicationCycle|queryRaw|read|1",
     "src/app/api/staff-workload/route.ts|Task|Task|queryRaw|read|1",
@@ -2846,6 +2849,20 @@
       "template_sha256": "92e3c7593bcc20087527e9e27f5cb5476176a1d9829f05628362677ca2d49eff",
       "classification": "advisory_lock",
       "reason": "The PostgreSQL transaction advisory lock does not access an application table.",
+      "expected_count": 1,
+      "disposition": "owner_review_required",
+      "owner_review": {
+        "status": "pending",
+        "reason": "Deletion-excluded raw SQL requires owner review before FHIR hard cutover."
+      }
+    },
+    {
+      "id": "raw-exclusion:advisory-lock:transaction-try-lock",
+      "path": "src/lib/db/advisory-lock.ts",
+      "api": "queryRaw",
+      "template_sha256": "479b767c84d6fb7c63216fc87901e038151fdde1ed590db0009e04a9f599a874",
+      "classification": "advisory_lock",
+      "reason": "The PostgreSQL non-blocking transaction advisory lock does not access an application table.",
       "expected_count": 1,
       "disposition": "owner_review_required",
       "owner_review": {
@@ -3275,5 +3292,5 @@
       "disposition": "replace_at_cutover"
     }
   ],
-  "expected_inventory_sha256": "f5b06b151de21421a257c91fea5b3ad63e2ed62ff75818b8cf2b26b1bc2e0346"
+  "expected_inventory_sha256": "2346544544977ad3522d1257c78515460a571dfb98a937109d72584976d57b28"
 }
