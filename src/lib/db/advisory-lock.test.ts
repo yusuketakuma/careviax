@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { Prisma } from '@prisma/client';
-import { acquireAdvisoryTxLock, advisoryLockKeyPair } from './advisory-lock';
+import {
+  acquireAdvisoryTxLock,
+  advisoryLockKeyPair,
+  tryAcquireAdvisoryTxLock,
+} from './advisory-lock';
 
 describe('advisoryLockKeyPair', () => {
   it('derives a deterministic signed int32 pair from namespace + key', () => {
@@ -37,5 +41,23 @@ describe('acquireAdvisoryTxLock', () => {
     expect(sql.values).toEqual(
       advisoryLockKeyPair('business_holiday_dedup', 'org_1::2026-03-30:site_closure'),
     );
+  });
+});
+
+describe('tryAcquireAdvisoryTxLock', () => {
+  it.each([
+    [[{ acquired: true }], true],
+    [[{ acquired: false }], false],
+    [[], false],
+  ] as const)('returns the non-blocking PostgreSQL lock result', async (rows, expected) => {
+    const queryRaw = vi.fn().mockResolvedValue(rows);
+    const tx = { $queryRaw: queryRaw } as unknown as Prisma.TransactionClient;
+
+    await expect(
+      tryAcquireAdvisoryTxLock(tx, 'management-plan-case', 'org_1:case_1'),
+    ).resolves.toBe(expected);
+    const sql = queryRaw.mock.calls[0][0] as { strings: string[]; values: unknown[] };
+    expect(sql.strings.join('?')).toContain('pg_try_advisory_xact_lock');
+    expect(sql.values).toEqual(advisoryLockKeyPair('management-plan-case', 'org_1:case_1'));
   });
 });

@@ -2,6 +2,7 @@ import { Prisma, type PrismaClient } from '@prisma/client';
 import { getRequestAuthContext, type RequestAuthContext } from '@/lib/auth/request-context';
 import { prisma } from './client';
 import { logSecurityEvent } from '@/lib/auth/security-events';
+import { isValidRequestTraceId } from '@/lib/api/request-correlation';
 
 const SAFE_APP_ID_PATTERN = /^[a-z][a-z0-9_-]{2,63}$/;
 const RLS_CONTEXT_SETTINGS = [
@@ -19,6 +20,20 @@ const RLS_CONTEXT_SETTINGS = [
   ],
   ['app.current_ip_address', (context: AppliedRlsContext) => context.requestContext?.ipAddress],
   ['app.current_user_agent', (context: AppliedRlsContext) => context.requestContext?.userAgent],
+  [
+    'app.current_request_id',
+    (context: AppliedRlsContext) => {
+      const value = context.requestContext?.requestId;
+      return value && isValidRequestTraceId(value) ? value : undefined;
+    },
+  ],
+  [
+    'app.current_correlation_id',
+    (context: AppliedRlsContext) => {
+      const value = context.requestContext?.correlationId;
+      return value && isValidRequestTraceId(value) ? value : undefined;
+    },
+  ],
 ] as const;
 
 type AppliedRlsContext = {

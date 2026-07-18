@@ -81,14 +81,6 @@
       "plannedAction": "Move response through an intervention presenter."
     },
     {
-      "path": "src/app/api/management-plans/[id]/route.ts",
-      "expectedCount": 1,
-      "owner": "API-DTO-001",
-      "debtId": "DTO-DIRECT-012",
-      "reason": "Existing PATCH path returns a Prisma management plan row directly through success().",
-      "plannedAction": "Move response through a management plan presenter."
-    },
-    {
       "path": "src/app/api/patient-share-cases/route.ts",
       "expectedCount": 1,
       "owner": "API-DTO-001",

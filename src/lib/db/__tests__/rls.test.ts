@@ -131,7 +131,7 @@ describe('withOrgContext', () => {
         }),
       );
       expect(logSecurityEventMock.mock.calls[0]?.[0]).not.toHaveProperty('org_id');
-      expect(mockClient.mockExecuteRaw).toHaveBeenCalledTimes(8);
+      expect(mockClient.mockExecuteRaw).toHaveBeenCalledTimes(10);
       expect(mockClient.mockExecuteRaw.mock.calls.map(([query]) => query.values)).toEqual([
         ['app.current_org_id', validCuid],
         ['app.rls_context_applied', 'true'],
@@ -141,6 +141,8 @@ describe('withOrgContext', () => {
         ['app.current_actor_site_id', ''],
         ['app.current_ip_address', ''],
         ['app.current_user_agent', ''],
+        ['app.current_request_id', ''],
+        ['app.current_correlation_id', ''],
       ]);
     });
 
@@ -153,6 +155,8 @@ describe('withOrgContext', () => {
         actorSiteId: 'site_1',
         ipAddress: '203.0.113.10',
         userAgent: 'Vitest Browser',
+        requestId: 'req_12345678',
+        correlationId: 'cor_12345678',
       });
 
       await withOrgContext(validCuid, async () => null);
@@ -166,6 +170,8 @@ describe('withOrgContext', () => {
         ['app.current_actor_site_id', 'site_1'],
         ['app.current_ip_address', '203.0.113.10'],
         ['app.current_user_agent', 'Vitest Browser'],
+        ['app.current_request_id', 'req_12345678'],
+        ['app.current_correlation_id', 'cor_12345678'],
       ]);
     });
 

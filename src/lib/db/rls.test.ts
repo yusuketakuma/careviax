@@ -78,8 +78,8 @@ describe('createScopedTxRunner', () => {
       timeout: 3000,
       maxWait: 2000,
     });
-    // applyRlsContext ran on fakeTx: the 8 set_config writes (one per RLS setting)
-    expect(executeRawSpy).toHaveBeenCalledTimes(8);
+    // applyRlsContext ran on fakeTx: the 10 set_config writes (one per RLS setting)
+    expect(executeRawSpy).toHaveBeenCalledTimes(10);
     // a valid request context means no rls_context_missing security event
     expect(logSecurityEventMock).not.toHaveBeenCalled();
   });
@@ -101,7 +101,7 @@ describe('createScopedTxRunner', () => {
         details: { reason: 'request_context_missing' },
       }),
     );
-    expect(executeRawSpy).toHaveBeenCalledTimes(8);
+    expect(executeRawSpy).toHaveBeenCalledTimes(10);
   });
 
   it('rejects an orgId that fails the safe-app-id guard before opening a transaction', () => {

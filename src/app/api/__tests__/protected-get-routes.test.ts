@@ -1200,6 +1200,7 @@ const routes: Array<{ name: string; handler: Handler; setupSuccess?: () => void 
         createRequest('http://localhost/api/management-plans?case_id=case_1', {
           'x-org-id': 'org_1',
         }),
+        { params: Promise.resolve({}) },
       ),
   },
   {
@@ -2038,6 +2039,20 @@ const routes: Array<{ name: string; handler: Handler; setupSuccess?: () => void 
 describe('protected GET routes auth matrix', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    txMock.managementPlan.findFirst.mockResolvedValue({
+      id: 'plan_1',
+      case_id: 'case_1',
+      title: '管理計画',
+      summary: null,
+      content: {},
+      status: 'draft',
+      version: 1,
+      effective_from: null,
+      next_review_date: null,
+      approved_at: null,
+      updated_at: new Date('2026-06-18T00:00:00.000Z'),
+      case_: { patient_id: 'patient_1' },
+    });
     patientVisitBriefMock.mockResolvedValue({
       patient: { id: 'patient_1', name: '患者A' },
       context: 'patient',

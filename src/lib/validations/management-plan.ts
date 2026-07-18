@@ -1,17 +1,19 @@
 import { z } from 'zod';
 import { dateKeyPattern, isValidDateKey } from '@/lib/validations/date-key';
 
+const boundedSectionArraySchema = z.array(z.string().max(1_000)).max(100);
+
 export const managementPlanContentSchema = z
   .object({
-    goals: z.array(z.string()).optional(), // 薬学的ケア目標
-    problems: z.array(z.string()).optional(), // 薬学的課題
-    interventions: z.array(z.string()).optional(), // 介入計画
-    monitoring: z.array(z.string()).optional(), // モニタリング項目
-    collaboration: z.array(z.string()).optional(), // 多職種連携事項
-    patient_education: z.array(z.string()).optional(), // 患者教育・指導
-    notes: z.string().optional(), // 特記事項
+    goals: boundedSectionArraySchema.optional(), // 薬学的ケア目標
+    problems: boundedSectionArraySchema.optional(), // 薬学的課題
+    interventions: boundedSectionArraySchema.optional(), // 介入計画
+    monitoring: boundedSectionArraySchema.optional(), // モニタリング項目
+    collaboration: boundedSectionArraySchema.optional(), // 多職種連携事項
+    patient_education: boundedSectionArraySchema.optional(), // 患者教育・指導
+    notes: z.string().max(10_000).optional(), // 特記事項
   })
-  .catchall(z.unknown());
+  .strict();
 
 export type ManagementPlanContent = z.infer<typeof managementPlanContentSchema>;
 
@@ -49,15 +51,14 @@ export function sortedManagementPlanSections(
   return [...ordered, ...extra];
 }
 
-const contentSchema = z.record(z.string(), z.unknown()).default({});
-
-const requiredTrimmedStringSchema = (message: string) => z.string().trim().min(1, message);
+const requiredTrimmedStringSchema = (message: string, max: number) =>
+  z.string().trim().min(1, message).max(max);
 
 const optionalTrimmedStringSchema = z.preprocess((value) => {
   if (typeof value !== 'string') return value;
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;
-}, z.string().nullable().optional());
+}, z.string().max(4_000).nullable().optional());
 
 const optionalDateStringSchema = (fieldName: string) =>
   z.preprocess(
@@ -98,31 +99,46 @@ export function isManagementPlanDateRangeValid(args: {
 
 export const createManagementPlanSchema = z
   .object({
-    case_id: requiredTrimmedStringSchema('ケースIDは必須です'),
-    title: requiredTrimmedStringSchema('タイトルは必須です').default('訪問薬剤管理指導計画書'),
+    case_id: requiredTrimmedStringSchema('ケースIDは必須です', 200),
+    title: requiredTrimmedStringSchema('タイトルは必須です', 200).default('訪問薬剤管理指導計画書'),
     summary: optionalTrimmedStringSchema,
-    content: contentSchema,
+    content: managementPlanContentSchema.default({}),
     effective_from: optionalDateStringSchema('effective_from'),
     next_review_date: optionalDateStringSchema('next_review_date'),
-    source_plan_id: optionalTrimmedStringSchema,
+    source_plan_id: z.string().trim().min(1).max(200).nullable().optional(),
+    expected_latest_version: z.number().int().min(0).max(2_147_483_647),
   })
+  .strict()
   .superRefine(addDateRangeIssue);
 
 export const updateManagementPlanSchema = z.discriminatedUnion('action', [
   z
     .object({
       action: z.literal('update'),
-      title: requiredTrimmedStringSchema('タイトルは必須です').optional(),
+      title: requiredTrimmedStringSchema('タイトルは必須です', 200).optional(),
       summary: optionalTrimmedStringSchema,
-      content: contentSchema.optional(),
+      content: managementPlanContentSchema.optional(),
       effective_from: optionalDateStringSchema('effective_from'),
       next_review_date: optionalDateStringSchema('next_review_date'),
+      expected_updated_at: z.string().datetime({ offset: true }),
     })
-    .superRefine(addDateRangeIssue),
-  z.object({
-    action: z.literal('approve'),
-  }),
-  z.object({
-    action: z.literal('archive'),
-  }),
+    .strict()
+    .superRefine((data, ctx) => {
+      addDateRangeIssue(data, ctx);
+      if (
+        data.title === undefined &&
+        data.summary === undefined &&
+        data.content === undefined &&
+        data.effective_from === undefined &&
+        data.next_review_date === undefined
+      ) {
+        ctx.addIssue({ code: 'custom', message: '更新項目を1つ以上指定してください' });
+      }
+    }),
+  z
+    .object({
+      action: z.literal('archive'),
+      expected_updated_at: z.string().datetime({ offset: true }),
+    })
+    .strict(),
 ]);

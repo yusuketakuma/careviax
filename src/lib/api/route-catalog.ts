@@ -1137,9 +1137,16 @@ export const routeCatalog: RouteCatalogEntry[] = [
   },
   {
     path: '/api/management-plans',
-    methods: ['GET', 'POST'],
+    methods: ['GET'],
+    permission: 'canViewDashboard',
+    description: 'ケース単位の管理計画書一覧取得',
+    area: 'patients',
+  },
+  {
+    path: '/api/management-plans',
+    methods: ['POST'],
     permission: 'canVisit',
-    description: '管理計画書一覧取得・作成',
+    description: '管理計画書下書き作成',
     area: 'patients',
   },
   {
@@ -1153,7 +1160,7 @@ export const routeCatalog: RouteCatalogEntry[] = [
     path: '/api/management-plans/:id',
     methods: ['PATCH'],
     permission: 'canVisit',
-    description: '管理計画書更新・承認・アーカイブ',
+    description: '管理計画書下書き更新・アーカイブ（承認は安全審査完了まで停止）',
     area: 'patients',
   },
   {

@@ -1,565 +1,323 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { NextRequest } from 'next/server';
-import { Prisma } from '@prisma/client';
+import { NextRequest, NextResponse } from 'next/server';
 import { expectSensitiveNoStore } from '@/test/api-response-assertions';
 
-const {
-  requireAuthContextMock,
-  managementPlanFindManyMock,
-  careCaseFindManyMock,
-  careCaseFindFirstMock,
-  managementPlanFindFirstMock,
-  managementPlanCreateMock,
-  withOrgContextMock,
-} = vi.hoisted(() => ({
-  requireAuthContextMock: vi.fn(),
-  managementPlanFindManyMock: vi.fn(),
-  careCaseFindManyMock: vi.fn(),
-  careCaseFindFirstMock: vi.fn(),
-  managementPlanFindFirstMock: vi.fn(),
-  managementPlanCreateMock: vi.fn(),
-  withOrgContextMock: vi.fn(),
+const mocks = vi.hoisted(() => ({
+  requireAuthContext: vi.fn(),
+  withOrgContext: vi.fn(),
+  acquireLock: vi.fn(),
+  createAudit: vi.fn(),
+  careCaseFindFirst: vi.fn(),
+  planFindMany: vi.fn(),
+  planFindFirst: vi.fn(),
+  planCreate: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
-  requireAuthContext: requireAuthContextMock,
+  withAuthContext:
+    (handler: (...args: unknown[]) => Promise<NextResponse>, options: object) =>
+    async (req: NextRequest, routeContext = { params: Promise.resolve({}) }) => {
+      const auth = await mocks.requireAuthContext(req, options);
+      if ('response' in auth) return auth.response;
+      try {
+        const response = await handler(req, auth.ctx, routeContext);
+        response.headers.set('cache-control', 'private, no-store, max-age=0');
+        response.headers.set('pragma', 'no-cache');
+        return response;
+      } catch {
+        return NextResponse.json(
+          { code: 'INTERNAL_ERROR', message: '内部エラーが発生しました' },
+          { status: 500, headers: { 'cache-control': 'private, no-store, max-age=0' } },
+        );
+      }
+    },
 }));
 
-vi.mock('@/lib/db/client', () => ({
-  prisma: {
-    managementPlan: {
-      findMany: managementPlanFindManyMock,
-      findFirst: managementPlanFindFirstMock,
-    },
-    careCase: {
-      findMany: careCaseFindManyMock,
-      findFirst: careCaseFindFirstMock,
-    },
-  },
-}));
-
-vi.mock('@/lib/db/rls', () => ({
-  withOrgContext: withOrgContextMock,
-}));
+vi.mock('@/lib/db/rls', () => ({ withOrgContext: mocks.withOrgContext }));
+vi.mock('@/lib/db/advisory-lock', () => ({ tryAcquireAdvisoryTxLock: mocks.acquireLock }));
+vi.mock('@/lib/audit/audit-entry', () => ({ createAuditLogEntry: mocks.createAudit }));
 
 import { GET, POST } from './route';
 
-function createGetRequest(url: string) {
-  return new NextRequest(url);
+const ctx = {
+  orgId: 'org_1',
+  userId: 'user_1',
+  role: 'pharmacist',
+  requestId: 'req_12345678',
+  correlationId: 'cor_12345678',
+};
+
+const listPlan = {
+  id: 'plan_1',
+  case_id: 'case_1',
+  title: '計画',
+  status: 'approved',
+  version: 2,
+  effective_from: null,
+  next_review_date: null,
+  approved_at: new Date('2026-07-01T00:00:00.000Z'),
+  updated_at: new Date('2026-07-02T00:00:00.000Z'),
+};
+
+const detailPlan = {
+  ...listPlan,
+  status: 'draft',
+  version: 3,
+  summary: null,
+  content: { goals: ['継続'] },
+  approved_at: null,
+};
+
+function tx() {
+  return {
+    careCase: { findFirst: mocks.careCaseFindFirst },
+    managementPlan: {
+      findMany: mocks.planFindMany,
+      findFirst: mocks.planFindFirst,
+      create: mocks.planCreate,
+    },
+    auditLog: { create: vi.fn() },
+    $executeRaw: vi.fn(),
+  };
 }
 
-function createPostRequest(body: unknown) {
-  return new NextRequest('http://localhost/api/management-plans', {
-    method: 'POST',
-    body: JSON.stringify(body),
-    headers: { 'content-type': 'application/json' },
-  });
+function get(url: string) {
+  return GET(new NextRequest(url), { params: Promise.resolve({}) });
 }
 
-function createMalformedJsonPostRequest() {
-  return new NextRequest('http://localhost/api/management-plans', {
-    method: 'POST',
-    body: '{"case_id":',
-    headers: { 'content-type': 'application/json' },
-  });
+function post(body: unknown) {
+  return POST(
+    new NextRequest('http://localhost/api/management-plans', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    }),
+    { params: Promise.resolve({}) },
+  );
 }
 
 describe('/api/management-plans', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    requireAuthContextMock.mockResolvedValue({
-      ctx: {
-        orgId: 'org_1',
-        userId: 'user_1',
-        role: 'pharmacist',
-      },
-    });
-    managementPlanFindManyMock.mockResolvedValue([
-      { id: 'plan_1', case_id: 'case_1', title: '訪問薬剤管理指導計画書' },
-    ]);
-    careCaseFindManyMock.mockResolvedValue([{ id: 'case_1', patient_id: 'patient_1' }]);
-    careCaseFindFirstMock.mockResolvedValue({ id: 'case_1' });
-    managementPlanFindFirstMock.mockResolvedValue({ version: 2 });
-    managementPlanCreateMock.mockResolvedValue({
-      id: 'plan_3',
-      case_id: 'case_1',
-      version: 3,
-    });
-    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
-      callback({
-        managementPlan: {
-          findMany: managementPlanFindManyMock,
-          findFirst: managementPlanFindFirstMock,
-          create: managementPlanCreateMock,
-        },
-      }),
-    );
+    mocks.requireAuthContext.mockResolvedValue({ ctx });
+    mocks.withOrgContext.mockImplementation(async (_orgId, work) => work(tx()));
+    mocks.careCaseFindFirst.mockResolvedValue({ id: 'case_1', patient_id: 'patient_1' });
+    mocks.planFindMany.mockResolvedValue([listPlan]);
+    mocks.planFindFirst.mockResolvedValue({ version: 2 });
+    mocks.planCreate.mockResolvedValue(detailPlan);
+    mocks.acquireLock.mockResolvedValue(true);
+    mocks.createAudit.mockResolvedValue({ id: 'audit_1' });
   });
 
-  it('lists management plans filtered by case id', async () => {
-    const updatedAt = new Date('2026-06-29T00:00:00.000Z');
-    const approvedAt = new Date('2026-06-28T00:00:00.000Z');
-    managementPlanFindManyMock.mockResolvedValueOnce([
-      {
-        id: 'plan_1',
-        org_id: 'org_1',
-        case_id: 'case_1',
-        title: '訪問薬剤管理指導計画書',
-        status: 'approved',
-        version: 2,
-        summary: 'list では返さない要約',
-        content: { privateGoal: 'list では返さない内容' },
-        created_by: 'creator_user',
-        approved_by: 'approver_user',
-        reviewed_by: 'reviewer_user',
-        source_plan_id: 'source_plan_1',
-        effective_from: null,
-        next_review_date: null,
-        approved_at: approvedAt,
-        updated_at: updatedAt,
-      },
-    ]);
-
-    const response = (await GET(
-      createGetRequest('http://localhost/api/management-plans?case_id=%20case_1%20'),
-    ))!;
+  it('returns a bounded audited case page', async () => {
+    const response = await get(
+      'http://localhost/api/management-plans?case_id=case_1&status=approved&limit=1',
+    );
 
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
-    expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
-      requestContext: expect.objectContaining({
-        orgId: 'org_1',
-        userId: 'user_1',
-        role: 'pharmacist',
-      }),
-    });
-    expect(managementPlanFindManyMock).toHaveBeenCalledWith({
-      where: {
-        org_id: 'org_1',
-        case_id: 'case_1',
-      },
-      orderBy: [{ updated_at: 'desc' }],
-      select: {
-        id: true,
-        case_id: true,
-        title: true,
-        status: true,
-        version: true,
-        effective_from: true,
-        next_review_date: true,
-        approved_at: true,
-        updated_at: true,
-      },
-    });
-    const payload = await response.json();
-    expect(payload).toEqual({
-      data: [
-        {
-          id: 'plan_1',
-          case_id: 'case_1',
-          title: '訪問薬剤管理指導計画書',
-          status: 'approved',
-          version: 2,
-          effective_from: null,
-          next_review_date: null,
-          approved_at: approvedAt.toISOString(),
-          updated_at: updatedAt.toISOString(),
-        },
-      ],
-    });
-    expect(JSON.stringify(payload)).not.toContain('privateGoal');
-    expect(JSON.stringify(payload)).not.toContain('list では返さない要約');
-    expect(JSON.stringify(payload)).not.toContain('creator_user');
-    expect(JSON.stringify(payload)).not.toContain('approver_user');
-    expect(JSON.stringify(payload)).not.toContain('reviewer_user');
-    expect(JSON.stringify(payload)).not.toContain('source_plan_1');
-  });
-
-  it('lists management plans org-wide with a safety cap and no take when case_id is omitted', async () => {
-    managementPlanFindManyMock.mockResolvedValueOnce([
-      { id: 'plan_1', case_id: 'case_1', title: '訪問薬剤管理指導計画書' },
-    ]);
-
-    const response = (await GET(createGetRequest('http://localhost/api/management-plans')))!;
-
-    expect(response.status).toBe(200);
-    expect(managementPlanFindManyMock).toHaveBeenCalledWith(
+    expect(mocks.requireAuthContext).toHaveBeenCalledWith(
+      expect.any(NextRequest),
+      expect.objectContaining({ permission: 'canViewDashboard' }),
+    );
+    expect(mocks.planFindMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { org_id: 'org_1' },
-        take: 501,
+        where: { org_id: 'org_1', case_id: 'case_1', status: 'approved' },
+        orderBy: [{ version: 'desc' }],
+        take: 2,
       }),
     );
-    const payload = await response.json();
-    expect(payload).toMatchObject({ meta: { has_more: false } });
-    expect(payload).not.toHaveProperty('hasMore');
-  });
-
-  it('reports hasMore and truncates at the safety cap for the org-wide management plan list', async () => {
-    const overflowRows = Array.from({ length: 501 }, (_, index) => ({
-      id: `plan_${index}`,
-      case_id: `case_${index}`,
-      title: '訪問薬剤管理指導計画書',
-    }));
-    managementPlanFindManyMock.mockResolvedValueOnce(overflowRows);
-
-    const response = (await GET(createGetRequest('http://localhost/api/management-plans')))!;
-
-    expect(response.status).toBe(200);
-    const payload = await response.json();
-    expect(payload.data).toHaveLength(500);
-    expect(payload.meta).toEqual({ has_more: true });
-    expect(payload).not.toHaveProperty('hasMore');
-  });
-
-  it('rejects blank case filters before listing management plans', async () => {
-    const response = (await GET(
-      createGetRequest('http://localhost/api/management-plans?case_id=%20%20'),
-    ))!;
-
-    expect(response.status).toBe(400);
-    expectSensitiveNoStore(response);
-    await expect(response.json()).resolves.toMatchObject({
-      code: 'VALIDATION_ERROR',
-      message: 'case_id は空にできません',
+    expect(mocks.createAudit).toHaveBeenCalledOnce();
+    await expect(response.json()).resolves.toEqual({
+      data: [
+        expect.objectContaining({
+          id: 'plan_1',
+          status: 'approved',
+          updated_at: '2026-07-02T00:00:00.000Z',
+        }),
+      ],
+      meta: { has_more: false, next_cursor: null },
     });
-    expect(withOrgContextMock).not.toHaveBeenCalled();
-    expect(managementPlanFindManyMock).not.toHaveBeenCalled();
   });
 
-  it('rejects duplicate case filters before listing management plans', async () => {
-    const response = (await GET(
-      createGetRequest('http://localhost/api/management-plans?case_id=case_1&case_id=case_2'),
-    ))!;
-
-    expect(response.status).toBe(400);
-    expectSensitiveNoStore(response);
+  it('uses the last returned version as a stable cursor', async () => {
+    mocks.planFindMany.mockResolvedValue([
+      { ...listPlan, id: 'plan_3', version: 3 },
+      { ...listPlan, id: 'plan_2', version: 2 },
+    ]);
+    const response = await get(
+      'http://localhost/api/management-plans?case_id=case_1&limit=1&cursor=4',
+    );
+    expect(mocks.planFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { org_id: 'org_1', case_id: 'case_1', version: { lt: 4 } },
+      }),
+    );
     await expect(response.json()).resolves.toMatchObject({
-      code: 'VALIDATION_ERROR',
-      message: 'クエリパラメータが不正です',
-      details: {
-        case_id: ['case_id は1つだけ指定してください'],
-      },
+      data: [{ version: 3 }],
+      meta: { has_more: true, next_cursor: 3 },
     });
-    expect(withOrgContextMock).not.toHaveBeenCalled();
-    expect(managementPlanFindManyMock).not.toHaveBeenCalled();
   });
 
-  it('returns a fixed no-store 500 envelope when listing management plans throws', async () => {
-    managementPlanFindManyMock.mockRejectedValueOnce(new Error('raw management plan failure'));
+  it.each([
+    ['', 'missing case_id'],
+    ['?case_id=case_1&case_id=case_2', 'duplicate case_id'],
+    ['?case_id=case_1&limit=0', 'zero limit'],
+    ['?case_id=case_1&limit=-1', 'negative limit'],
+    ['?case_id=case_1&limit=1.5', 'fractional limit'],
+    ['?case_id=case_1&limit=101', 'limit max+1'],
+    ['?case_id=case_1&cursor=2147483648', 'cursor max+1'],
+    ['?case_id=case_1&status=unknown', 'unknown status'],
+    ['?case_id=case_1&extra=1', 'unknown query'],
+    [`?case_id=${'a'.repeat(201)}`, 'oversized case_id'],
+  ])('rejects %s before the database (%s)', async (query) => {
+    const response = await get(`http://localhost/api/management-plans${query}`);
+    expect(response.status).toBe(400);
+    expect(mocks.withOrgContext).not.toHaveBeenCalled();
+  });
 
-    const response = (await GET(createGetRequest('http://localhost/api/management-plans')))!;
-
+  it('rolls back to a safe 500 when the read audit fails', async () => {
+    mocks.createAudit.mockRejectedValue(new Error('audit unavailable'));
+    const response = await get('http://localhost/api/management-plans?case_id=case_1');
     expect(response.status).toBe(500);
-    expectSensitiveNoStore(response);
-    const payload = await response.json();
-    expect(payload).toEqual({
-      code: 'INTERNAL_ERROR',
-      message: 'サーバー内部でエラーが発生しました',
-    });
-    expect(JSON.stringify(payload)).not.toContain('raw management plan failure');
+    expect(JSON.stringify(await response.json())).not.toContain('plan_1');
   });
 
-  it('returns a non-enumerating body validation error for an inaccessible case reference', async () => {
-    careCaseFindFirstMock.mockResolvedValue(null);
-
-    const response = (await POST(
-      createPostRequest({
-        case_id: 'case_unassigned',
-        title: '訪問薬剤管理指導計画書',
-        content: { summary: '内容' },
-      }),
-    ))!;
-
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toEqual({
-      code: 'VALIDATION_ERROR',
-      message: '入力値が不正です',
-      details: {
-        case_id: ['指定されたケースを確認できません'],
-      },
+  it('creates the next version under the shared case lock', async () => {
+    const response = await post({
+      case_id: 'case_1',
+      title: '計画',
+      content: { goals: ['継続'] },
+      expected_latest_version: 2,
     });
-    expect(careCaseFindFirstMock).toHaveBeenCalledWith({
-      where: {
-        id: 'case_unassigned',
-        org_id: 'org_1',
-      },
-      select: {
-        id: true,
-      },
-    });
-    expect(withOrgContextMock).not.toHaveBeenCalled();
-    expect(managementPlanCreateMock).not.toHaveBeenCalled();
-  });
-
-  it('rejects non-object create payloads before loading the care case', async () => {
-    const response = (await POST(createPostRequest(['case_1'])))!;
-
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toMatchObject({
-      code: 'VALIDATION_ERROR',
-      message: 'リクエストボディが不正です',
-    });
-    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
-    expect(managementPlanFindFirstMock).not.toHaveBeenCalled();
-    expect(withOrgContextMock).not.toHaveBeenCalled();
-    expect(managementPlanCreateMock).not.toHaveBeenCalled();
-  });
-
-  it('rejects malformed JSON create payloads before loading the care case', async () => {
-    const response = (await POST(createMalformedJsonPostRequest()))!;
-
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toMatchObject({
-      code: 'VALIDATION_ERROR',
-      message: 'リクエストボディが不正です',
-    });
-    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
-    expect(managementPlanFindFirstMock).not.toHaveBeenCalled();
-    expect(withOrgContextMock).not.toHaveBeenCalled();
-    expect(managementPlanCreateMock).not.toHaveBeenCalled();
-  });
-
-  it('rejects blank create identifiers before loading the care case', async () => {
-    const response = (await POST(
-      createPostRequest({
-        case_id: '   ',
-        title: '   ',
-        content: { summary: '内容' },
-      }),
-    ))!;
-
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toMatchObject({
-      code: 'VALIDATION_ERROR',
-      message: '入力値が不正です',
-    });
-    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
-    expect(managementPlanFindFirstMock).not.toHaveBeenCalled();
-    expect(withOrgContextMock).not.toHaveBeenCalled();
-    expect(managementPlanCreateMock).not.toHaveBeenCalled();
-  });
-
-  it('rejects impossible review dates before loading the care case', async () => {
-    const response = (await POST(
-      createPostRequest({
-        case_id: 'case_1',
-        title: '訪問薬剤管理指導計画書',
-        content: { summary: '内容' },
-        next_review_date: '2026-02-29',
-      }),
-    ))!;
-
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toMatchObject({
-      code: 'VALIDATION_ERROR',
-      message: '入力値が不正です',
-    });
-    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
-    expect(managementPlanFindFirstMock).not.toHaveBeenCalled();
-    expect(withOrgContextMock).not.toHaveBeenCalled();
-    expect(managementPlanCreateMock).not.toHaveBeenCalled();
-  });
-
-  it('rejects impossible effective dates before loading the care case', async () => {
-    const response = (await POST(
-      createPostRequest({
-        case_id: 'case_1',
-        title: '訪問薬剤管理指導計画書',
-        content: { summary: '内容' },
-        effective_from: '2026-04-31',
-      }),
-    ))!;
-
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toMatchObject({
-      code: 'VALIDATION_ERROR',
-      message: '入力値が不正です',
-    });
-    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
-    expect(managementPlanFindFirstMock).not.toHaveBeenCalled();
-    expect(withOrgContextMock).not.toHaveBeenCalled();
-    expect(managementPlanCreateMock).not.toHaveBeenCalled();
-  });
-
-  it('rejects review dates before effective dates before loading the care case', async () => {
-    const response = (await POST(
-      createPostRequest({
-        case_id: 'case_1',
-        title: '訪問薬剤管理指導計画書',
-        content: { summary: '内容' },
-        effective_from: '2026-06-30',
-        next_review_date: '2026-06-01',
-      }),
-    ))!;
-
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toMatchObject({
-      code: 'VALIDATION_ERROR',
-      message: '入力値が不正です',
-      details: {
-        next_review_date: ['next_review_date は effective_from 以降の日付を指定してください'],
-      },
-    });
-    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
-    expect(managementPlanFindFirstMock).not.toHaveBeenCalled();
-    expect(withOrgContextMock).not.toHaveBeenCalled();
-    expect(managementPlanCreateMock).not.toHaveBeenCalled();
-  });
-
-  it('returns a non-enumerating body validation error for an inaccessible source plan', async () => {
-    managementPlanFindFirstMock.mockResolvedValue(null);
-
-    const response = (await POST(
-      createPostRequest({
-        case_id: 'case_1',
-        title: '訪問薬剤管理指導計画書',
-        content: { summary: '内容' },
-        source_plan_id: 'plan_unassigned',
-      }),
-    ))!;
-
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toEqual({
-      code: 'VALIDATION_ERROR',
-      message: '入力値が不正です',
-      details: {
-        source_plan_id: ['指定された複製元を確認できません'],
-      },
-    });
-    expect(managementPlanFindFirstMock).toHaveBeenCalledWith({
-      where: {
-        id: 'plan_unassigned',
-        org_id: 'org_1',
-        case_id: 'case_1',
-      },
-      select: { id: true },
-    });
-    expect(withOrgContextMock).not.toHaveBeenCalled();
-    expect(managementPlanCreateMock).not.toHaveBeenCalled();
-  });
-
-  it('creates a new management plan with incremented version', async () => {
-    const response = (await POST(
-      createPostRequest({
-        case_id: 'case_1',
-        title: '訪問薬剤管理指導計画書',
-        content: { summary: '内容' },
-        next_review_date: '2026-04-30',
-      }),
-    ))!;
-
     expect(response.status).toBe(201);
-    expect(managementPlanCreateMock).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        org_id: 'org_1',
-        case_id: 'case_1',
-        version: 3,
-        created_by: 'user_1',
-        content: { summary: '内容' },
-        next_review_date: new Date('2026-04-30'),
-      }),
+    expect(mocks.acquireLock).toHaveBeenCalledWith(
+      expect.anything(),
+      'management-plan-case',
+      'org_1:case_1',
+    );
+    expect(mocks.planCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ version: 3 }) }),
+    );
+  });
+
+  it('rejects an inaccessible case without disclosing or writing it', async () => {
+    mocks.careCaseFindFirst.mockResolvedValue(null);
+
+    const response = await post({
+      case_id: 'case_other_org',
+      title: '計画',
+      expected_latest_version: 0,
     });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      details: { case_id: ['指定されたケースを確認できません'] },
+    });
+    expect(mocks.planFindFirst).not.toHaveBeenCalled();
+    expect(mocks.planCreate).not.toHaveBeenCalled();
   });
 
-  it('stores date-key fields as UTC-midnight dates under a non-Tokyo runtime TZ', async () => {
-    const previousTz = process.env.TZ;
-    process.env.TZ = 'America/New_York';
-    try {
-      const response = (await POST(
-        createPostRequest({
-          case_id: 'case_1',
-          title: '訪問薬剤管理指導計画書',
-          content: { summary: '内容' },
-          effective_from: '2026-04-01',
-          next_review_date: '2026-04-30',
-        }),
-      ))!;
+  it('rejects an inaccessible source plan without creating a copy', async () => {
+    mocks.planFindFirst.mockResolvedValue(null);
 
-      expect(response.status).toBe(201);
-      expect(managementPlanCreateMock).toHaveBeenCalledWith({
-        data: expect.objectContaining({
-          effective_from: new Date('2026-04-01T00:00:00.000Z'),
-          next_review_date: new Date('2026-04-30T00:00:00.000Z'),
-        }),
-      });
-    } finally {
-      if (previousTz === undefined) {
-        delete process.env.TZ;
-      } else {
-        process.env.TZ = previousTz;
-      }
-    }
+    const response = await post({
+      case_id: 'case_1',
+      source_plan_id: 'plan_other_case',
+      title: '計画',
+      expected_latest_version: 0,
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      details: { source_plan_id: ['指定された複製元を確認できません'] },
+    });
+    expect(mocks.planCreate).not.toHaveBeenCalled();
   });
 
-  it('maps version conflicts during management plan creation to 409', async () => {
-    managementPlanCreateMock.mockRejectedValueOnce(
-      new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
-        code: 'P2002',
-        clientVersion: 'test',
-      }),
+  it('maps a concurrent unique version conflict to 409', async () => {
+    mocks.planCreate.mockRejectedValue(
+      Object.assign(new Error('unique conflict'), { code: 'P2002' }),
     );
 
-    const response = (await POST(
-      createPostRequest({
-        case_id: 'case_1',
-        title: '訪問薬剤管理指導計画書',
-        content: { summary: '内容' },
-      }),
-    ))!;
+    const response = await post({
+      case_id: 'case_1',
+      title: '計画',
+      expected_latest_version: 2,
+    });
 
     expect(response.status).toBe(409);
-    await expect(response.json()).resolves.toMatchObject({
-      code: 'WORKFLOW_CONFLICT',
-      message:
-        '同じケースで同じバージョンの管理計画書が既に作成されています。最新のデータを取得してください。',
-    });
-    expect(managementPlanCreateMock).toHaveBeenCalled();
+    expect(mocks.planCreate).toHaveBeenCalledOnce();
   });
 
-  it('normalizes create identifiers, text, and blank optional fields before lookup and write', async () => {
-    managementPlanFindFirstMock
-      .mockResolvedValueOnce({ id: 'source_plan_1' })
-      .mockResolvedValueOnce({ version: 2 });
+  it('returns a bounded 409 immediately when the case lock is already held', async () => {
+    mocks.acquireLock.mockResolvedValue(false);
 
-    const response = (await POST(
-      createPostRequest({
-        case_id: ' case_1 ',
-        title: ' 更新版 計画書 ',
-        summary: '   ',
-        content: { summary: '内容' },
-        effective_from: ' 2026-04-01 ',
-        next_review_date: ' 2026-04-30 ',
-        source_plan_id: ' source_plan_1 ',
-      }),
-    ))!;
+    const response = await post({
+      case_id: 'case_1',
+      title: '計画',
+      expected_latest_version: 2,
+    });
+
+    expect(response.status).toBe(409);
+    expect(mocks.careCaseFindFirst).not.toHaveBeenCalled();
+    expect(mocks.planCreate).not.toHaveBeenCalled();
+  });
+
+  it('normalizes create text and stores date keys at UTC midnight', async () => {
+    const response = await post({
+      case_id: '  case_1  ',
+      source_plan_id: '  plan_0  ',
+      title: '  計画  ',
+      summary: '   ',
+      effective_from: '2026-07-05',
+      next_review_date: '2026-07-06',
+      expected_latest_version: 2,
+    });
 
     expect(response.status).toBe(201);
-    expect(careCaseFindFirstMock).toHaveBeenCalledWith({
-      where: {
-        id: 'case_1',
-        org_id: 'org_1',
-      },
-      select: {
-        id: true,
-      },
-    });
-    expect(managementPlanFindFirstMock).toHaveBeenNthCalledWith(1, {
-      where: {
-        id: 'source_plan_1',
-        org_id: 'org_1',
-        case_id: 'case_1',
-      },
-      select: { id: true },
-    });
-    expect(managementPlanCreateMock).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        case_id: 'case_1',
-        title: '更新版 計画書',
-        summary: null,
-        effective_from: new Date('2026-04-01'),
-        next_review_date: new Date('2026-04-30'),
-        source_plan_id: 'source_plan_1',
+    expect(mocks.careCaseFindFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ id: 'case_1' }) }),
+    );
+    expect(mocks.planFindFirst).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ where: expect.objectContaining({ id: 'plan_0' }) }),
+    );
+    expect(mocks.planCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          title: '計画',
+          summary: null,
+          source_plan_id: 'plan_0',
+          effective_from: new Date('2026-07-05T00:00:00.000Z'),
+          next_review_date: new Date('2026-07-06T00:00:00.000Z'),
+        }),
       }),
+    );
+  });
+
+  it.each([1, 2_147_483_647])(
+    'fails closed for stale or exhausted expected version %s',
+    async (latestVersion) => {
+      mocks.planFindFirst.mockResolvedValue({ version: latestVersion });
+      const response = await post({
+        case_id: 'case_1',
+        title: '計画',
+        expected_latest_version: latestVersion === 1 ? 0 : latestVersion,
+      });
+      expect(response.status).toBe(409);
+      expect(mocks.planCreate).not.toHaveBeenCalled();
+    },
+  );
+
+  it('rejects out-of-range versions and strict clinical content before DB', async () => {
+    const response = await post({
+      case_id: 'case_1',
+      title: '計画',
+      expected_latest_version: 2_147_483_648,
+      content: { nested: { unsafe: true } },
     });
+    expect(response.status).toBe(400);
+    expect(mocks.withOrgContext).not.toHaveBeenCalled();
   });
 });

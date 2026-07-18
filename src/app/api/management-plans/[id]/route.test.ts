@@ -1,782 +1,400 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { NextRequest } from 'next/server';
-import { expectSensitiveNoStore } from '@/test/api-response-assertions';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { NextRequest, NextResponse } from 'next/server';
 
-const {
-  requireAuthContextMock,
-  careCaseFindManyMock,
-  managementPlanFindFirstMock,
-  managementPlanTransactionFindFirstMock,
-  managementPlanFindUniqueMock,
-  managementPlanUpdateMock,
-  managementPlanUpdateManyMock,
-  recordPhiReadAuditForRequestMock,
-  withOrgContextMock,
-  resolveManagementPlanReviewAlertMock,
-  scheduleManagementPlanReviewAlertMock,
-} = vi.hoisted(() => ({
-  requireAuthContextMock: vi.fn(),
-  careCaseFindManyMock: vi.fn(),
-  managementPlanFindFirstMock: vi.fn(),
-  managementPlanTransactionFindFirstMock: vi.fn(),
-  managementPlanFindUniqueMock: vi.fn(),
-  managementPlanUpdateMock: vi.fn(),
-  managementPlanUpdateManyMock: vi.fn(),
-  recordPhiReadAuditForRequestMock: vi.fn(),
-  withOrgContextMock: vi.fn(),
-  resolveManagementPlanReviewAlertMock: vi.fn(),
-  scheduleManagementPlanReviewAlertMock: vi.fn(),
-}));
-
-vi.mock('@/lib/audit/phi-read-audit', () => ({
-  recordPhiReadAuditForRequest: recordPhiReadAuditForRequestMock,
+const mocks = vi.hoisted(() => ({
+  requireAuthContext: vi.fn(),
+  withOrgContext: vi.fn(),
+  acquireLock: vi.fn(),
+  createAudit: vi.fn(),
+  findFirst: vi.fn(),
+  updateMany: vi.fn(),
+  resolveAlert: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
-  requireAuthContext: requireAuthContextMock,
-}));
-
-vi.mock('@/lib/db/client', () => ({
-  prisma: {
-    careCase: {
-      findMany: careCaseFindManyMock,
+  withAuthContext:
+    (handler: (...args: unknown[]) => Promise<NextResponse>, options: object) =>
+    async (req: NextRequest, routeContext: object) => {
+      const auth = await mocks.requireAuthContext(req, options);
+      if ('response' in auth) return auth.response;
+      try {
+        const response = await handler(req, auth.ctx, routeContext);
+        response.headers.set('cache-control', 'private, no-store, max-age=0');
+        response.headers.set('pragma', 'no-cache');
+        return response;
+      } catch {
+        return NextResponse.json(
+          { code: 'INTERNAL_ERROR', message: '内部エラーが発生しました' },
+          { status: 500, headers: { 'cache-control': 'private, no-store, max-age=0' } },
+        );
+      }
     },
-    managementPlan: {
-      findFirst: managementPlanFindFirstMock,
-    },
-  },
 }));
-
-vi.mock('@/lib/db/rls', () => ({
-  withOrgContext: withOrgContextMock,
-}));
-
+vi.mock('@/lib/db/rls', () => ({ withOrgContext: mocks.withOrgContext }));
+vi.mock('@/lib/db/advisory-lock', () => ({ tryAcquireAdvisoryTxLock: mocks.acquireLock }));
+vi.mock('@/lib/audit/audit-entry', () => ({ createAuditLogEntry: mocks.createAudit }));
 vi.mock('@/server/services/management-plans', () => ({
-  resolveManagementPlanReviewAlert: resolveManagementPlanReviewAlertMock,
-  scheduleManagementPlanReviewAlert: scheduleManagementPlanReviewAlertMock,
+  resolveManagementPlanReviewAlert: mocks.resolveAlert,
 }));
 
 import { GET, PATCH } from './route';
 
-function createGetRequest() {
-  return new NextRequest('http://localhost/api/management-plans/plan_1');
+const ctx = {
+  orgId: 'org_1',
+  userId: 'user_1',
+  role: 'pharmacist',
+  requestId: 'req_12345678',
+  correlationId: 'cor_12345678',
+};
+const updatedAt = new Date('2026-07-02T00:00:00.000Z');
+const plan = {
+  id: 'plan_1',
+  case_id: 'case_1',
+  title: '計画',
+  summary: null,
+  content: { goals: ['継続'] },
+  status: 'draft',
+  version: 1,
+  effective_from: null,
+  next_review_date: null,
+  approved_at: null,
+  updated_at: updatedAt,
+};
+
+function tx() {
+  return {
+    managementPlan: {
+      findFirst: mocks.findFirst,
+      updateMany: mocks.updateMany,
+    },
+    auditLog: { create: vi.fn() },
+    $executeRaw: vi.fn(),
+  };
 }
 
-function createPatchRequest(body: unknown) {
-  return new NextRequest('http://localhost/api/management-plans/plan_1', {
-    method: 'PATCH',
-    body: JSON.stringify(body),
-    headers: { 'content-type': 'application/json' },
-  });
+function routeContext(id = 'plan_1') {
+  return { params: Promise.resolve({ id }) };
 }
 
-function createMalformedJsonPatchRequest() {
-  return new NextRequest('http://localhost/api/management-plans/plan_1', {
-    method: 'PATCH',
-    body: '{"action":',
-    headers: { 'content-type': 'application/json' },
-  });
+function patch(body: unknown) {
+  return PATCH(
+    new NextRequest('http://localhost/api/management-plans/plan_1', {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    }),
+    routeContext(),
+  );
 }
 
 describe('/api/management-plans/[id]', () => {
-  const originalTimezone = process.env.TZ;
-
-  beforeAll(() => {
-    process.env.TZ = 'Asia/Tokyo';
-  });
-
-  afterAll(() => {
-    if (originalTimezone === undefined) {
-      delete process.env.TZ;
-    } else {
-      process.env.TZ = originalTimezone;
-    }
-  });
-
   beforeEach(() => {
     vi.clearAllMocks();
-    requireAuthContextMock.mockResolvedValue({
-      ctx: {
-        orgId: 'org_1',
-        userId: 'user_1',
-        role: 'pharmacist',
-      },
+    vi.useRealTimers();
+    mocks.requireAuthContext.mockResolvedValue({ ctx });
+    mocks.withOrgContext.mockImplementation(async (_orgId, work) => work(tx()));
+    mocks.findFirst.mockResolvedValue({ ...plan, case_: { patient_id: 'patient_1' } });
+    mocks.updateMany.mockResolvedValue({ count: 1 });
+    mocks.acquireLock.mockResolvedValue(true);
+    mocks.createAudit.mockResolvedValue({ id: 'audit_1' });
+    mocks.resolveAlert.mockResolvedValue(undefined);
+  });
+
+  it('returns a presented detail only after the PHI audit succeeds', async () => {
+    const response = await GET(
+      new NextRequest('http://localhost/api/management-plans/plan_1'),
+      routeContext(),
+    );
+    expect(response.status).toBe(200);
+    expect(mocks.createAudit).toHaveBeenCalledWith(
+      expect.anything(),
+      ctx,
+      expect.objectContaining({ patientId: 'patient_1', action: 'phi_read' }),
+    );
+    await expect(response.json()).resolves.toMatchObject({
+      data: { id: 'plan_1', updated_at: updatedAt.toISOString() },
     });
-    managementPlanFindFirstMock.mockResolvedValue({
-      id: 'plan_1',
-      org_id: 'org_1',
-      case_id: 'case_1',
-      status: 'draft',
-      effective_from: null,
-      next_review_date: new Date('2026-04-30T00:00:00.000Z'),
-      content: { goal: 'アムロジピンの服薬継続を支援' },
-      case_: {
-        patient_id: 'patient_1',
-        primary_pharmacist_id: 'user_2',
-      },
+  });
+
+  it.each(['GET', 'PATCH'] as const)(
+    'rejects an oversized id before the database for %s',
+    async (method) => {
+      const oversizedContext = routeContext('a'.repeat(201));
+      const response =
+        method === 'GET'
+          ? await GET(
+              new NextRequest('http://localhost/api/management-plans/oversized'),
+              oversizedContext,
+            )
+          : await PATCH(
+              new NextRequest('http://localhost/api/management-plans/oversized', {
+                method: 'PATCH',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({
+                  action: 'archive',
+                  expected_updated_at: updatedAt.toISOString(),
+                }),
+              }),
+              oversizedContext,
+            );
+
+      expect(response.status).toBe(400);
+      expect(mocks.withOrgContext).not.toHaveBeenCalled();
+      expect(mocks.createAudit).not.toHaveBeenCalled();
+    },
+  );
+
+  it('returns a safe 500 and no PHI when detail content is malformed', async () => {
+    mocks.findFirst.mockResolvedValue({
+      ...plan,
+      content: { nested: { unsafe: true } },
+      case_: { patient_id: 'patient_1' },
     });
-    managementPlanTransactionFindFirstMock.mockResolvedValue({
-      id: 'plan_1',
-      org_id: 'org_1',
-      case_id: 'case_1',
-      status: 'draft',
-      next_review_date: new Date('2026-04-30T00:00:00.000Z'),
-      case_: {
-        patient_id: 'patient_1',
-        primary_pharmacist_id: 'user_2',
-      },
+    const response = await GET(
+      new NextRequest('http://localhost/api/management-plans/plan_1'),
+      routeContext(),
+    );
+    expect(response.status).toBe(500);
+    expect(mocks.createAudit).not.toHaveBeenCalled();
+    expect(JSON.stringify(await response.json())).not.toContain('unsafe');
+  });
+
+  it('returns a non-enumerating 404 without an audit when detail is unavailable', async () => {
+    mocks.findFirst.mockResolvedValue(null);
+
+    const response = await GET(
+      new NextRequest('http://localhost/api/management-plans/plan_missing'),
+      routeContext('plan_missing'),
+    );
+
+    expect(response.status).toBe(404);
+    expect(mocks.createAudit).not.toHaveBeenCalled();
+  });
+
+  it('returns a non-enumerating 404 before locking an unassigned mutation', async () => {
+    mocks.findFirst.mockResolvedValue(null);
+
+    const response = await patch({
+      action: 'archive',
+      expected_updated_at: updatedAt.toISOString(),
     });
-    careCaseFindManyMock.mockResolvedValue([{ id: 'case_1', patient_id: 'patient_1' }]);
-    managementPlanUpdateMock.mockResolvedValue({
-      id: 'plan_1',
-      status: 'approved',
-      next_review_date: new Date('2026-04-30T00:00:00.000Z'),
-      case_id: 'case_1',
+
+    expect(response.status).toBe(404);
+    expect(mocks.acquireLock).not.toHaveBeenCalled();
+    expect(mocks.updateMany).not.toHaveBeenCalled();
+    expect(mocks.resolveAlert).not.toHaveBeenCalled();
+  });
+
+  it('updates a draft under the case lock and advances the CAS token', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(updatedAt);
+    mocks.findFirst.mockResolvedValueOnce({ case_id: 'case_1' }).mockResolvedValueOnce(plan);
+    const response = await patch({
+      action: 'update',
+      title: '更新',
+      expected_updated_at: updatedAt.toISOString(),
     });
-    managementPlanFindUniqueMock.mockResolvedValue({
-      id: 'plan_1',
-      status: 'approved',
-      next_review_date: new Date('2026-04-30T00:00:00.000Z'),
-      case_id: 'case_1',
-    });
-    managementPlanUpdateManyMock.mockResolvedValue({ count: 1 });
-    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
-      callback({
-        managementPlan: {
-          findFirst: managementPlanTransactionFindFirstMock,
-          findUnique: managementPlanFindUniqueMock,
-          update: managementPlanUpdateMock,
-          updateMany: managementPlanUpdateManyMock,
-        },
+    expect(response.status).toBe(200);
+    expect(mocks.acquireLock).toHaveBeenCalledWith(
+      expect.anything(),
+      'management-plan-case',
+      'org_1:case_1',
+    );
+    expect(mocks.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ updated_at: updatedAt }),
+        data: expect.objectContaining({
+          title: '更新',
+          updated_at: new Date(updatedAt.getTime() + 1),
+        }),
       }),
     );
   });
 
-  it('returns a management plan by id', async () => {
-    const response = (await GET(createGetRequest(), {
-      params: Promise.resolve({ id: 'plan_1' }),
-    }))!;
+  it('returns a bounded 409 without mutation when the case lock is already held', async () => {
+    mocks.findFirst.mockResolvedValueOnce({ case_id: 'case_1' });
+    mocks.acquireLock.mockResolvedValue(false);
+
+    const response = await patch({
+      action: 'update',
+      title: '更新',
+      expected_updated_at: updatedAt.toISOString(),
+    });
+
+    expect(response.status).toBe(409);
+    expect(mocks.findFirst).toHaveBeenCalledOnce();
+    expect(mocks.updateMany).not.toHaveBeenCalled();
+    expect(mocks.resolveAlert).not.toHaveBeenCalled();
+  });
+
+  it('stores updated date keys at UTC midnight', async () => {
+    mocks.findFirst.mockResolvedValueOnce({ case_id: 'case_1' }).mockResolvedValueOnce(plan);
+
+    const response = await patch({
+      action: 'update',
+      effective_from: '2026-07-05',
+      next_review_date: '2026-07-06',
+      expected_updated_at: updatedAt.toISOString(),
+    });
 
     expect(response.status).toBe(200);
-    expectSensitiveNoStore(response);
-    expect(requireAuthContextMock).toHaveBeenCalledWith(expect.any(NextRequest), {
-      permission: 'canViewDashboard',
-      message: '管理計画書の閲覧権限がありません',
-    });
-    expect(managementPlanFindFirstMock).toHaveBeenCalledWith({
-      where: {
-        id: 'plan_1',
-        org_id: 'org_1',
-      },
-      include: {
-        case_: {
-          select: { patient_id: true },
-        },
-      },
-    });
-    const body = await response.json();
-    expect(body).toMatchObject({
-      data: {
-        id: 'plan_1',
-      },
-    });
-    expect(body.data).not.toHaveProperty('case_');
-    expect(recordPhiReadAuditForRequestMock).toHaveBeenCalledWith(
-      expect.objectContaining({ orgId: 'org_1', userId: 'user_1', role: 'pharmacist' }),
-      {
-        patientId: 'patient_1',
-        targetType: 'management_plan',
-        targetId: 'plan_1',
-        view: 'management_plan_detail',
-      },
+    expect(mocks.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          effective_from: new Date('2026-07-05T00:00:00.000Z'),
+          next_review_date: new Date('2026-07-06T00:00:00.000Z'),
+        }),
+      }),
     );
-    expect(recordPhiReadAuditForRequestMock).toHaveBeenCalledTimes(1);
-    const auditPayload = JSON.stringify(recordPhiReadAuditForRequestMock.mock.calls[0]?.[1]);
-    expect(auditPayload).not.toContain('アムロジピン');
   });
 
-  it('rejects blank management plan ids before loading the plan on GET', async () => {
-    const response = (await GET(createGetRequest(), {
-      params: Promise.resolve({ id: '   ' }),
-    }))!;
+  it('rejects a review date before the retained effective date', async () => {
+    mocks.findFirst
+      .mockResolvedValueOnce({ case_id: 'case_1' })
+      .mockResolvedValueOnce({ ...plan, effective_from: new Date('2026-07-10T00:00:00.000Z') });
+
+    const response = await patch({
+      action: 'update',
+      next_review_date: '2026-07-09',
+      expected_updated_at: updatedAt.toISOString(),
+    });
 
     expect(response.status).toBe(400);
-    expectSensitiveNoStore(response);
-    await expect(response.json()).resolves.toMatchObject({
-      code: 'VALIDATION_ERROR',
-      message: '管理計画書IDが不正です',
-    });
-    expect(managementPlanFindFirstMock).not.toHaveBeenCalled();
-    expect(withOrgContextMock).not.toHaveBeenCalled();
-    expect(managementPlanUpdateManyMock).not.toHaveBeenCalled();
-    expect(scheduleManagementPlanReviewAlertMock).not.toHaveBeenCalled();
-    expect(resolveManagementPlanReviewAlertMock).not.toHaveBeenCalled();
-    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
+    expect(mocks.updateMany).not.toHaveBeenCalled();
   });
 
-  it('returns no-store when the management plan is not found on GET', async () => {
-    managementPlanFindFirstMock.mockResolvedValueOnce(null);
-
-    const response = (await GET(createGetRequest(), {
-      params: Promise.resolve({ id: 'plan_missing' }),
-    }))!;
-
-    expect(response.status).toBe(404);
-    expectSensitiveNoStore(response);
-    await expect(response.json()).resolves.toMatchObject({
-      code: 'WORKFLOW_NOT_FOUND',
-      message: '管理計画書が見つかりません',
+  it('rejects stale and replayed mutation tokens without a write', async () => {
+    mocks.findFirst
+      .mockResolvedValueOnce({ case_id: 'case_1' })
+      .mockResolvedValueOnce({ ...plan, updated_at: new Date(updatedAt.getTime() + 1) });
+    const response = await patch({
+      action: 'update',
+      title: '更新',
+      expected_updated_at: updatedAt.toISOString(),
     });
-    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
+    expect(response.status).toBe(409);
+    expect(mocks.updateMany).not.toHaveBeenCalled();
+    expect(mocks.resolveAlert).not.toHaveBeenCalled();
   });
 
-  it('returns a fixed no-store 500 envelope when loading a management plan throws', async () => {
-    managementPlanFindFirstMock.mockRejectedValueOnce(new Error('raw plan detail failure'));
+  it('rejects a sequential replay after a successful update', async () => {
+    const advancedAt = new Date(updatedAt.getTime() + 1);
+    mocks.findFirst
+      .mockResolvedValueOnce({ case_id: 'case_1' })
+      .mockResolvedValueOnce(plan)
+      .mockResolvedValueOnce({ ...plan, title: '更新', updated_at: advancedAt })
+      .mockResolvedValueOnce({ case_id: 'case_1' })
+      .mockResolvedValueOnce({ ...plan, title: '更新', updated_at: advancedAt });
+    const body = {
+      action: 'update',
+      title: '更新',
+      expected_updated_at: updatedAt.toISOString(),
+    };
 
-    const response = (await GET(createGetRequest(), {
-      params: Promise.resolve({ id: 'plan_1' }),
-    }))!;
+    expect((await patch(body)).status).toBe(200);
+    expect((await patch(body)).status).toBe(409);
+    expect(mocks.updateMany).toHaveBeenCalledOnce();
+    expect(mocks.resolveAlert).not.toHaveBeenCalled();
+  });
+
+  it('rejects semantic no-op updates with zero side effects', async () => {
+    mocks.findFirst.mockResolvedValueOnce({ case_id: 'case_1' }).mockResolvedValueOnce(plan);
+    const response = await patch({
+      action: 'update',
+      title: '計画',
+      content: { goals: ['継続'] },
+      expected_updated_at: updatedAt.toISOString(),
+    });
+    expect(response.status).toBe(400);
+    expect(mocks.updateMany).not.toHaveBeenCalled();
+  });
+
+  it.each(['draft', 'approved'] as const)(
+    'archives a %s plan and resolves its alert',
+    async (status) => {
+      mocks.findFirst
+        .mockResolvedValueOnce({ case_id: 'case_1' })
+        .mockResolvedValueOnce({ ...plan, status })
+        .mockResolvedValueOnce({ ...plan, status: 'archived' });
+      const response = await patch({
+        action: 'archive',
+        expected_updated_at: updatedAt.toISOString(),
+      });
+      expect(response.status).toBe(200);
+      expect(mocks.resolveAlert).toHaveBeenCalledOnce();
+    },
+  );
+
+  it.each(['archived', 'superseded'] as const)(
+    'rejects archive from %s with zero side effects',
+    async (status) => {
+      mocks.findFirst
+        .mockResolvedValueOnce({ case_id: 'case_1' })
+        .mockResolvedValueOnce({ ...plan, status });
+      const response = await patch({
+        action: 'archive',
+        expected_updated_at: updatedAt.toISOString(),
+      });
+      expect(response.status).toBe(409);
+      expect(mocks.updateMany).not.toHaveBeenCalled();
+      expect(mocks.resolveAlert).not.toHaveBeenCalled();
+    },
+  );
+
+  it('rejects a lost archive CAS without resolving its alert', async () => {
+    mocks.findFirst
+      .mockResolvedValueOnce({ case_id: 'case_1' })
+      .mockResolvedValueOnce({ ...plan, status: 'approved' });
+    mocks.updateMany.mockResolvedValue({ count: 0 });
+    const response = await patch({
+      action: 'archive',
+      expected_updated_at: updatedAt.toISOString(),
+    });
+    expect(response.status).toBe(409);
+    expect(mocks.resolveAlert).not.toHaveBeenCalled();
+  });
+
+  it('rejects a case move after acquiring the original case lock', async () => {
+    mocks.findFirst
+      .mockResolvedValueOnce({ case_id: 'case_1' })
+      .mockResolvedValueOnce({ ...plan, case_id: 'case_2' });
+    const response = await patch({
+      action: 'update',
+      title: '更新',
+      expected_updated_at: updatedAt.toISOString(),
+    });
+
+    expect(response.status).toBe(409);
+    expect(mocks.updateMany).not.toHaveBeenCalled();
+    expect(mocks.resolveAlert).not.toHaveBeenCalled();
+  });
+
+  it('rolls back with a safe 500 when the guarded row disappears after mutation', async () => {
+    mocks.findFirst
+      .mockResolvedValueOnce({ case_id: 'case_1' })
+      .mockResolvedValueOnce(plan)
+      .mockResolvedValueOnce(null);
+    const response = await patch({
+      action: 'update',
+      title: '更新',
+      expected_updated_at: updatedAt.toISOString(),
+    });
 
     expect(response.status).toBe(500);
-    expectSensitiveNoStore(response);
-    const payload = await response.json();
-    expect(payload).toEqual({
+    await expect(response.json()).resolves.toEqual({
       code: 'INTERNAL_ERROR',
-      message: 'サーバー内部でエラーが発生しました',
+      message: '内部エラーが発生しました',
     });
-    expect(JSON.stringify(payload)).not.toContain('raw plan detail failure');
-    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
   });
 
-  it('does not load or audit a management plan when authentication is rejected', async () => {
-    requireAuthContextMock.mockResolvedValueOnce({
-      response: new Response(JSON.stringify({ code: 'UNAUTHORIZED' }), { status: 401 }),
+  it('fails approval closed before opening a transaction', async () => {
+    const response = await patch({
+      action: 'approve',
+      expected_updated_at: updatedAt.toISOString(),
     });
-
-    const response = (await GET(createGetRequest(), {
-      params: Promise.resolve({ id: 'plan_1' }),
-    }))!;
-
-    expect(response.status).toBe(401);
-    expectSensitiveNoStore(response);
-    expect(managementPlanFindFirstMock).not.toHaveBeenCalled();
-    expect(recordPhiReadAuditForRequestMock).not.toHaveBeenCalled();
-  });
-
-  it('rejects blank management plan ids before parsing or loading the plan on PATCH', async () => {
-    const response = (await PATCH(createMalformedJsonPatchRequest(), {
-      params: Promise.resolve({ id: '   ' }),
-    }))!;
-
     expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toMatchObject({
-      code: 'VALIDATION_ERROR',
-      message: '管理計画書IDが不正です',
-    });
-    expect(managementPlanFindFirstMock).not.toHaveBeenCalled();
-    expect(withOrgContextMock).not.toHaveBeenCalled();
-    expect(managementPlanUpdateMock).not.toHaveBeenCalled();
-    expect(managementPlanUpdateManyMock).not.toHaveBeenCalled();
-    expect(scheduleManagementPlanReviewAlertMock).not.toHaveBeenCalled();
-    expect(resolveManagementPlanReviewAlertMock).not.toHaveBeenCalled();
-  });
-
-  it('does not update an unassigned management plan', async () => {
-    managementPlanFindFirstMock.mockResolvedValue(null);
-
-    const response = (await PATCH(
-      createPatchRequest({
-        action: 'approve',
-      }),
-      {
-        params: Promise.resolve({ id: 'plan_unassigned' }),
-      },
-    ))!;
-
-    expect(response.status).toBe(404);
-    expect(managementPlanUpdateMock).not.toHaveBeenCalled();
-    expect(managementPlanUpdateManyMock).not.toHaveBeenCalled();
-    expect(scheduleManagementPlanReviewAlertMock).not.toHaveBeenCalled();
-  });
-
-  it('rejects non-object patch payloads before loading the management plan', async () => {
-    const response = (await PATCH(createPatchRequest(['approve']), {
-      params: Promise.resolve({ id: 'plan_1' }),
-    }))!;
-
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toMatchObject({
-      code: 'VALIDATION_ERROR',
-      message: 'リクエストボディが不正です',
-    });
-    expect(managementPlanFindFirstMock).not.toHaveBeenCalled();
-    expect(withOrgContextMock).not.toHaveBeenCalled();
-    expect(managementPlanUpdateMock).not.toHaveBeenCalled();
-    expect(managementPlanUpdateManyMock).not.toHaveBeenCalled();
-    expect(scheduleManagementPlanReviewAlertMock).not.toHaveBeenCalled();
-    expect(resolveManagementPlanReviewAlertMock).not.toHaveBeenCalled();
-  });
-
-  it('rejects malformed JSON patch payloads before loading the management plan', async () => {
-    const response = (await PATCH(createMalformedJsonPatchRequest(), {
-      params: Promise.resolve({ id: 'plan_1' }),
-    }))!;
-
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toMatchObject({
-      code: 'VALIDATION_ERROR',
-      message: 'リクエストボディが不正です',
-    });
-    expect(managementPlanFindFirstMock).not.toHaveBeenCalled();
-    expect(withOrgContextMock).not.toHaveBeenCalled();
-    expect(managementPlanUpdateMock).not.toHaveBeenCalled();
-    expect(managementPlanUpdateManyMock).not.toHaveBeenCalled();
-    expect(scheduleManagementPlanReviewAlertMock).not.toHaveBeenCalled();
-    expect(resolveManagementPlanReviewAlertMock).not.toHaveBeenCalled();
-  });
-
-  it('rejects blank update titles before loading the management plan', async () => {
-    const response = (await PATCH(
-      createPatchRequest({
-        action: 'update',
-        title: '   ',
-      }),
-      {
-        params: Promise.resolve({ id: 'plan_1' }),
-      },
-    ))!;
-
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toMatchObject({
-      code: 'VALIDATION_ERROR',
-      message: '入力値が不正です',
-    });
-    expect(managementPlanFindFirstMock).not.toHaveBeenCalled();
-    expect(withOrgContextMock).not.toHaveBeenCalled();
-    expect(managementPlanUpdateMock).not.toHaveBeenCalled();
-    expect(managementPlanUpdateManyMock).not.toHaveBeenCalled();
-    expect(scheduleManagementPlanReviewAlertMock).not.toHaveBeenCalled();
-    expect(resolveManagementPlanReviewAlertMock).not.toHaveBeenCalled();
-  });
-
-  it('rejects impossible update dates before loading the management plan', async () => {
-    const response = (await PATCH(
-      createPatchRequest({
-        action: 'update',
-        next_review_date: '2026-02-29',
-      }),
-      {
-        params: Promise.resolve({ id: 'plan_1' }),
-      },
-    ))!;
-
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toMatchObject({
-      code: 'VALIDATION_ERROR',
-      message: '入力値が不正です',
-    });
-    expect(managementPlanFindFirstMock).not.toHaveBeenCalled();
-    expect(withOrgContextMock).not.toHaveBeenCalled();
-    expect(managementPlanUpdateMock).not.toHaveBeenCalled();
-    expect(managementPlanUpdateManyMock).not.toHaveBeenCalled();
-    expect(scheduleManagementPlanReviewAlertMock).not.toHaveBeenCalled();
-    expect(resolveManagementPlanReviewAlertMock).not.toHaveBeenCalled();
-  });
-
-  it('rejects impossible update effective dates before loading the management plan', async () => {
-    const response = (await PATCH(
-      createPatchRequest({
-        action: 'update',
-        effective_from: '2026-04-31',
-      }),
-      {
-        params: Promise.resolve({ id: 'plan_1' }),
-      },
-    ))!;
-
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toMatchObject({
-      code: 'VALIDATION_ERROR',
-      message: '入力値が不正です',
-    });
-    expect(managementPlanFindFirstMock).not.toHaveBeenCalled();
-    expect(withOrgContextMock).not.toHaveBeenCalled();
-    expect(managementPlanUpdateMock).not.toHaveBeenCalled();
-    expect(managementPlanUpdateManyMock).not.toHaveBeenCalled();
-    expect(scheduleManagementPlanReviewAlertMock).not.toHaveBeenCalled();
-    expect(resolveManagementPlanReviewAlertMock).not.toHaveBeenCalled();
-  });
-
-  it('rejects update review dates before effective dates before loading the management plan', async () => {
-    const response = (await PATCH(
-      createPatchRequest({
-        action: 'update',
-        effective_from: '2026-06-30',
-        next_review_date: '2026-06-01',
-      }),
-      {
-        params: Promise.resolve({ id: 'plan_1' }),
-      },
-    ))!;
-
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toMatchObject({
-      code: 'VALIDATION_ERROR',
-      message: '入力値が不正です',
-      details: {
-        next_review_date: ['next_review_date は effective_from 以降の日付を指定してください'],
-      },
-    });
-    expect(managementPlanFindFirstMock).not.toHaveBeenCalled();
-    expect(withOrgContextMock).not.toHaveBeenCalled();
-    expect(managementPlanUpdateManyMock).not.toHaveBeenCalled();
-    expect(scheduleManagementPlanReviewAlertMock).not.toHaveBeenCalled();
-    expect(resolveManagementPlanReviewAlertMock).not.toHaveBeenCalled();
-  });
-
-  it('rejects update review dates before existing effective dates before transaction work', async () => {
-    managementPlanFindFirstMock.mockResolvedValue({
-      id: 'plan_1',
-      org_id: 'org_1',
-      case_id: 'case_1',
-      status: 'draft',
-      effective_from: new Date('2026-06-30T00:00:00.000Z'),
-      next_review_date: null,
-      case_: {
-        patient_id: 'patient_1',
-        primary_pharmacist_id: 'user_2',
-      },
-    });
-
-    const response = (await PATCH(
-      createPatchRequest({
-        action: 'update',
-        next_review_date: '2026-06-01',
-      }),
-      {
-        params: Promise.resolve({ id: 'plan_1' }),
-      },
-    ))!;
-
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toMatchObject({
-      code: 'VALIDATION_ERROR',
-      message: '入力値が不正です',
-      details: {
-        next_review_date: ['next_review_date は effective_from 以降の日付を指定してください'],
-      },
-    });
-    expect(managementPlanFindFirstMock).toHaveBeenCalled();
-    expect(withOrgContextMock).not.toHaveBeenCalled();
-    expect(managementPlanUpdateManyMock).not.toHaveBeenCalled();
-    expect(scheduleManagementPlanReviewAlertMock).not.toHaveBeenCalled();
-    expect(resolveManagementPlanReviewAlertMock).not.toHaveBeenCalled();
-  });
-
-  it('validates existing @db.Date effective dates by their UTC date key under a non-Tokyo runtime TZ', async () => {
-    const previousTz = process.env.TZ;
-    process.env.TZ = 'America/New_York';
-    try {
-      managementPlanFindFirstMock.mockResolvedValue({
-        id: 'plan_1',
-        org_id: 'org_1',
-        case_id: 'case_1',
-        status: 'draft',
-        effective_from: new Date('2026-06-30T00:00:00.000Z'),
-        next_review_date: null,
-        case_: {
-          patient_id: 'patient_1',
-          primary_pharmacist_id: 'user_2',
-        },
-      });
-
-      const response = (await PATCH(
-        createPatchRequest({
-          action: 'update',
-          next_review_date: '2026-06-30',
-        }),
-        {
-          params: Promise.resolve({ id: 'plan_1' }),
-        },
-      ))!;
-
-      expect(response.status).toBe(200);
-      expect(managementPlanUpdateManyMock).toHaveBeenCalledWith({
-        where: {
-          id: 'plan_1',
-          org_id: 'org_1',
-          status: 'draft',
-        },
-        data: {
-          content: {},
-          next_review_date: new Date('2026-06-30T00:00:00.000Z'),
-        },
-      });
-    } finally {
-      if (previousTz === undefined) {
-        delete process.env.TZ;
-      } else {
-        process.env.TZ = previousTz;
-      }
-    }
-  });
-
-  it('validates existing effective dates by their UTC date key instead of the runtime local day', async () => {
-    managementPlanFindFirstMock.mockResolvedValue({
-      id: 'plan_1',
-      org_id: 'org_1',
-      case_id: 'case_1',
-      status: 'draft',
-      effective_from: new Date('2026-06-30T15:30:00.000Z'),
-      next_review_date: null,
-      case_: {
-        patient_id: 'patient_1',
-        primary_pharmacist_id: 'user_2',
-      },
-    });
-
-    const response = (await PATCH(
-      createPatchRequest({
-        action: 'update',
-        next_review_date: '2026-06-30',
-      }),
-      {
-        params: Promise.resolve({ id: 'plan_1' }),
-      },
-    ))!;
-
-    expect(response.status).toBe(200);
-    expect(managementPlanFindFirstMock).toHaveBeenCalled();
-    expect(managementPlanUpdateManyMock).toHaveBeenCalledWith({
-      where: {
-        id: 'plan_1',
-        org_id: 'org_1',
-        status: 'draft',
-      },
-      data: {
-        content: {},
-        next_review_date: new Date('2026-06-30T00:00:00.000Z'),
-      },
-    });
-    expect(scheduleManagementPlanReviewAlertMock).not.toHaveBeenCalled();
-    expect(resolveManagementPlanReviewAlertMock).not.toHaveBeenCalled();
-  });
-
-  it('returns conflict without updating when assignment or draft status changes after loading', async () => {
-    managementPlanTransactionFindFirstMock.mockResolvedValueOnce(null);
-
-    const response = (await PATCH(
-      createPatchRequest({
-        action: 'update',
-        title: '更新版計画書',
-      }),
-      {
-        params: Promise.resolve({ id: 'plan_1' }),
-      },
-    ))!;
-
-    expect(response.status).toBe(409);
-    await expect(response.json()).resolves.toMatchObject({
-      code: 'WORKFLOW_CONFLICT',
-      message: '管理計画書が他のユーザーによって更新されています。最新のデータを取得してください。',
-    });
-    expect(managementPlanUpdateManyMock).not.toHaveBeenCalled();
-    expect(managementPlanFindUniqueMock).not.toHaveBeenCalled();
-    expect(scheduleManagementPlanReviewAlertMock).not.toHaveBeenCalled();
-    expect(resolveManagementPlanReviewAlertMock).not.toHaveBeenCalled();
-  });
-
-  it('updates draft plan content', async () => {
-    const response = (await PATCH(
-      createPatchRequest({
-        action: 'update',
-        title: ' 更新版計画書 ',
-        summary: '   ',
-        effective_from: '   ',
-        next_review_date: ' 2026-05-31 ',
-        content: { goals: ['服薬継続'], monitoring: ['副作用'] },
-      }),
-      {
-        params: Promise.resolve({ id: 'plan_1' }),
-      },
-    ))!;
-
-    expect(response.status).toBe(200);
-    expect(requireAuthContextMock).toHaveBeenCalledWith(expect.any(NextRequest), {
-      permission: 'canVisit',
-      message: '管理計画書の更新権限がありません',
-    });
-    expect(managementPlanTransactionFindFirstMock).toHaveBeenCalledWith({
-      where: {
-        id: 'plan_1',
-        org_id: 'org_1',
-        status: 'draft',
-      },
-    });
-    expect(managementPlanUpdateManyMock).toHaveBeenCalledWith({
-      where: {
-        id: 'plan_1',
-        org_id: 'org_1',
-        status: 'draft',
-      },
-      data: {
-        title: '更新版計画書',
-        summary: null,
-        content: { goals: ['服薬継続'], monitoring: ['副作用'] },
-        effective_from: null,
-        next_review_date: new Date('2026-05-31'),
-      },
-    });
-    expect(managementPlanFindUniqueMock).toHaveBeenCalledWith({
-      where: { id: 'plan_1' },
-    });
-    expect(managementPlanUpdateMock).not.toHaveBeenCalled();
-    expect(scheduleManagementPlanReviewAlertMock).not.toHaveBeenCalled();
-  });
-
-  it('archives an assigned management plan and resolves review alerts after the guarded write', async () => {
-    managementPlanFindUniqueMock.mockResolvedValueOnce({
-      id: 'plan_1',
-      status: 'archived',
-      next_review_date: null,
-      case_id: 'case_1',
-    });
-
-    const response = (await PATCH(
-      createPatchRequest({
-        action: 'archive',
-      }),
-      {
-        params: Promise.resolve({ id: 'plan_1' }),
-      },
-    ))!;
-
-    expect(response.status).toBe(200);
-    expect(managementPlanUpdateManyMock).toHaveBeenCalledWith({
-      where: {
-        id: 'plan_1',
-        org_id: 'org_1',
-      },
-      data: {
-        status: 'archived',
-      },
-    });
-    expect(resolveManagementPlanReviewAlertMock).toHaveBeenCalledWith(
-      expect.any(Object),
-      expect.objectContaining({
-        orgId: 'org_1',
-        planId: 'plan_1',
-      }),
-    );
-    expect(scheduleManagementPlanReviewAlertMock).not.toHaveBeenCalled();
-  });
-
-  it('returns conflict without resolving alerts when archive loses assignment after loading', async () => {
-    managementPlanUpdateManyMock.mockResolvedValueOnce({ count: 0 });
-
-    const response = (await PATCH(
-      createPatchRequest({
-        action: 'archive',
-      }),
-      {
-        params: Promise.resolve({ id: 'plan_1' }),
-      },
-    ))!;
-
-    expect(response.status).toBe(409);
-    await expect(response.json()).resolves.toMatchObject({
-      code: 'WORKFLOW_CONFLICT',
-      message: '管理計画書が他のユーザーによって更新されています。最新のデータを取得してください。',
-    });
-    expect(resolveManagementPlanReviewAlertMock).not.toHaveBeenCalled();
-    expect(scheduleManagementPlanReviewAlertMock).not.toHaveBeenCalled();
-    expect(managementPlanFindUniqueMock).not.toHaveBeenCalled();
-  });
-
-  it('approves a draft plan and schedules a review alert', async () => {
-    managementPlanTransactionFindFirstMock.mockResolvedValueOnce({
-      id: 'plan_1',
-      org_id: 'org_1',
-      case_id: 'case_1',
-      status: 'draft',
-      next_review_date: new Date('2026-04-30T00:00:00.000Z'),
-      case_: {
-        patient_id: 'patient_fresh',
-        primary_pharmacist_id: 'user_fresh',
-      },
-    });
-
-    const response = (await PATCH(
-      createPatchRequest({
-        action: 'approve',
-      }),
-      {
-        params: Promise.resolve({ id: 'plan_1' }),
-      },
-    ))!;
-
-    expect(response.status).toBe(200);
-    expect(managementPlanUpdateManyMock).toHaveBeenCalled();
-    expect(scheduleManagementPlanReviewAlertMock).toHaveBeenCalledWith(
-      expect.any(Object),
-      expect.objectContaining({
-        orgId: 'org_1',
-        planId: 'plan_1',
-        caseId: 'case_1',
-        patientId: 'patient_fresh',
-        assignedTo: 'user_fresh',
-      }),
-    );
-  });
-
-  it('approves a draft plan without a review date and resolves existing review alerts', async () => {
-    managementPlanFindUniqueMock.mockResolvedValueOnce({
-      id: 'plan_1',
-      status: 'approved',
-      next_review_date: null,
-      case_id: 'case_1',
-    });
-
-    const response = (await PATCH(
-      createPatchRequest({
-        action: 'approve',
-      }),
-      {
-        params: Promise.resolve({ id: 'plan_1' }),
-      },
-    ))!;
-
-    expect(response.status).toBe(200);
-    expect(resolveManagementPlanReviewAlertMock).toHaveBeenCalledWith(
-      expect.any(Object),
-      expect.objectContaining({
-        orgId: 'org_1',
-        planId: 'plan_1',
-      }),
-    );
-    expect(scheduleManagementPlanReviewAlertMock).not.toHaveBeenCalled();
-  });
-
-  it('returns conflict without approval side effects when the draft changes after loading', async () => {
-    managementPlanTransactionFindFirstMock.mockResolvedValueOnce(null);
-
-    const response = (await PATCH(
-      createPatchRequest({
-        action: 'approve',
-      }),
-      {
-        params: Promise.resolve({ id: 'plan_1' }),
-      },
-    ))!;
-
-    expect(response.status).toBe(409);
-    await expect(response.json()).resolves.toMatchObject({
-      code: 'WORKFLOW_CONFLICT',
-      message: '管理計画書が他のユーザーによって更新されています。最新のデータを取得してください。',
-    });
-    expect(managementPlanUpdateManyMock).not.toHaveBeenCalled();
-    expect(managementPlanFindUniqueMock).not.toHaveBeenCalled();
-    expect(scheduleManagementPlanReviewAlertMock).not.toHaveBeenCalled();
-    expect(resolveManagementPlanReviewAlertMock).not.toHaveBeenCalled();
+    expect(mocks.withOrgContext).not.toHaveBeenCalled();
+    expect(mocks.updateMany).not.toHaveBeenCalled();
+    expect(mocks.resolveAlert).not.toHaveBeenCalled();
   });
 });

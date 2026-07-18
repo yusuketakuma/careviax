@@ -1,30 +1,42 @@
-import { unstable_rethrow } from 'next/navigation';
 import { NextRequest } from 'next/server';
-import { recordPhiReadAuditForRequest } from '@/lib/audit/phi-read-audit';
-import { readJsonObjectRequestBody } from '@/lib/api/request-body';
+import { createAuditLogEntry } from '@/lib/audit/audit-entry';
+import { parseJsonObjectRequestBodyOrError } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
-import { requireAuthContext } from '@/lib/auth/context';
-import { prisma } from '@/lib/db/client';
-import { toPrismaJsonInput } from '@/lib/db/json';
-import { formatUtcDateKey } from '@/lib/date-key';
-import { withOrgContext } from '@/lib/db/rls';
-import { utcDateFromLocalKey } from '@/lib/utils/date-boundary';
-import { conflict, internalError, notFound, success, validationError } from '@/lib/api/response';
-import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
+import { conflict, notFound, success, validationError } from '@/lib/api/response';
+import { withAuthContext, type AuthContext, type AuthRouteContext } from '@/lib/auth/context';
 import { buildCareCaseAssignmentWhere } from '@/lib/auth/visit-schedule-access';
+import { tryAcquireAdvisoryTxLock } from '@/lib/db/advisory-lock';
+import { toPrismaJsonInput } from '@/lib/db/json';
+import { withOrgContext } from '@/lib/db/rls';
+import { formatUtcDateKey } from '@/lib/date-key';
+import { presentManagementPlanDetail } from '@/lib/management-plans/response-schema';
+import { utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 import {
   isManagementPlanDateRangeValid,
   updateManagementPlanSchema,
 } from '@/lib/validations/management-plan';
-import {
-  resolveManagementPlanReviewAlert,
-  scheduleManagementPlanReviewAlert,
-} from '@/server/services/management-plans';
+import { resolveManagementPlanReviewAlert } from '@/server/services/management-plans';
 
+const MANAGEMENT_PLAN_CASE_LOCK_NAMESPACE = 'management-plan-case';
 const MANAGEMENT_PLAN_CONFLICT_MESSAGE =
   '管理計画書が他のユーザーによって更新されています。最新のデータを取得してください。';
+const WRITE_BODY_MAX_BYTES = 64 * 1024;
+const WRITE_BODY_DEADLINE_MS = 5_000;
+const MAX_IDENTIFIER_LENGTH = 200;
 
-class ManagementPlanMutationConflictError extends Error {}
+const managementPlanDetailSelect = {
+  id: true,
+  case_id: true,
+  title: true,
+  summary: true,
+  content: true,
+  status: true,
+  version: true,
+  effective_from: true,
+  next_review_date: true,
+  approved_at: true,
+  updated_at: true,
+} as const;
 
 function dateOnlyString(value: Date | string | null | undefined) {
   if (!value) return null;
@@ -32,296 +44,236 @@ function dateOnlyString(value: Date | string | null | undefined) {
   return formatUtcDateKey(value);
 }
 
-async function authenticatedGET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canViewDashboard',
-    message: '管理計画書の閲覧権限がありません',
-  });
-  if ('response' in authResult) return authResult.response;
-  const { ctx } = authResult;
-
-  const { id: rawId } = await params;
-  const id = normalizeRequiredRouteParam(rawId);
-  if (!id) return validationError('管理計画書IDが不正です');
-
-  const assignmentWhere = buildCareCaseAssignmentWhere(ctx);
-  const plan = await prisma.managementPlan.findFirst({
-    where: {
-      id,
-      org_id: ctx.orgId,
-      ...(assignmentWhere ? { case_: assignmentWhere } : {}),
-    },
-    include: {
-      case_: {
-        select: { patient_id: true },
-      },
-    },
-  });
-
-  if (!plan) return notFound('管理計画書が見つかりません');
-  const { case_: planCase, ...publicPlan } = plan;
-
-  recordPhiReadAuditForRequest(ctx, {
-    patientId: planCase.patient_id,
-    targetType: 'management_plan',
-    targetId: plan.id,
-    view: 'management_plan_detail',
-  });
-
-  return success({ data: publicPlan });
-}
-
-export async function GET(req: NextRequest, routeContext: { params: Promise<{ id: string }> }) {
-  try {
-    return withSensitiveNoStore(await authenticatedGET(req, routeContext));
-  } catch (err) {
-    unstable_rethrow(err);
-    return withSensitiveNoStore(internalError());
+function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
+  if (value && typeof value === 'object') {
+    return `{${Object.entries(value)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, nested]) => `${JSON.stringify(key)}:${canonicalJson(nested)}`)
+      .join(',')}}`;
   }
+  return JSON.stringify(value);
 }
 
-export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canVisit',
-    message: '管理計画書の更新権限がありません',
-  });
-  if ('response' in authResult) return authResult.response;
-  const { ctx } = authResult;
+function sameTimestamp(left: Date | string, right: string) {
+  return new Date(left).getTime() === new Date(right).getTime();
+}
 
+function nextMutationTimestamp(previous: Date | string) {
+  return new Date(Math.max(Date.now(), new Date(previous).getTime() + 1));
+}
+
+async function managementPlanGET(
+  _req: NextRequest,
+  ctx: AuthContext,
+  { params }: AuthRouteContext<{ id: string }>,
+) {
   const { id: rawId } = await params;
   const id = normalizeRequiredRouteParam(rawId);
-  if (!id) return validationError('管理計画書IDが不正です');
-
-  const payload = await readJsonObjectRequestBody(req);
-  if (!payload) return validationError('リクエストボディが不正です');
-
-  const parsed = updateManagementPlanSchema.safeParse(payload);
-  if (!parsed.success) {
-    return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
+  if (!id || id.length > MAX_IDENTIFIER_LENGTH) {
+    return validationError('管理計画書IDが不正です');
   }
 
   const assignmentWhere = buildCareCaseAssignmentWhere(ctx);
-  const existing = await prisma.managementPlan.findFirst({
-    where: {
-      id,
-      org_id: ctx.orgId,
-      ...(assignmentWhere ? { case_: assignmentWhere } : {}),
-    },
-    include: {
-      case_: {
-        select: {
-          patient_id: true,
-          primary_pharmacist_id: true,
-        },
-      },
-    },
-  });
-  if (!existing) return notFound('管理計画書が見つかりません');
-
-  if (parsed.data.action === 'update') {
-    const data = parsed.data;
-    if (existing.status !== 'draft') {
-      return validationError('承認済みまたはアーカイブ済みの計画書は更新できません');
-    }
-
-    const effectiveFrom =
-      data.effective_from !== undefined
-        ? data.effective_from
-        : dateOnlyString(existing.effective_from);
-    const nextReviewDate =
-      data.next_review_date !== undefined
-        ? data.next_review_date
-        : dateOnlyString(existing.next_review_date);
-    if (!isManagementPlanDateRangeValid({ effectiveFrom, nextReviewDate })) {
-      return validationError('入力値が不正です', {
-        next_review_date: ['next_review_date は effective_from 以降の日付を指定してください'],
-      });
-    }
-
-    const updateData = {
-      ...(data.title !== undefined ? { title: data.title } : {}),
-      ...(data.summary !== undefined ? { summary: data.summary ?? null } : {}),
-      ...(data.content !== undefined ? { content: toPrismaJsonInput(data.content) } : {}),
-      ...(data.effective_from !== undefined
-        ? {
-            effective_from: data.effective_from ? utcDateFromLocalKey(data.effective_from) : null,
-          }
-        : {}),
-      ...(data.next_review_date !== undefined
-        ? {
-            next_review_date: data.next_review_date
-              ? utcDateFromLocalKey(data.next_review_date)
-              : null,
-          }
-        : {}),
-    };
-
-    const updated = await withOrgContext(
-      ctx.orgId,
-      async (tx) => {
-        const freshPlan = await tx.managementPlan.findFirst({
-          where: {
-            id,
-            org_id: ctx.orgId,
-            status: 'draft',
-            ...(assignmentWhere ? { case_: assignmentWhere } : {}),
-          },
-        });
-        if (!freshPlan) throw new ManagementPlanMutationConflictError();
-
-        const updateResult = await tx.managementPlan.updateMany({
-          where: {
-            id,
-            org_id: ctx.orgId,
-            status: 'draft',
-            ...(assignmentWhere ? { case_: assignmentWhere } : {}),
-          },
-          data: updateData,
-        });
-        if (updateResult.count !== 1) throw new ManagementPlanMutationConflictError();
-
-        const updatedPlan = await tx.managementPlan.findUnique({ where: { id } });
-        if (!updatedPlan) throw new ManagementPlanMutationConflictError();
-        return updatedPlan;
-      },
-      { requestContext: ctx },
-    ).catch((error) => {
-      if (error instanceof ManagementPlanMutationConflictError) {
-        return { error: 'conflict' as const };
-      }
-      throw error;
-    });
-
-    if ('error' in updated) return conflict(MANAGEMENT_PLAN_CONFLICT_MESSAGE);
-
-    return success({ data: updated });
-  }
-
-  if (parsed.data.action === 'archive') {
-    const archived = await withOrgContext(
-      ctx.orgId,
-      async (tx) => {
-        const updateResult = await tx.managementPlan.updateMany({
-          where: {
-            id,
-            org_id: ctx.orgId,
-            ...(assignmentWhere ? { case_: assignmentWhere } : {}),
-          },
-          data: {
-            status: 'archived',
-          },
-        });
-        if (updateResult.count !== 1) throw new ManagementPlanMutationConflictError();
-
-        await resolveManagementPlanReviewAlert(tx, {
-          orgId: ctx.orgId,
-          planId: existing.id,
-        });
-
-        const archivedPlan = await tx.managementPlan.findUnique({ where: { id } });
-        if (!archivedPlan) throw new ManagementPlanMutationConflictError();
-        return archivedPlan;
-      },
-      { requestContext: ctx },
-    ).catch((error) => {
-      if (error instanceof ManagementPlanMutationConflictError) {
-        return { error: 'conflict' as const };
-      }
-      throw error;
-    });
-
-    if ('error' in archived) return conflict(MANAGEMENT_PLAN_CONFLICT_MESSAGE);
-
-    return success({ data: archived });
-  }
-
-  if (existing.status === 'approved') {
-    return success({ data: existing });
-  }
-  if (existing.status !== 'draft') {
-    return validationError('この計画書は承認できません');
-  }
-
-  const approved = await withOrgContext(
+  const result = await withOrgContext(
     ctx.orgId,
     async (tx) => {
-      const freshPlan = await tx.managementPlan.findFirst({
+      const plan = await tx.managementPlan.findFirst({
         where: {
           id,
           org_id: ctx.orgId,
-          status: 'draft',
           ...(assignmentWhere ? { case_: assignmentWhere } : {}),
         },
-        include: {
-          case_: {
-            select: {
-              patient_id: true,
-              primary_pharmacist_id: true,
-            },
-          },
+        select: {
+          ...managementPlanDetailSelect,
+          case_: { select: { patient_id: true } },
         },
       });
-      if (!freshPlan) throw new ManagementPlanMutationConflictError();
+      if (!plan) return { kind: 'not_found' as const };
 
-      const approveResult = await tx.managementPlan.updateMany({
-        where: {
-          id: freshPlan.id,
-          org_id: ctx.orgId,
-          status: 'draft',
-          ...(assignmentWhere ? { case_: assignmentWhere } : {}),
-        },
-        data: {
-          status: 'approved',
-          approved_by: ctx.userId,
-          approved_at: new Date(),
-          reviewed_by: ctx.userId,
-          reviewed_at: new Date(),
-        },
+      const { case_: careCase, ...planRecord } = plan;
+      const data = presentManagementPlanDetail(planRecord);
+      await createAuditLogEntry(tx, ctx, {
+        action: 'phi_read',
+        targetType: 'management_plan',
+        targetId: plan.id,
+        patientId: careCase.patient_id,
+        changes: { view: 'management_plan_detail' },
       });
-      if (approveResult.count !== 1) throw new ManagementPlanMutationConflictError();
-
-      await tx.managementPlan.updateMany({
-        where: {
-          org_id: ctx.orgId,
-          case_id: freshPlan.case_id,
-          status: 'approved',
-          id: { not: freshPlan.id },
-        },
-        data: {
-          status: 'superseded',
-        },
-      });
-
-      const updated = await tx.managementPlan.findUnique({ where: { id: freshPlan.id } });
-      if (!updated) throw new ManagementPlanMutationConflictError();
-
-      if (updated.next_review_date) {
-        await scheduleManagementPlanReviewAlert(tx, {
-          orgId: ctx.orgId,
-          planId: updated.id,
-          caseId: updated.case_id,
-          patientId: freshPlan.case_.patient_id,
-          dueDate: updated.next_review_date,
-          assignedTo: freshPlan.case_.primary_pharmacist_id ?? null,
-        });
-      } else {
-        await resolveManagementPlanReviewAlert(tx, {
-          orgId: ctx.orgId,
-          planId: updated.id,
-        });
-      }
-
-      return updated;
+      return { kind: 'success' as const, data };
     },
     { requestContext: ctx },
-  ).catch((error) => {
-    if (error instanceof ManagementPlanMutationConflictError) {
-      return { error: 'conflict' as const };
-    }
-    throw error;
-  });
+  );
 
-  if ('error' in approved) return conflict(MANAGEMENT_PLAN_CONFLICT_MESSAGE);
-
-  return success({ data: approved });
+  if (result.kind === 'not_found') return notFound('管理計画書が見つかりません');
+  return success({ data: result.data });
 }
+
+async function managementPlanPATCH(
+  req: NextRequest,
+  ctx: AuthContext,
+  { params }: AuthRouteContext<{ id: string }>,
+) {
+  const { id: rawId } = await params;
+  const id = normalizeRequiredRouteParam(rawId);
+  if (!id || id.length > MAX_IDENTIFIER_LENGTH) {
+    return validationError('管理計画書IDが不正です');
+  }
+
+  const parsed = await parseJsonObjectRequestBodyOrError(
+    req,
+    updateManagementPlanSchema,
+    { invalidBody: 'リクエストボディが不正です', invalidInput: '入力値が不正です' },
+    { maxBytes: WRITE_BODY_MAX_BYTES, deadlineMs: WRITE_BODY_DEADLINE_MS },
+  );
+  if (!parsed.ok) return parsed.response;
+
+  const data = parsed.data;
+  const assignmentWhere = buildCareCaseAssignmentWhere(ctx);
+  const result = await withOrgContext(
+    ctx.orgId,
+    async (tx) => {
+      const scope = await tx.managementPlan.findFirst({
+        where: {
+          id,
+          org_id: ctx.orgId,
+          ...(assignmentWhere ? { case_: assignmentWhere } : {}),
+        },
+        select: { case_id: true },
+      });
+      if (!scope) return { kind: 'not_found' as const };
+
+      const lockAcquired = await tryAcquireAdvisoryTxLock(
+        tx,
+        MANAGEMENT_PLAN_CASE_LOCK_NAMESPACE,
+        `${ctx.orgId}:${scope.case_id}`,
+      );
+      if (!lockAcquired) return { kind: 'conflict' as const };
+      const current = await tx.managementPlan.findFirst({
+        where: {
+          id,
+          org_id: ctx.orgId,
+          ...(assignmentWhere ? { case_: assignmentWhere } : {}),
+        },
+        select: managementPlanDetailSelect,
+      });
+      if (
+        !current ||
+        current.case_id !== scope.case_id ||
+        !sameTimestamp(current.updated_at, data.expected_updated_at)
+      ) {
+        return { kind: 'conflict' as const };
+      }
+
+      const updatedAt = nextMutationTimestamp(current.updated_at);
+      if (data.action === 'archive') {
+        if (current.status !== 'draft' && current.status !== 'approved') {
+          return { kind: 'conflict' as const };
+        }
+        const updateResult = await tx.managementPlan.updateMany({
+          where: {
+            id,
+            org_id: ctx.orgId,
+            case_id: scope.case_id,
+            status: current.status,
+            updated_at: current.updated_at,
+          },
+          data: { status: 'archived', updated_at: updatedAt },
+        });
+        if (updateResult.count !== 1) return { kind: 'conflict' as const };
+        await resolveManagementPlanReviewAlert(tx, { orgId: ctx.orgId, planId: id });
+      } else {
+        if (current.status !== 'draft') return { kind: 'conflict' as const };
+
+        const effectiveFrom =
+          data.effective_from !== undefined
+            ? data.effective_from
+            : dateOnlyString(current.effective_from);
+        const nextReviewDate =
+          data.next_review_date !== undefined
+            ? data.next_review_date
+            : dateOnlyString(current.next_review_date);
+        if (!isManagementPlanDateRangeValid({ effectiveFrom, nextReviewDate })) {
+          return { kind: 'invalid_dates' as const };
+        }
+
+        const isSemanticNoOp =
+          (data.title === undefined || data.title === current.title) &&
+          (data.summary === undefined || data.summary === current.summary) &&
+          (data.content === undefined ||
+            canonicalJson(data.content) === canonicalJson(current.content)) &&
+          (data.effective_from === undefined ||
+            data.effective_from === dateOnlyString(current.effective_from)) &&
+          (data.next_review_date === undefined ||
+            data.next_review_date === dateOnlyString(current.next_review_date));
+        if (isSemanticNoOp) return { kind: 'no_op' as const };
+
+        const updateResult = await tx.managementPlan.updateMany({
+          where: {
+            id,
+            org_id: ctx.orgId,
+            case_id: scope.case_id,
+            status: 'draft',
+            updated_at: current.updated_at,
+          },
+          data: {
+            ...(data.title === undefined ? {} : { title: data.title }),
+            ...(data.summary === undefined ? {} : { summary: data.summary }),
+            ...(data.content === undefined ? {} : { content: toPrismaJsonInput(data.content) }),
+            ...(data.effective_from === undefined
+              ? {}
+              : {
+                  effective_from: data.effective_from
+                    ? utcDateFromLocalKey(data.effective_from)
+                    : null,
+                }),
+            ...(data.next_review_date === undefined
+              ? {}
+              : {
+                  next_review_date: data.next_review_date
+                    ? utcDateFromLocalKey(data.next_review_date)
+                    : null,
+                }),
+            updated_at: updatedAt,
+          },
+        });
+        if (updateResult.count !== 1) return { kind: 'conflict' as const };
+      }
+
+      const updated = await tx.managementPlan.findFirst({
+        where: {
+          id,
+          org_id: ctx.orgId,
+          case_id: scope.case_id,
+          ...(assignmentWhere ? { case_: assignmentWhere } : {}),
+        },
+        select: managementPlanDetailSelect,
+      });
+      if (!updated) {
+        throw new Error('Management plan disappeared after a successful guarded mutation');
+      }
+      return { kind: 'success' as const, data: presentManagementPlanDetail(updated) };
+    },
+    { requestContext: ctx },
+  );
+
+  if (result.kind === 'not_found') return notFound('管理計画書が見つかりません');
+  if (result.kind === 'conflict') return conflict(MANAGEMENT_PLAN_CONFLICT_MESSAGE);
+  if (result.kind === 'invalid_dates') {
+    return validationError('入力値が不正です', {
+      next_review_date: ['next_review_date は effective_from 以降の日付を指定してください'],
+    });
+  }
+  if (result.kind === 'no_op') return validationError('変更内容がありません');
+  return success({ data: result.data });
+}
+
+export const GET = withAuthContext(managementPlanGET, {
+  permission: 'canViewDashboard',
+  message: '管理計画書の閲覧権限がありません',
+});
+
+export const PATCH = withAuthContext(managementPlanPATCH, {
+  permission: 'canVisit',
+  message: '管理計画書の更新権限がありません',
+});

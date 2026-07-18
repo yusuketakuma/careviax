@@ -89,6 +89,7 @@ vi.mock('@/lib/patient/navigation', async (importActual) => {
 type QueryConfig = {
   queryKey: unknown[];
   queryFn: () => Promise<unknown>;
+  refetchOnWindowFocus?: boolean;
 };
 
 const patientSnapshot = {
@@ -105,9 +106,9 @@ const planSnapshot = {
     content: { goal: '服薬継続' },
     version: 2,
     status: 'approved',
-    effective_from: '2026-06-01',
-    next_review_date: '2026-07-01',
-    approved_at: '2026-06-02',
+    effective_from: '2026-06-01T00:00:00.000Z',
+    next_review_date: '2026-07-01T00:00:00.000Z',
+    approved_at: '2026-06-02T00:00:00.000Z',
     updated_at: '2026-06-03T00:00:00.000Z',
   },
 };
@@ -223,6 +224,9 @@ describe('ManagementPlanPrintPage', () => {
     expect(init.cache).toBe('no-store');
 
     fetchMock.mockClear();
+    fetchMock.mockResolvedValueOnce(
+      okJson({ data: { ...planSnapshot.data, id: hostilePlanId, case_id: hostileCaseId } }),
+    );
     await captured.get('management-plan-print')?.queryFn();
     [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toBe(`/api/management-plans/${encodeURIComponent(hostilePlanId)}`);
@@ -329,6 +333,63 @@ describe('ManagementPlanPrintPage', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('offers an accessible retry for print data failures', () => {
+    setRoute('patient_1', 'plan_1');
+    const refetchPatient = vi.fn();
+    const refetchPlan = vi.fn();
+    useQueryMock.mockImplementation(({ queryKey }: QueryConfig) => {
+      if (queryKey[0] === 'management-plan-print-patient') {
+        return {
+          data: undefined,
+          isLoading: false,
+          isRefetching: false,
+          error: new Error('failed'),
+          refetch: refetchPatient,
+        };
+      }
+      if (queryKey[0] === 'management-plan-print') {
+        return {
+          data: undefined,
+          isLoading: false,
+          isRefetching: false,
+          error: new Error('failed'),
+          refetch: refetchPlan,
+        };
+      }
+      return {
+        data: undefined,
+        isLoading: false,
+        isRefetching: false,
+        error: null,
+        refetch: vi.fn(),
+      };
+    });
+
+    render(<ManagementPlanPrintPage />);
+    const planQueryCall = useQueryMock.mock.calls.find(
+      (call) => (call[0] as QueryConfig | undefined)?.queryKey[0] === 'management-plan-print',
+    );
+    expect((planQueryCall?.[0] as QueryConfig | undefined)?.refetchOnWindowFocus).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: '管理計画書の印刷データ取得を再試行' }));
+    expect(refetchPatient).toHaveBeenCalledOnce();
+    expect(refetchPlan).toHaveBeenCalledOnce();
+  });
+
+  it('announces print retry progress with a disabled pending action', () => {
+    setRoute('patient_1', 'plan_1');
+    useQueryMock.mockImplementation(({ queryKey }: QueryConfig) => ({
+      data: undefined,
+      isLoading: false,
+      isRefetching: queryKey[0] === 'management-plan-print',
+      error: new Error('failed'),
+      refetch: vi.fn(),
+    }));
+
+    render(<ManagementPlanPrintPage />);
+    const retry = screen.getByRole('button', { name: '管理計画書の印刷データを再取得中' });
+    expect((retry as HTMLButtonElement).disabled).toBe(true);
   });
 
   it('prints the management plan only after an explicit action for the route patient', () => {

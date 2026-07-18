@@ -7,7 +7,11 @@ export const EXPECTED_AUDIT_TRIGGER_CONTRACTS = [
     tableName: 'ConsentRecord',
     functionName: 'ph_os_write_consent_record_audit_log',
   },
-  { name: 'audit_log_management_plan', tableName: 'ManagementPlan' },
+  {
+    name: 'audit_log_management_plan',
+    tableName: 'ManagementPlan',
+    functionName: 'ph_os_write_management_plan_audit_log',
+  },
   { name: 'audit_log_visit_schedule', tableName: 'VisitSchedule' },
   { name: 'audit_log_visit_preparation', tableName: 'VisitPreparation' },
   { name: 'audit_log_visit_record', tableName: 'VisitRecord' },

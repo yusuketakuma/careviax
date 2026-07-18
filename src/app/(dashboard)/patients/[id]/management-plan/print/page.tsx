@@ -7,7 +7,7 @@ import { getManagementPlanPrintShortcutLinks } from '@/components/features/workf
 import { sortedManagementPlanSections, SECTION_LABELS } from '@/lib/validations/management-plan';
 import { PrintPageToolbar } from '@/components/features/workflow/print-page-toolbar';
 import { PrintLayout } from '@/components/features/reports/print-layout';
-import { buttonVariants } from '@/components/ui/button';
+import { Button, buttonVariants } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/loading';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
@@ -15,26 +15,14 @@ import { encodePathSegment } from '@/lib/http/path-segment';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import { buildPatientHref } from '@/lib/patient/navigation';
 import { formatDateLabel } from '@/lib/ui/date-format';
+import {
+  managementPlanDetailResponseSchema,
+  type ManagementPlanDetailResponse,
+} from '@/lib/management-plans/response-schema';
 
 type PatientResponse = {
   id: string;
   name: string;
-};
-
-type ManagementPlanResponse = {
-  data: {
-    id: string;
-    case_id: string;
-    title: string;
-    summary: string | null;
-    content: Record<string, unknown>;
-    version: number;
-    status: string;
-    effective_from: string | null;
-    next_review_date: string | null;
-    approved_at: string | null;
-    updated_at: string;
-  };
 };
 
 type CareCaseResponse = {
@@ -101,7 +89,7 @@ export default function ManagementPlanPrintPage() {
     },
   });
 
-  const planQuery = useQuery<ManagementPlanResponse>({
+  const planQuery = useQuery<ManagementPlanDetailResponse>({
     queryKey: ['management-plan-print', planId, orgId],
     enabled: Boolean(planId && orgId),
     queryFn: async () => {
@@ -110,8 +98,9 @@ export default function ManagementPlanPrintPage() {
         cache: 'no-store',
       });
       if (!response.ok) throw new Error('管理計画書を取得できませんでした');
-      return response.json();
+      return managementPlanDetailResponseSchema.parse(await response.json());
     },
+    refetchOnWindowFocus: true,
   });
 
   const patient = patientQuery.data;
@@ -136,6 +125,7 @@ export default function ManagementPlanPrintPage() {
   );
   const isLoading =
     patientQuery.isLoading || planQuery.isLoading || (Boolean(planCaseId) && caseQuery.isLoading);
+  const isRetrying = patientQuery.isRefetching || planQuery.isRefetching || caseQuery.isRefetching;
 
   if (isBootstrappingOrg || isLoading) {
     return <ManagementPlanPrintLoadingState />;
@@ -152,10 +142,34 @@ export default function ManagementPlanPrintPage() {
   ) {
     return (
       <div className="mx-auto max-w-3xl space-y-4 p-6">
-        <p className="text-sm text-destructive">印刷データを取得できませんでした。</p>
-        <Link href={buildPatientHref(patientId)} className={buttonVariants({ variant: 'outline' })}>
-          戻る
-        </Link>
+        <p className="text-sm text-destructive" role="alert">
+          印刷データを取得できませんでした。
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => {
+              void Promise.all([
+                patientQuery.refetch(),
+                planQuery.refetch(),
+                ...(planCaseId ? [caseQuery.refetch()] : []),
+              ]);
+            }}
+            disabled={isRetrying}
+            aria-label={
+              isRetrying ? '管理計画書の印刷データを再取得中' : '管理計画書の印刷データ取得を再試行'
+            }
+          >
+            {isRetrying ? '再試行中…' : '再試行'}
+          </Button>
+          <Link
+            href={buildPatientHref(patientId)}
+            className={buttonVariants({ variant: 'outline' })}
+          >
+            戻る
+          </Link>
+        </div>
       </div>
     );
   }

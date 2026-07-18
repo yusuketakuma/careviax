@@ -52,6 +52,19 @@ describe('validateAuditTriggerContracts', () => {
     });
   });
 
+  it('requires ManagementPlan to use its PHI-minimized audit trigger function', () => {
+    const rows = makeValidRows().map((row) =>
+      row.tgname === 'audit_log_management_plan'
+        ? { ...row, function_name: 'ph_os_write_audit_log' }
+        : row,
+    );
+
+    expect(validateAuditTriggerContracts(rows)).toContainEqual({
+      triggerName: 'audit_log_management_plan',
+      reason: 'function=ph_os_write_audit_log, expected=ph_os_write_management_plan_audit_log',
+    });
+  });
+
   it('rejects missing audit triggers', () => {
     const rows = makeValidRows().filter((row) => row.tgname !== 'audit_log_task');
 

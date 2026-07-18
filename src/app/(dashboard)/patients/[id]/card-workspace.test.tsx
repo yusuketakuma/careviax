@@ -357,11 +357,15 @@ function mockPatientQuery(
         version: number;
         status: 'draft' | 'approved' | 'superseded' | 'archived';
         effective_from: string | null;
+        next_review_date?: string | null;
+        approved_at?: string | null;
         updated_at: string;
       }>;
+      meta?: { has_more: boolean; next_cursor: number | null };
     };
     managementPlansError?: Error;
     managementPlansRefetch?: ReturnType<typeof vi.fn>;
+    managementPlansRefetching?: boolean;
     homeOperationsError?: boolean;
     homeOperationsRefetch?: ReturnType<typeof vi.fn>;
     patientDocuments?: {
@@ -896,17 +900,22 @@ function mockPatientQuery(
           data: options.managementPlans,
           isLoading: false,
           isError: true,
-          isRefetching: false,
+          isRefetching: options.managementPlansRefetching ?? false,
           error: options.managementPlansError,
           refetch: options.managementPlansRefetch ?? vi.fn(),
         };
       }
 
       return {
-        data: options.managementPlans ?? { data: [] },
+        data: options.managementPlans
+          ? {
+              ...options.managementPlans,
+              meta: options.managementPlans.meta ?? { has_more: false, next_cursor: null },
+            }
+          : { data: [], meta: { has_more: false, next_cursor: null } },
         isLoading: false,
         isError: false,
-        isRefetching: false,
+        isRefetching: options.managementPlansRefetching ?? false,
         error: null,
         refetch: options.managementPlansRefetch ?? vi.fn(),
       };
@@ -2997,8 +3006,81 @@ describe('CardWorkspace', () => {
     const createButton = within(panel).getByRole('button', { name: '共有ケースを作成' });
     expect((createButton as HTMLButtonElement).disabled).toBe(false);
 
-    fireEvent.click(within(panel).getByRole('button', { name: '再試行' }));
+    expect(
+      useQueryMock.mock.calls.find(([config]) => config.queryKey?.[0] === 'management-plans')?.[0]
+        .refetchOnWindowFocus,
+    ).toBe(true);
+    expect(
+      useQueryMock.mock.calls.find(([config]) => config.queryKey?.[0] === 'management-plans')?.[0]
+        .staleTime,
+    ).toBe(0);
+    fireEvent.click(within(panel).getByRole('button', { name: '管理計画書を再試行' }));
     expect(refetchManagementPlans).toHaveBeenCalledTimes(1);
+  });
+
+  it('announces management-plan retry progress with a disabled pending action', () => {
+    mockPatientQuery(
+      buildWorkspace(),
+      null,
+      {},
+      {
+        managementPlansError: new Error('管理計画書を取得できませんでした'),
+        managementPlansRefetching: true,
+        patientOverrides: { cases: [buildActivePatientCase()] },
+      },
+    );
+
+    render(<CardWorkspace patientId="patient_1" />);
+    openSharingTab();
+    const retry = within(screen.getByTestId('patient-share-case-create-panel')).getByRole(
+      'button',
+      {
+        name: '管理計画書を再取得中',
+      },
+    );
+    expect((retry as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('fails a duplicate-approved page closed and exposes retry', () => {
+    const refetchManagementPlans = vi.fn();
+    mockPatientQuery(
+      buildWorkspace(),
+      null,
+      {},
+      {
+        managementPlans: {
+          data: [
+            {
+              id: 'plan_approved',
+              case_id: 'case_1',
+              title: '承認済み計画',
+              version: 3,
+              status: 'approved',
+              effective_from: null,
+              next_review_date: null,
+              approved_at: '2026-06-18T00:00:00.000Z',
+              updated_at: '2026-06-18T00:00:00.000Z',
+            },
+          ],
+          meta: { has_more: true, next_cursor: 3 },
+        },
+        managementPlansRefetch: refetchManagementPlans,
+        patientOverrides: { cases: [buildActivePatientCase()] },
+      },
+    );
+
+    render(<CardWorkspace patientId="patient_1" />);
+    openSharingTab();
+    const panel = screen.getByTestId('patient-share-case-create-panel');
+    expect(within(panel).getByRole('alert').textContent).toContain(
+      '承認済み管理計画が複数見つかりました',
+    );
+    expect(
+      (within(panel).getByLabelText('共有ケース作成の管理計画版') as HTMLSelectElement).disabled,
+    ).toBe(true);
+    expect(within(panel).queryByText('計画 plan_approved / v3')).toBeNull();
+    fireEvent.click(within(panel).getByRole('button', { name: '管理計画書を再試行' }));
+    expect(refetchManagementPlans).toHaveBeenCalledOnce();
   });
 
   it('omits a stale selected management plan from the share case payload after refetch errors', () => {
@@ -5536,10 +5618,16 @@ describe('CardWorkspace', () => {
       const mgmtCfg = queryConfigs.find((c) => c.queryKey?.[0] === 'management-plans');
       const effectiveCaseId = mgmtCfg?.queryKey?.[1] as string;
       fetchMock.mockClear();
+      fetchMock.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ data: [], meta: { has_more: false, next_cursor: null } }),
+      } as unknown as Response);
       await mgmtCfg?.queryFn?.();
       {
         const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-        expect(url).toBe(`/api/management-plans?case_id=${encodeURIComponent(effectiveCaseId)}`);
+        expect(url).toBe(
+          `/api/management-plans?case_id=${encodeURIComponent(effectiveCaseId)}&status=approved&limit=1`,
+        );
         expect(init.headers).toBe(getSentinel);
       }
       // exactly the two executed GET queryFns called buildOrgHeaders, each with the real org.

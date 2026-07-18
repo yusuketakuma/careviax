@@ -79,6 +79,10 @@ import { usePresenceHeartbeat } from '@/lib/hooks/use-presence-heartbeat';
 import { cn } from '@/lib/utils';
 import { CASE_STATUS_LABELS } from '@/lib/constants/status-labels';
 import {
+  managementPlanListResponseSchema,
+  type ManagementPlanListResponse,
+} from '@/lib/management-plans/response-schema';
+import {
   asepticPreparationNeedLabels,
   emergencyResponseLabels,
   formatOptionalDate,
@@ -519,19 +523,7 @@ type PatientShareCaseCreateResponse = {
   };
 };
 
-type ManagementPlanOption = {
-  id: string;
-  case_id: string;
-  title: string;
-  version: number;
-  status: 'draft' | 'approved' | 'superseded' | 'archived';
-  effective_from: string | null;
-  updated_at: string;
-};
-
-type ManagementPlanListResponse = {
-  data: ManagementPlanOption[];
-};
+type ManagementPlanOption = ManagementPlanListResponse['data'][number];
 
 const PATIENT_SHARE_SCOPE_OPTIONS: Array<{
   key: PatientShareScopeKey;
@@ -1333,25 +1325,32 @@ function PatientShareCaseCreatePanel({
     : initialCaseId;
 
   const managementPlansQuery = useQuery<ManagementPlanListResponse>({
-    queryKey: ['management-plans', effectiveCaseId, orgId],
+    queryKey: ['management-plans', effectiveCaseId, 'approved-latest', orgId],
     queryFn: async () => {
-      const params = new URLSearchParams({ case_id: effectiveCaseId });
+      const params = new URLSearchParams({
+        case_id: effectiveCaseId,
+        status: 'approved',
+        limit: '1',
+      });
       const response = await fetch(`/api/management-plans?${params.toString()}`, {
         headers: buildOrgHeaders(orgId),
       });
-      return readPatientShareApiJson<ManagementPlanListResponse>(
+      const payload = await readPatientShareApiJson<unknown>(
         response,
         '管理計画書を取得できませんでした',
       );
+      return managementPlanListResponseSchema.parse(payload);
     },
     enabled: Boolean(orgId && effectiveCaseId),
-    staleTime: 30_000,
+    staleTime: 0,
+    refetchOnWindowFocus: true,
   });
 
-  const approvedPlans = (managementPlansQuery.data?.data ?? []).filter(
-    (plan) => plan.status === 'approved',
-  );
-  const managementPlansFailed = managementPlansQuery.isError;
+  const hasApprovedPlanAnomaly = managementPlansQuery.data?.meta?.has_more === true;
+  const approvedPlans = hasApprovedPlanAnomaly
+    ? []
+    : (managementPlansQuery.data?.data ?? []).filter((plan) => plan.status === 'approved');
+  const managementPlansFailed = managementPlansQuery.isError || hasApprovedPlanAnomaly;
   const selectedPlan = managementPlansFailed
     ? null
     : (approvedPlans.find((plan) => plan.id === form.managementPlanId) ?? null);
@@ -1563,7 +1562,9 @@ function PatientShareCaseCreatePanel({
                 className="flex flex-col gap-2 rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive sm:flex-row sm:items-center sm:justify-between"
               >
                 <p>
-                  管理計画書を取得できませんでした。対象計画を付ける場合は再試行してください。共有ケースは計画を付けずに作成できます。
+                  {hasApprovedPlanAnomaly
+                    ? '承認済み管理計画が複数見つかりました。安全のため選択を停止しました。再試行してください。'
+                    : '管理計画書を取得できませんでした。対象計画を付ける場合は再試行してください。共有ケースは計画を付けずに作成できます。'}
                 </p>
                 <Button
                   type="button"
@@ -1571,8 +1572,13 @@ function PatientShareCaseCreatePanel({
                   size="sm"
                   onClick={() => void managementPlansQuery.refetch()}
                   disabled={managementPlansQuery.isRefetching}
+                  aria-label={
+                    managementPlansQuery.isRefetching
+                      ? '管理計画書を再取得中'
+                      : '管理計画書を再試行'
+                  }
                 >
-                  再試行
+                  {managementPlansQuery.isRefetching ? '再試行中…' : '再試行'}
                 </Button>
               </div>
             ) : null}
