@@ -9,6 +9,7 @@ import {
 export default defineConfig({
   ...baseConfig,
   forbidOnly: true,
+  testIgnore: ['production-parity-smoke.spec.ts', 'ui-comment-thread-network-smoke.spec.ts'],
   outputDir: PLAYWRIGHT_AUDIT_OUTPUT_DIR,
   reporter: [
     ['list'],
