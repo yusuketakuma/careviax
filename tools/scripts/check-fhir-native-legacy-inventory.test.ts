@@ -144,6 +144,15 @@ describe('check-fhir-native-legacy-inventory', () => {
     );
   }, 60_000);
 
+  it('keeps executable repository tooling inside the checked-in live scope', () => {
+    const manifest = readManifest(REPO_ROOT);
+    const scope = manifest.scope as { production_source_roots?: unknown };
+
+    expect(scope.production_source_roots).toEqual(
+      expect.arrayContaining(['src', 'prisma', 'tools/scripts']),
+    );
+  });
+
   it('materializes the same manifest deterministically', () => {
     const root = createFixture({
       files: {
@@ -255,6 +264,22 @@ describe('check-fhir-native-legacy-inventory', () => {
       `,
     );
     expect(() => runCheck(root)).toThrow(/raw SQL inventory drift detected/);
+  });
+
+  it('classifies destructive and schema-changing SQL as writes', () => {
+    const root = createFixture({
+      files: {
+        [SOURCE_PATH]: `
+          await db.$executeRaw\`ALTER TABLE "Patient" ADD COLUMN archived_at timestamp\`;
+          await db.$executeRaw\`CREATE TABLE "PatientArchive" AS SELECT * FROM "Patient"\`;
+          await db.$executeRaw\`DROP TABLE IF EXISTS "Patient"\`;
+        `,
+      },
+    });
+
+    expect(readManifest(root).expected_raw_sql_accesses).toEqual([
+      `${SOURCE_PATH}|Patient|Patient|executeRaw|write|3`,
+    ]);
   });
 
   it('fails closed for unresolved raw SQL calls without an explicit dynamic code surface', () => {

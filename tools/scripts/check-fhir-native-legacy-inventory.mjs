@@ -43,6 +43,18 @@ const PRISMA_OPERATIONS = [...READ_OPERATIONS, ...WRITE_OPERATIONS].sort(
   (left, right) => right.length - left.length || left.localeCompare(right),
 );
 const RAW_SQL_APIS = new Set(['executeRaw', 'executeRawUnsafe', 'queryRaw', 'queryRawUnsafe']);
+const RAW_SQL_WRITE_KEYWORDS = new Set([
+  'ALTER',
+  'CREATE',
+  'DELETE',
+  'DROP',
+  'GRANT',
+  'INSERT',
+  'MERGE',
+  'REVOKE',
+  'TRUNCATE',
+  'UPDATE',
+]);
 const RAW_SQL_EXCLUSION_CLASSIFICATIONS = new Set([
   'advisory_lock',
   'health_probe',
@@ -892,9 +904,7 @@ function rawSqlDirection(template) {
     .replace(/^\s*(?:--[^\n]*(?:\n|$)|\/\*[\s\S]*?\*\/\s*)*/u, '')
     .match(/^([A-Za-z]+)/)?.[1]
     ?.toUpperCase();
-  return firstKeyword && ['DELETE', 'INSERT', 'MERGE', 'TRUNCATE', 'UPDATE'].includes(firstKeyword)
-    ? 'write'
-    : 'read';
+  return firstKeyword && RAW_SQL_WRITE_KEYWORDS.has(firstKeyword) ? 'write' : 'read';
 }
 
 function hasDynamicRawSqlStructure(template) {

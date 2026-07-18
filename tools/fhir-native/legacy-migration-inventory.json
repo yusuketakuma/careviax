@@ -4,7 +4,7 @@
   "mode": "static_source_only",
   "description": "SELECT-only static inventory for legacy clinical schema, readers, writers, adapters, routes, jobs, callers, and DTO contracts. This file does not authorize deletion, migration, database access, or production mutation.",
   "scope": {
-    "production_source_roots": ["src", "prisma"],
+    "production_source_roots": ["src", "prisma", "tools/scripts"],
     "excluded_path_patterns": [
       "(?:^|/)__tests__(?:/|$)",
       "\\.(?:test|spec|stories)\\.[cm]?[jt]sx?$",
@@ -1916,13 +1916,19 @@
       "delegate": "clinicalExternalSystem",
       "model": "ClinicalExternalSystem",
       "disposition": "owner_review_required",
-      "owner_review": { "status": "pending", "reason": "See schema surface review." }
+      "owner_review": {
+        "status": "pending",
+        "reason": "See schema surface review."
+      }
     },
     {
       "delegate": "clinicalExternalReference",
       "model": "ClinicalExternalReference",
       "disposition": "owner_review_required",
-      "owner_review": { "status": "pending", "reason": "See schema surface review." }
+      "owner_review": {
+        "status": "pending",
+        "reason": "See schema surface review."
+      }
     },
     {
       "delegate": "clinicalFhirResourceCache",
@@ -1933,13 +1939,19 @@
       "delegate": "clinicalFhirRawResourceVault",
       "model": "ClinicalFhirRawResourceVault",
       "disposition": "owner_review_required",
-      "owner_review": { "status": "pending", "reason": "See schema surface review." }
+      "owner_review": {
+        "status": "pending",
+        "reason": "See schema surface review."
+      }
     },
     {
       "delegate": "clinicalDisclosureGrant",
       "model": "ClinicalDisclosureGrant",
       "disposition": "owner_review_required",
-      "owner_review": { "status": "pending", "reason": "See schema surface review." }
+      "owner_review": {
+        "status": "pending",
+        "reason": "See schema surface review."
+      }
     },
     {
       "delegate": "yreseClinicalEvent",
@@ -1976,8 +1988,16 @@
       "model": "ResidualMedicationAssessment",
       "disposition": "replace_at_cutover"
     },
-    { "delegate": "patient", "model": "Patient", "disposition": "replace_at_cutover" },
-    { "delegate": "careCase", "model": "CareCase", "disposition": "replace_at_cutover" },
+    {
+      "delegate": "patient",
+      "model": "Patient",
+      "disposition": "replace_at_cutover"
+    },
+    {
+      "delegate": "careCase",
+      "model": "CareCase",
+      "disposition": "replace_at_cutover"
+    },
     {
       "delegate": "medicationCycle",
       "model": "MedicationCycle",
@@ -2003,7 +2023,11 @@
       "model": "MedicationProfile",
       "disposition": "replace_at_cutover"
     },
-    { "delegate": "visitRecord", "model": "VisitRecord", "disposition": "replace_at_cutover" },
+    {
+      "delegate": "visitRecord",
+      "model": "VisitRecord",
+      "disposition": "replace_at_cutover"
+    },
     {
       "delegate": "patientMedicationStockItem",
       "model": "PatientMedicationStockItem",
@@ -2014,19 +2038,33 @@
       "model": "MedicationStockEvent",
       "disposition": "replace_at_cutover"
     },
-    { "delegate": "visitSchedule", "model": "VisitSchedule", "disposition": "replace_at_cutover" },
+    {
+      "delegate": "visitSchedule",
+      "model": "VisitSchedule",
+      "disposition": "replace_at_cutover"
+    },
     {
       "delegate": "task",
       "model": "Task",
       "disposition": "owner_review_required",
-      "owner_review": { "status": "pending", "reason": "See schema surface review." }
+      "owner_review": {
+        "status": "pending",
+        "reason": "See schema surface review."
+      }
     },
-    { "delegate": "careReport", "model": "CareReport", "disposition": "replace_at_cutover" },
+    {
+      "delegate": "careReport",
+      "model": "CareReport",
+      "disposition": "replace_at_cutover"
+    },
     {
       "delegate": "auditLog",
       "model": "AuditLog",
       "disposition": "owner_review_required",
-      "owner_review": { "status": "pending", "reason": "See schema surface review." }
+      "owner_review": {
+        "status": "pending",
+        "reason": "See schema surface review."
+      }
     }
   ],
   "expected_prisma_accesses": [
@@ -2713,7 +2751,11 @@
     "src/server/services/patient-service.ts|VisitRecord|VisitRecord|queryRaw|read|1",
     "src/server/services/patient-service.ts|VisitSchedule|VisitSchedule|queryRaw|read|2",
     "src/server/services/patient-status-tracker.ts|AuditLog|AuditLog|queryRaw|read|1",
-    "src/server/services/visit-record-source-validation.ts|VisitRecord|VisitRecord|queryRaw|read|1"
+    "src/server/services/visit-record-source-validation.ts|VisitRecord|VisitRecord|queryRaw|read|1",
+    "tools/scripts/migration-verify-template.ts|Patient|Patient|executeRaw|write|15",
+    "tools/scripts/migration-verify-template.ts|Patient|Patient|queryRaw|read|16",
+    "tools/scripts/migration-verify-template.ts|VisitRecord|VisitRecord|executeRaw|write|1",
+    "tools/scripts/migration-verify-template.ts|VisitRecord|VisitRecord|queryRaw|read|6"
   ],
   "raw_sql_exclusions": [
     {
@@ -3034,7 +3076,11 @@
       "activity": "dormant_callable",
       "direction": "read",
       "disposition": "remove_at_cutover",
-      "anchor": { "pattern": "^\\s*async\\s+getPatient\\s*\\(", "flags": "gm", "expected_count": 1 }
+      "anchor": {
+        "pattern": "^\\s*async\\s+getPatient\\s*\\(",
+        "flags": "gm",
+        "expected_count": 1
+      }
     },
     {
       "id": "code:fhir-adapter:getMedicationRequests",
@@ -3149,6 +3195,34 @@
       }
     },
     {
+      "id": "code:display-id-backfill:dynamic-clinical-table-access",
+      "path": "tools/scripts/backfill-display-ids.ts",
+      "symbol": "display ID registry backed dynamic SQL reader/writer tooling",
+      "category": "dynamic_raw_sql",
+      "activity": "schema_reader_writer",
+      "direction": "read_write",
+      "disposition": "replace_at_cutover",
+      "anchor": {
+        "pattern": "\\$(?:query|execute)RawUnsafe",
+        "flags": "gm",
+        "expected_count": 17
+      }
+    },
+    {
+      "id": "code:phase5-migration-verifier:legacy-schema-reader-writer",
+      "path": "tools/scripts/migration-verify-template.ts",
+      "symbol": "Phase 5 legacy migration verifier and rollback tooling",
+      "category": "dynamic_raw_sql",
+      "activity": "schema_reader_writer",
+      "direction": "read_write",
+      "disposition": "replace_at_cutover",
+      "anchor": {
+        "pattern": "\\$(?:query|execute)Raw(?:Unsafe)?",
+        "flags": "gm",
+        "expected_count": 44
+      }
+    },
+    {
       "id": "code:data-explorer:dynamic-clinical-table-access",
       "path": "src/server/services/data-explorer.ts",
       "symbol": "Prisma DMMF allowlist backed dynamic SQL reader/writer surface",
@@ -3156,7 +3230,11 @@
       "activity": "schema_reader_writer",
       "direction": "read_write",
       "disposition": "replace_at_cutover",
-      "anchor": { "pattern": "\\$queryRawUnsafe", "flags": "gm", "expected_count": 5 }
+      "anchor": {
+        "pattern": "\\$queryRawUnsafe",
+        "flags": "gm",
+        "expected_count": 5
+      }
     }
   ],
   "export_scopes": [
@@ -3229,7 +3307,10 @@
       "pattern": "\\bcreateEPrescriptionAdapter\\s*\\(",
       "definition_paths": ["src/server/adapters/e-prescription/index.ts"],
       "expected_call_sites": [
-        { "path": "src/app/api/patients/[id]/prescriptions/e-prescription/route.ts", "count": 1 }
+        {
+          "path": "src/app/api/patients/[id]/prescriptions/e-prescription/route.ts",
+          "count": 1
+        }
       ],
       "disposition": "remove_at_cutover"
     },
@@ -3239,7 +3320,10 @@
       "pattern": "\\.fetchPrescription\\s*\\(",
       "definition_paths": ["src/server/adapters/e-prescription/index.ts"],
       "expected_call_sites": [
-        { "path": "src/app/api/patients/[id]/prescriptions/e-prescription/route.ts", "count": 1 }
+        {
+          "path": "src/app/api/patients/[id]/prescriptions/e-prescription/route.ts",
+          "count": 1
+        }
       ],
       "disposition": "remove_at_cutover"
     },
@@ -3280,7 +3364,12 @@
       "symbol": "importYreseClinicalWebhook",
       "pattern": "\\bimportYreseClinicalWebhook\\s*\\(",
       "definition_paths": ["src/server/services/standard-clinical-integration-import.ts"],
-      "expected_call_sites": [{ "path": "src/app/api/webhooks/yrese/route.ts", "count": 1 }],
+      "expected_call_sites": [
+        {
+          "path": "src/app/api/webhooks/yrese/route.ts",
+          "count": 1
+        }
+      ],
       "disposition": "replace_at_cutover"
     },
     {
@@ -3288,9 +3377,14 @@
       "symbol": "drainYreseClinicalSyncQueue",
       "pattern": "\\bdrainYreseClinicalSyncQueue\\s*\\(",
       "definition_paths": ["src/server/services/standard-clinical-sync-queue.ts"],
-      "expected_call_sites": [{ "path": "src/server/jobs/standard-clinical-sync.ts", "count": 1 }],
+      "expected_call_sites": [
+        {
+          "path": "src/server/jobs/standard-clinical-sync.ts",
+          "count": 1
+        }
+      ],
       "disposition": "replace_at_cutover"
     }
   ],
-  "expected_inventory_sha256": "2346544544977ad3522d1257c78515460a571dfb98a937109d72584976d57b28"
+  "expected_inventory_sha256": "3f0c81804c95359379e1c561343ca129a79c199b633ae5c7d00e64679c22f6db"
 }
