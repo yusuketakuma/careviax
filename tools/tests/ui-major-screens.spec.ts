@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { expect, test, type APIResponse, type Page } from '@playwright/test';
 import { Client } from 'pg';
+import { formatDisplayId } from '../../src/lib/db/display-id';
 import { PLAYWRIGHT_UI_SCREENSHOT_DIR } from './helpers/artifacts';
 import {
   attachLocalSession,
@@ -125,6 +126,31 @@ function dateKeyFromOffset(daysFromToday: number) {
   return date.toISOString().slice(0, 10);
 }
 
+async function resolveUiDemoPatientDisplayId(client: Client, orgId: string) {
+  const existing = await client.query<{ display_id: string | null }>(
+    `SELECT display_id FROM "Patient" WHERE id = $1 AND org_id = $2`,
+    [DEMO_IDS.patient, orgId],
+  );
+  const existingDisplayId = existing.rows[0]?.display_id;
+  if (existingDisplayId) return existingDisplayId;
+
+  const allocated = await client.query<{ first_value: string }>(
+    `
+      INSERT INTO id_sequence (org_id, prefix, next_value, updated_at)
+      VALUES ($1, 'p', 2, CURRENT_TIMESTAMP)
+      ON CONFLICT (org_id, prefix)
+      DO UPDATE SET
+        next_value = id_sequence.next_value + 1,
+        updated_at = CURRENT_TIMESTAMP
+      RETURNING next_value - 1 AS first_value
+    `,
+    [orgId],
+  );
+  const firstValue = allocated.rows[0]?.first_value;
+  if (!firstValue) throw new Error('UI demo patient display ID allocation returned no value');
+  return formatDisplayId('Patient', firstValue);
+}
+
 function billingMonthFromDateKey(dateKey: string) {
   return `${dateKey.slice(0, 8)}01`;
 }
@@ -170,14 +196,16 @@ async function ensureUiDemoData() {
     const externalShareName = '山田 京子';
     const patientName = 'UIデモ E2E 太郎';
     const patientKana = 'ユーデモ イーツーイー タロウ';
+    const allocatedPatientDisplayId = await resolveUiDemoPatientDisplayId(client, base.org_id);
 
     const patientResult = await client.query<{ display_id: string }>(
       `
         INSERT INTO "Patient" (
-          "id","org_id","name","name_kana","birth_date","gender","billing_support_flag","created_at","updated_at"
-        ) VALUES ($1,$2,$3,$4,'1948-04-12','female',true,NOW(),NOW())
+          "id","org_id","display_id","name","name_kana","birth_date","gender","billing_support_flag","created_at","updated_at"
+        ) VALUES ($1,$2,$3,$4,$5,'1948-04-12','female',true,NOW(),NOW())
         ON CONFLICT ("id") DO UPDATE
         SET "org_id" = EXCLUDED."org_id",
+            "display_id" = COALESCE("Patient"."display_id", EXCLUDED."display_id"),
             "name" = EXCLUDED."name",
             "name_kana" = EXCLUDED."name_kana",
             "birth_date" = EXCLUDED."birth_date",
@@ -186,7 +214,7 @@ async function ensureUiDemoData() {
             "updated_at" = NOW()
         RETURNING "display_id"
       `,
-      [DEMO_IDS.patient, base.org_id, patientName, patientKana],
+      [DEMO_IDS.patient, base.org_id, allocatedPatientDisplayId, patientName, patientKana],
     );
     const patientDisplayId = patientResult.rows[0]?.display_id;
     if (!patientDisplayId) {

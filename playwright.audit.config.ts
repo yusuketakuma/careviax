@@ -24,7 +24,7 @@ export default defineConfig({
   },
   webServer: {
     command:
-      'E2E_FORCE_RESET=1 pnpm db:e2e:prepare && pnpm build:e2e:local && pnpm start:e2e:local',
+      'SEED_DEMO_BULK_PATIENTS=100 E2E_FORCE_RESET=1 pnpm db:e2e:prepare && pnpm build:e2e:local && pnpm start:e2e:local',
     url: process.env.PLAYWRIGHT_BASE_URL || 'http://localhost:3012',
     reuseExistingServer: false,
     timeout: 1_200_000,
