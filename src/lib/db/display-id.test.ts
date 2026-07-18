@@ -527,7 +527,7 @@ function parseSequence(id: string): bigint {
 describe('display_id registry and format contract', () => {
   it('covers every Prisma model through registry, explicit business exclusion, or infrastructure exclusion', () => {
     const schemaModels = readSchemaModels();
-    expect(schemaModels).toHaveLength(169);
+    expect(schemaModels).toHaveLength(170);
     expect(Object.keys(DISPLAY_ID_REGISTRY)).toHaveLength(163);
     expect(DISPLAY_ID_EXCLUDED_MODELS).toEqual(['Setting', 'ClinicalFhirRawResourceVault']);
     expect(DISPLAY_ID_INFRASTRUCTURE_MODELS).toEqual([
@@ -535,6 +535,7 @@ describe('display_id registry and format contract', () => {
       'DomainEventOutbox',
       'ProviderDeliveryReceipt',
       'PharmacyInvoiceTransitionIntent',
+      'SystemIntegrationJob',
     ]);
 
     const covered = new Set([
@@ -801,7 +802,9 @@ describe('display_id registry and format contract', () => {
 
     expect(
       collectNonNullableOrgScopedModels(adminSchema).filter(
-        (model) => !(DISPLAY_ID_INFRASTRUCTURE_MODELS as readonly string[]).includes(model),
+        (model) =>
+          !(DISPLAY_ID_INFRASTRUCTURE_MODELS as readonly string[]).includes(model) &&
+          !(DISPLAY_ID_SCHEMA_DEFERRED_MODELS as readonly string[]).includes(model),
       ),
     ).toEqual([...ADMIN_DISPLAY_ID_W6_MODELS, ...AUDIT_LOG_REVIEW_DISPLAY_ID_MODELS].sort());
     expect(collectNonNullableOrgScopedModels(drugSchema)).toEqual(

@@ -5,6 +5,7 @@ export const DISPLAY_ID_INFRASTRUCTURE_MODELS = [
   'DomainEventOutbox',
   'ProviderDeliveryReceipt',
   'PharmacyInvoiceTransitionIntent',
+  'SystemIntegrationJob',
 ] as const;
 export const RESERVED_DISPLAY_ID_PREFIXES = ['cfg'] as const;
 
