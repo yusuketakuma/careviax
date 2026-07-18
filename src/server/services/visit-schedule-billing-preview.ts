@@ -1,5 +1,9 @@
 import { prisma } from '@/lib/db/client';
-import { mapWithConcurrency, normalizeConcurrencyLimit } from '@/lib/utils/concurrency';
+import {
+  mapWithConcurrency,
+  normalizeConcurrencyLimit,
+  runSequentially,
+} from '@/lib/utils/concurrency';
 import {
   getBillingCadencePreview,
   validateBillingRequirements,
@@ -57,11 +61,14 @@ export type VisitScheduleBillingPreviewDb = Pick<
 const DEFAULT_BILLING_PREVIEW_BATCH_CONCURRENCY = 8;
 const MAX_BILLING_PREVIEW_BATCH_CONCURRENCY = 16;
 
-function resolveBillingPreviewBatchConcurrency() {
-  return normalizeConcurrencyLimit(process.env.BILLING_PREVIEW_BATCH_CONCURRENCY, {
-    defaultValue: DEFAULT_BILLING_PREVIEW_BATCH_CONCURRENCY,
-    max: MAX_BILLING_PREVIEW_BATCH_CONCURRENCY,
-  });
+function resolveBillingPreviewBatchConcurrency(override?: number) {
+  return normalizeConcurrencyLimit(
+    override === undefined ? process.env.BILLING_PREVIEW_BATCH_CONCURRENCY : String(override),
+    {
+      defaultValue: DEFAULT_BILLING_PREVIEW_BATCH_CONCURRENCY,
+      max: MAX_BILLING_PREVIEW_BATCH_CONCURRENCY,
+    },
+  );
 }
 
 type CareInsuranceApplicationPreview = {
@@ -506,44 +513,46 @@ async function prefetchBillingPreviewWorkflowSnapshot(args: {
   const maxDate = proposedDates[proposedDates.length - 1]!;
   const consentActiveAsOf = new Date();
 
-  const [consents, managementPlans] = await Promise.all([
-    args.db.consentRecord.findMany({
-      where: {
-        org_id: args.orgId,
-        patient_id: { in: patientIds },
-        consent_type: 'visit_medication_management',
-        is_active: true,
-        revoked_date: null,
-        OR: [{ expiry_date: null }, { expiry_date: { gte: consentActiveAsOf } }],
-      },
-      orderBy: [{ obtained_date: 'desc' }],
-      select: {
-        id: true,
-        patient_id: true,
-        expiry_date: true,
-        obtained_date: true,
-      },
-    }),
-    args.db.managementPlan.findMany({
-      where: {
-        org_id: args.orgId,
-        case_id: { in: caseIds },
-        status: 'approved',
-        approved_at: { not: null },
-        OR: [{ effective_from: null }, { effective_from: { lte: maxDate } }],
-      },
-      orderBy: [{ effective_from: 'desc' }, { version: 'desc' }, { approved_at: 'desc' }],
-      select: {
-        id: true,
-        case_id: true,
-        status: true,
-        next_review_date: true,
-        effective_from: true,
-        version: true,
-        approved_at: true,
-      },
-    }),
-  ]);
+  const [consents, managementPlans] = await runSequentially([
+    () =>
+      args.db.consentRecord.findMany({
+        where: {
+          org_id: args.orgId,
+          patient_id: { in: patientIds },
+          consent_type: 'visit_medication_management',
+          is_active: true,
+          revoked_date: null,
+          OR: [{ expiry_date: null }, { expiry_date: { gte: consentActiveAsOf } }],
+        },
+        orderBy: [{ obtained_date: 'desc' }],
+        select: {
+          id: true,
+          patient_id: true,
+          expiry_date: true,
+          obtained_date: true,
+        },
+      }),
+    () =>
+      args.db.managementPlan.findMany({
+        where: {
+          org_id: args.orgId,
+          case_id: { in: caseIds },
+          status: 'approved',
+          approved_at: { not: null },
+          OR: [{ effective_from: null }, { effective_from: { lte: maxDate } }],
+        },
+        orderBy: [{ effective_from: 'desc' }, { version: 'desc' }, { approved_at: 'desc' }],
+        select: {
+          id: true,
+          case_id: true,
+          status: true,
+          next_review_date: true,
+          effective_from: true,
+          version: true,
+          approved_at: true,
+        },
+      }),
+  ] as const);
 
   return buildBillingPreviewWorkflowSnapshot({ consents, managementPlans, consentActiveAsOf });
 }
@@ -845,55 +854,59 @@ async function buildVisitScheduleBillingPreviewForCareCase(
   const proposedDate = new Date(args.proposedDate);
 
   const [latestIntake, medicalInsurance, careInsurance, pendingPublicSubsidyInsurance] =
-    await Promise.all([
-      args.latestIntake !== undefined
-        ? Promise.resolve(args.latestIntake)
-        : findLatestBillingPrescriptionClassification(args.db, {
-            orgId: args.orgId,
-            caseId: args.caseId,
-          }),
-      args.insurancePrefetch
-        ? Promise.resolve(
-            args.insurancePrefetch.resolveInsurance({
+    await runSequentially([
+      () =>
+        args.latestIntake !== undefined
+          ? Promise.resolve(args.latestIntake)
+          : findLatestBillingPrescriptionClassification(args.db, {
+              orgId: args.orgId,
+              caseId: args.caseId,
+            }),
+      () =>
+        args.insurancePrefetch
+          ? Promise.resolve(
+              args.insurancePrefetch.resolveInsurance({
+                patientId: careCase.patient_id,
+                type: 'medical',
+                asOf: proposedDate,
+              }),
+            )
+          : resolvePatientInsurance(args.db, {
+              orgId: args.orgId,
               patientId: careCase.patient_id,
               type: 'medical',
               asOf: proposedDate,
             }),
-          )
-        : resolvePatientInsurance(args.db, {
-            orgId: args.orgId,
-            patientId: careCase.patient_id,
-            type: 'medical',
-            asOf: proposedDate,
-          }),
-      args.insurancePrefetch
-        ? Promise.resolve(
-            args.insurancePrefetch.resolveInsurance({
+      () =>
+        args.insurancePrefetch
+          ? Promise.resolve(
+              args.insurancePrefetch.resolveInsurance({
+                patientId: careCase.patient_id,
+                type: 'care',
+                asOf: proposedDate,
+              }),
+            )
+          : resolvePatientInsurance(args.db, {
+              orgId: args.orgId,
               patientId: careCase.patient_id,
               type: 'care',
               asOf: proposedDate,
             }),
-          )
-        : resolvePatientInsurance(args.db, {
-            orgId: args.orgId,
-            patientId: careCase.patient_id,
-            type: 'care',
-            asOf: proposedDate,
-          }),
-      args.insurancePrefetch
-        ? Promise.resolve(
-            args.insurancePrefetch.resolvePendingPublicSubsidy({
+      () =>
+        args.insurancePrefetch
+          ? Promise.resolve(
+              args.insurancePrefetch.resolvePendingPublicSubsidy({
+                patientId: careCase.patient_id,
+                asOf: proposedDate,
+              }),
+            )
+          : findPendingPublicSubsidyInsurance({
+              db: args.db,
+              orgId: args.orgId,
               patientId: careCase.patient_id,
               asOf: proposedDate,
             }),
-          )
-        : findPendingPublicSubsidyInsurance({
-            db: args.db,
-            orgId: args.orgId,
-            patientId: careCase.patient_id,
-            asOf: proposedDate,
-          }),
-    ]);
+    ] as const);
 
   const visitType =
     args.visitType ??
@@ -943,17 +956,21 @@ async function buildVisitScheduleBillingPreviewForCareCase(
     buildingPatientCount: 1,
   });
 
-  const [alerts, cadence] = await Promise.all([
-    args.pharmacistId || careCase.primary_pharmacist_id
-      ? validateBillingRequirements({
-          ...previewArgs,
-          ...(args.pharmacistWeeklyCapById
-            ? { pharmacistWeeklyCap: args.pharmacistWeeklyCapById.get(previewPharmacistId) ?? null }
-            : {}),
-        })
-      : Promise.resolve([]),
-    getBillingCadencePreview(previewArgs),
-  ]);
+  const [alerts, cadence] = await runSequentially([
+    () =>
+      args.pharmacistId || careCase.primary_pharmacist_id
+        ? validateBillingRequirements({
+            ...previewArgs,
+            ...(args.pharmacistWeeklyCapById
+              ? {
+                  pharmacistWeeklyCap:
+                    args.pharmacistWeeklyCapById.get(previewPharmacistId) ?? null,
+                }
+              : {}),
+          })
+        : Promise.resolve([]),
+    () => getBillingCadencePreview(previewArgs),
+  ] as const);
 
   const insuranceApplicationAlerts = buildInsuranceApplicationAlerts({
     careInsurance,
@@ -989,7 +1006,7 @@ export async function buildVisitScheduleBillingPreviewBatch(
     excludeProposalId?: string | null;
   }[],
   orgId: string,
-  options?: { db?: VisitScheduleBillingPreviewDb },
+  options?: { db?: VisitScheduleBillingPreviewDb; concurrency?: number },
 ) {
   const db = options?.db ?? prisma;
   if (
@@ -1056,7 +1073,7 @@ export async function buildVisitScheduleBillingPreviewBatch(
   const previewByInput = new Map<string, Promise<VisitScheduleBillingPreview | null>>();
   const entries = await mapWithConcurrency(
     args,
-    resolveBillingPreviewBatchConcurrency(),
+    resolveBillingPreviewBatchConcurrency(options?.concurrency),
     async (item) => {
       const inputKey = JSON.stringify([
         item.caseId,

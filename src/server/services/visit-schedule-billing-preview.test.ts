@@ -1253,4 +1253,80 @@ describe('buildVisitScheduleBillingPreview', () => {
       }
     }
   });
+
+  it('honors a transaction-safe concurrency override without changing the global default', async () => {
+    careCaseFindManyMock.mockResolvedValue(
+      Array.from({ length: 3 }, (_, index) => ({
+        id: `case_${index + 1}`,
+        patient_id: `patient_${index + 1}`,
+        primary_pharmacist_id: 'pharm_1',
+        required_visit_support: null,
+        patient: { id: `patient_${index + 1}` },
+      })),
+    );
+    findLatestBillingPrescriptionClassificationsByCaseIdsMock.mockResolvedValue(
+      new Map(
+        Array.from({ length: 3 }, (_, index) => [
+          `case_${index + 1}`,
+          { prescription_category: 'regular', emergency_category: null },
+        ]),
+      ),
+    );
+    patientInsuranceFindManyMock.mockResolvedValue(
+      Array.from({ length: 3 }, (_, index) =>
+        makeInsuranceRecord({
+          id: `insurance_${index + 1}`,
+          patient_id: `patient_${index + 1}`,
+          insurance_type: 'medical',
+        }),
+      ),
+    );
+    let activeValidations = 0;
+    let maxActiveValidations = 0;
+    const pendingValidations: Array<() => void> = [];
+    validateBillingRequirementsMock.mockImplementation(
+      async () =>
+        new Promise<[]>((resolve) => {
+          activeValidations += 1;
+          maxActiveValidations = Math.max(maxActiveValidations, activeValidations);
+          pendingValidations.push(() => {
+            activeValidations -= 1;
+            resolve([]);
+          });
+        }),
+    );
+
+    const run = buildVisitScheduleBillingPreviewBatch(
+      Array.from({ length: 3 }, (_, index) => ({
+        key: `proposal_${index + 1}`,
+        caseId: `case_${index + 1}`,
+        proposedDate: '2026-04-03',
+        pharmacistId: 'pharm_1',
+        siteId: 'site_1',
+        visitType: 'regular',
+      })),
+      'org_1',
+      { concurrency: 1 },
+    );
+
+    try {
+      for (let completed = 0; completed < 3; completed += 1) {
+        await waitForAsyncAssertion(() => {
+          expect(pendingValidations).toHaveLength(1);
+        });
+        expect(maxActiveValidations).toBe(1);
+        pendingValidations.shift()?.();
+      }
+
+      await expect(run).resolves.toMatchObject({
+        proposal_1: expect.any(Object),
+        proposal_2: expect.any(Object),
+        proposal_3: expect.any(Object),
+      });
+      expect(validateBillingRequirementsMock).toHaveBeenCalledTimes(3);
+      expect(maxActiveValidations).toBe(1);
+    } finally {
+      pendingValidations.splice(0).forEach((release) => release());
+    }
+  });
 });

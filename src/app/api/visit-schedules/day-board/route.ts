@@ -11,6 +11,7 @@ import { buildPatientOperationalSummarySelect } from '@/lib/db/patient-operation
 import { withOrgContext } from '@/lib/db/rls';
 import { visitScheduleDateKeySchema } from '@/lib/validations/visit-schedule';
 import { addUtcDays, japanDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
+import { runSequentially } from '@/lib/utils/concurrency';
 import { timeDateToMinutes } from '@/lib/visits/time-of-day';
 import { OPEN_VISIT_SCHEDULE_PROPOSAL_STATUSES } from '@/lib/visit-schedule-proposals/route-order';
 import {
@@ -608,68 +609,72 @@ async function buildReadyBlockerSummaries(
     Math.max(...schedules.map((schedule) => scheduleReadyAsOf(schedule).getTime())),
   );
 
-  const [consents, firstVisitDocuments, managementPlans, billingEvidence] = await Promise.all([
-    patientIds.length === 0
-      ? Promise.resolve([])
-      : db.consentRecord.findMany({
-          where: {
-            org_id: orgId,
-            patient_id: { in: patientIds },
-            consent_type: 'visit_medication_management',
-            is_active: true,
-            revoked_date: null,
-            OR: [{ expiry_date: null }, { expiry_date: { gte: minScheduledDate } }],
-          },
-          select: { patient_id: true },
-        }),
-    caseIds.length === 0
-      ? Promise.resolve([])
-      : db.firstVisitDocument.findMany({
-          where: { org_id: orgId, case_id: { in: caseIds } },
-          orderBy: [{ case_id: 'asc' }, { created_at: 'desc' }],
-          select: { case_id: true, delivered_at: true, created_at: true },
-        }),
-    caseIds.length === 0
-      ? Promise.resolve([])
-      : db.managementPlan.findMany({
-          where: {
-            org_id: orgId,
-            case_id: { in: caseIds },
-            status: 'approved',
-            approved_at: { not: null },
-            OR: [{ effective_from: null }, { effective_from: { lte: maxScheduledDate } }],
-          },
-          orderBy: [{ case_id: 'asc' }, { effective_from: 'desc' }, { version: 'desc' }],
-          select: {
-            case_id: true,
-            next_review_date: true,
-            effective_from: true,
-            version: true,
-            approved_at: true,
-          },
-        }),
-    visitRecordIds.length === 0 && cycleIds.length === 0
-      ? Promise.resolve([])
-      : db.billingEvidence.findMany({
-          where: {
-            org_id: orgId,
-            claimable: false,
-            OR: [
-              ...(visitRecordIds.length > 0 ? [{ visit_record_id: { in: visitRecordIds } }] : []),
-              ...(cycleIds.length > 0 ? [{ cycle_id: { in: cycleIds } }] : []),
-            ],
-          },
-          orderBy: [{ billing_month: 'desc' }, { updated_at: 'desc' }],
-          select: {
-            id: true,
-            visit_record_id: true,
-            cycle_id: true,
-            claimable: true,
-            exclusion_reason: true,
-            same_month_exclusion_flags: true,
-          },
-        }),
-  ]);
+  const [consents, firstVisitDocuments, managementPlans, billingEvidence] = await runSequentially([
+    () =>
+      patientIds.length === 0
+        ? Promise.resolve([])
+        : db.consentRecord.findMany({
+            where: {
+              org_id: orgId,
+              patient_id: { in: patientIds },
+              consent_type: 'visit_medication_management',
+              is_active: true,
+              revoked_date: null,
+              OR: [{ expiry_date: null }, { expiry_date: { gte: minScheduledDate } }],
+            },
+            select: { patient_id: true },
+          }),
+    () =>
+      caseIds.length === 0
+        ? Promise.resolve([])
+        : db.firstVisitDocument.findMany({
+            where: { org_id: orgId, case_id: { in: caseIds } },
+            orderBy: [{ case_id: 'asc' }, { created_at: 'desc' }],
+            select: { case_id: true, delivered_at: true, created_at: true },
+          }),
+    () =>
+      caseIds.length === 0
+        ? Promise.resolve([])
+        : db.managementPlan.findMany({
+            where: {
+              org_id: orgId,
+              case_id: { in: caseIds },
+              status: 'approved',
+              approved_at: { not: null },
+              OR: [{ effective_from: null }, { effective_from: { lte: maxScheduledDate } }],
+            },
+            orderBy: [{ case_id: 'asc' }, { effective_from: 'desc' }, { version: 'desc' }],
+            select: {
+              case_id: true,
+              next_review_date: true,
+              effective_from: true,
+              version: true,
+              approved_at: true,
+            },
+          }),
+    () =>
+      visitRecordIds.length === 0 && cycleIds.length === 0
+        ? Promise.resolve([])
+        : db.billingEvidence.findMany({
+            where: {
+              org_id: orgId,
+              claimable: false,
+              OR: [
+                ...(visitRecordIds.length > 0 ? [{ visit_record_id: { in: visitRecordIds } }] : []),
+                ...(cycleIds.length > 0 ? [{ cycle_id: { in: cycleIds } }] : []),
+              ],
+            },
+            orderBy: [{ billing_month: 'desc' }, { updated_at: 'desc' }],
+            select: {
+              id: true,
+              visit_record_id: true,
+              cycle_id: true,
+              claimable: true,
+              exclusion_reason: true,
+              same_month_exclusion_flags: true,
+            },
+          }),
+  ] as const);
 
   const consentPatientIds = new Set(consents.map((consent) => consent.patient_id));
   const firstVisitDocumentByCaseId = new Map<string, (typeof firstVisitDocuments)[number]>();
@@ -862,73 +867,176 @@ const authenticatedGET = withAuthContext(
           vehicleResources,
           proposals,
           pendingProposalTotalCount,
-        ] = await Promise.all([
-          collectDayBoardPages((cursor) =>
-            db.membership.findMany({
-              where: {
-                org_id: ctx.orgId,
-                is_active: true,
-                role: { in: [...BOARD_MEMBER_ROLES] },
-              },
-              orderBy: [{ user: { name_kana: 'asc' } }, { id: 'asc' }],
-              take: DAY_BOARD_SCAN_PAGE_SIZE,
-              ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-              select: {
-                id: true,
-                role: true,
-                user: { select: { id: true, name: true } },
-              },
+        ] = await runSequentially([
+          () =>
+            collectDayBoardPages((cursor) =>
+              db.membership.findMany({
+                where: {
+                  org_id: ctx.orgId,
+                  is_active: true,
+                  role: { in: [...BOARD_MEMBER_ROLES] },
+                },
+                orderBy: [{ user: { name_kana: 'asc' } }, { id: 'asc' }],
+                take: DAY_BOARD_SCAN_PAGE_SIZE,
+                ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+                select: {
+                  id: true,
+                  role: true,
+                  user: { select: { id: true, name: true } },
+                },
+              }),
+            ),
+          () =>
+            collectDayBoardPages((cursor) =>
+              db.visitSchedule.findMany({
+                where: {
+                  org_id: ctx.orgId,
+                  scheduled_date: { gte: dayStart, lt: dayEnd },
+                  schedule_status: { notIn: ['cancelled', 'rescheduled'] },
+                },
+                orderBy: [{ time_window_start: 'asc' }, { route_order: 'asc' }, { id: 'asc' }],
+                take: DAY_BOARD_SCAN_PAGE_SIZE,
+                ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+                select: {
+                  id: true,
+                  display_id: true,
+                  case_id: true,
+                  cycle_id: true,
+                  pharmacist_id: true,
+                  visit_type: true,
+                  schedule_status: true,
+                  scheduled_date: true,
+                  carry_items_status: true,
+                  priority: true,
+                  site_id: true,
+                  route_order: true,
+                  vehicle_resource_id: true,
+                  vehicle_resource: {
+                    select: {
+                      id: true,
+                      label: true,
+                      travel_mode: true,
+                    },
+                  },
+                  time_window_start: true,
+                  time_window_end: true,
+                  confirmed_at: true,
+                  cycle: { select: { overall_status: true } },
+                  preparation: {
+                    select: {
+                      org_id: true,
+                      prepared_at: true,
+                      medication_changes_reviewed: true,
+                      carry_items_confirmed: true,
+                      previous_issues_reviewed: true,
+                      route_confirmed: true,
+                      offline_synced: true,
+                    },
+                  },
+                  facility_batch_id: true,
+                  facility_batch: { select: { id: true, facility_id: true } },
+                  visit_record: { select: { id: true } },
+                  case_: {
+                    select: {
+                      display_id: true,
+                      patient: {
+                        select: {
+                          id: true,
+                          display_id: true,
+                          name: true,
+                          ...patientOperationalSummarySelect,
+                          contacts: {
+                            where: { org_id: ctx.orgId, is_emergency_contact: true },
+                            select: { id: true },
+                          },
+                          residences: {
+                            where: { is_primary: true },
+                            take: 1,
+                            select: {
+                              address: true,
+                              lat: true,
+                              lng: true,
+                            },
+                          },
+                        },
+                      },
+                      care_team_links: {
+                        where: { org_id: ctx.orgId },
+                        select: { role: true },
+                      },
+                    },
+                  },
+                },
+              }),
+            ),
+          () =>
+            db.task.groupBy({
+              by: ['assigned_to'],
+              where: { org_id: ctx.orgId, status: { in: ['pending', 'in_progress'] } },
+              _count: { id: true },
             }),
-          ),
-          collectDayBoardPages((cursor) =>
-            db.visitSchedule.findMany({
-              where: {
-                org_id: ctx.orgId,
-                scheduled_date: { gte: dayStart, lt: dayEnd },
-                schedule_status: { notIn: ['cancelled', 'rescheduled'] },
-              },
-              orderBy: [{ time_window_start: 'asc' }, { route_order: 'asc' }, { id: 'asc' }],
-              take: DAY_BOARD_SCAN_PAGE_SIZE,
-              ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+          () =>
+            collectDayBoardPages((cursor) =>
+              db.pharmacistShift.findMany({
+                where: {
+                  org_id: ctx.orgId,
+                  date: { gte: dayStart, lt: dayEnd },
+                },
+                orderBy: [{ date: 'asc' }, { user_id: 'asc' }, { id: 'asc' }],
+                take: DAY_BOARD_SCAN_PAGE_SIZE,
+                ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+                select: {
+                  id: true,
+                  user_id: true,
+                  available: true,
+                  available_from: true,
+                  available_to: true,
+                },
+              }),
+            ),
+          () =>
+            collectDayBoardPages((cursor) =>
+              db.visitVehicleResource.findMany({
+                where: {
+                  org_id: ctx.orgId,
+                },
+                orderBy: [{ available: 'desc' }, { label: 'asc' }, { id: 'asc' }],
+                take: DAY_BOARD_SCAN_PAGE_SIZE,
+                ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+                select: {
+                  id: true,
+                  label: true,
+                  site_id: true,
+                  vehicle_code: true,
+                  travel_mode: true,
+                  max_stops: true,
+                  max_route_duration_minutes: true,
+                  available: true,
+                  site: {
+                    select: {
+                      address: true,
+                      lat: true,
+                      lng: true,
+                    },
+                  },
+                },
+              }),
+            ),
+          () =>
+            db.visitScheduleProposal.findMany({
+              where: pendingProposalWhere,
+              orderBy: [{ proposed_date: 'asc' }, { time_window_start: 'asc' }, { id: 'asc' }],
+              take: PENDING_PROPOSAL_LIMIT,
               select: {
                 id: true,
                 display_id: true,
-                case_id: true,
-                cycle_id: true,
-                pharmacist_id: true,
                 visit_type: true,
-                schedule_status: true,
-                scheduled_date: true,
-                carry_items_status: true,
-                priority: true,
-                site_id: true,
-                route_order: true,
-                vehicle_resource_id: true,
-                vehicle_resource: {
-                  select: {
-                    id: true,
-                    label: true,
-                    travel_mode: true,
-                  },
-                },
+                proposal_status: true,
+                patient_contact_status: true,
+                proposed_date: true,
                 time_window_start: true,
                 time_window_end: true,
-                confirmed_at: true,
-                cycle: { select: { overall_status: true } },
-                preparation: {
-                  select: {
-                    org_id: true,
-                    prepared_at: true,
-                    medication_changes_reviewed: true,
-                    carry_items_confirmed: true,
-                    previous_issues_reviewed: true,
-                    route_confirmed: true,
-                    offline_synced: true,
-                  },
-                },
-                facility_batch_id: true,
-                facility_batch: { select: { id: true, facility_id: true } },
-                visit_record: { select: { id: true } },
+                proposed_pharmacist_id: true,
                 case_: {
                   select: {
                     display_id: true,
@@ -938,113 +1046,17 @@ const authenticatedGET = withAuthContext(
                         display_id: true,
                         name: true,
                         ...patientOperationalSummarySelect,
-                        contacts: {
-                          where: { org_id: ctx.orgId, is_emergency_contact: true },
-                          select: { id: true },
-                        },
-                        residences: {
-                          where: { is_primary: true },
-                          take: 1,
-                          select: {
-                            address: true,
-                            lat: true,
-                            lng: true,
-                          },
-                        },
                       },
                     },
-                    care_team_links: {
-                      where: { org_id: ctx.orgId },
-                      select: { role: true },
-                    },
                   },
                 },
               },
             }),
-          ),
-          db.task.groupBy({
-            by: ['assigned_to'],
-            where: { org_id: ctx.orgId, status: { in: ['pending', 'in_progress'] } },
-            _count: { id: true },
-          }),
-          collectDayBoardPages((cursor) =>
-            db.pharmacistShift.findMany({
-              where: {
-                org_id: ctx.orgId,
-                date: { gte: dayStart, lt: dayEnd },
-              },
-              orderBy: [{ date: 'asc' }, { user_id: 'asc' }, { id: 'asc' }],
-              take: DAY_BOARD_SCAN_PAGE_SIZE,
-              ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-              select: {
-                id: true,
-                user_id: true,
-                available: true,
-                available_from: true,
-                available_to: true,
-              },
+          () =>
+            db.visitScheduleProposal.count({
+              where: pendingProposalWhere,
             }),
-          ),
-          collectDayBoardPages((cursor) =>
-            db.visitVehicleResource.findMany({
-              where: {
-                org_id: ctx.orgId,
-              },
-              orderBy: [{ available: 'desc' }, { label: 'asc' }, { id: 'asc' }],
-              take: DAY_BOARD_SCAN_PAGE_SIZE,
-              ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-              select: {
-                id: true,
-                label: true,
-                site_id: true,
-                vehicle_code: true,
-                travel_mode: true,
-                max_stops: true,
-                max_route_duration_minutes: true,
-                available: true,
-                site: {
-                  select: {
-                    address: true,
-                    lat: true,
-                    lng: true,
-                  },
-                },
-              },
-            }),
-          ),
-          db.visitScheduleProposal.findMany({
-            where: pendingProposalWhere,
-            orderBy: [{ proposed_date: 'asc' }, { time_window_start: 'asc' }, { id: 'asc' }],
-            take: PENDING_PROPOSAL_LIMIT,
-            select: {
-              id: true,
-              display_id: true,
-              visit_type: true,
-              proposal_status: true,
-              patient_contact_status: true,
-              proposed_date: true,
-              time_window_start: true,
-              time_window_end: true,
-              proposed_pharmacist_id: true,
-              case_: {
-                select: {
-                  display_id: true,
-                  patient: {
-                    select: {
-                      id: true,
-                      display_id: true,
-                      name: true,
-                      ...patientOperationalSummarySelect,
-                    },
-                  },
-                },
-              },
-            },
-          }),
-          db.visitScheduleProposal.count({
-            where: pendingProposalWhere,
-          }),
-        ]);
+        ] as const);
         const dayCycleIds = Array.from(
           new Set(schedules.map((schedule) => schedule.cycle_id).filter(isStringId)),
         );

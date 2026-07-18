@@ -8,6 +8,7 @@ import { conflict, notFound, success, validationError } from '@/lib/api/response
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { allocateDisplayId } from '@/lib/db/display-id';
 import { withOrgContext } from '@/lib/db/rls';
+import { runSequentially } from '@/lib/utils/concurrency';
 import {
   isCompletePassingPcaPumpAccessoryChecklist,
   pcaPumpOpenRentalStatuses,
@@ -19,6 +20,37 @@ import { serializePcaPumpRental, toDateKey } from '@/server/services/pca-pump-re
 
 function toPrismaJson(value: unknown): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
+}
+
+async function findPcaPumpRentalProjection(
+  tx: Prisma.TransactionClient,
+  args: { orgId: string; rentalId: string },
+) {
+  const rental = await tx.pcaPumpRental.findFirst({
+    where: { id: args.rentalId, org_id: args.orgId },
+  });
+  if (!rental) return null;
+
+  const [accessories, pump, institution] = await runSequentially([
+    () =>
+      tx.pcaPumpRentalAccessory.findMany({
+        where: { org_id: args.orgId, rental_id: rental.id },
+        orderBy: [{ created_at: 'asc' }],
+      }),
+    () =>
+      tx.pcaPump.findFirst({
+        where: { id: rental.pump_id, org_id: args.orgId },
+      }),
+    () =>
+      tx.prescriberInstitution.findFirst({
+        where: { id: rental.institution_id, org_id: args.orgId },
+      }),
+  ]);
+  if (!pump || !institution) {
+    throw new Error('PCA rental relation projection is incomplete');
+  }
+
+  return { ...rental, accessories, pump, institution };
 }
 
 async function authenticatedPATCHHandler(
@@ -40,8 +72,8 @@ async function authenticatedPATCHHandler(
 
   const existing = await withOrgContext(
     ctx.orgId,
-    (tx) =>
-      tx.pcaPumpRental.findFirst({
+    async (tx) => {
+      const rental = await tx.pcaPumpRental.findFirst({
         where: { id, org_id: ctx.orgId },
         select: {
           id: true,
@@ -52,13 +84,16 @@ async function authenticatedPATCHHandler(
           returned_at: true,
           return_inspection_status: true,
           updated_at: true,
-          pump: {
-            select: {
-              status: true,
-            },
-          },
         },
-      }),
+      });
+      if (!rental) return null;
+      const pump = await tx.pcaPump.findFirst({
+        where: { id: rental.pump_id, org_id: ctx.orgId },
+        select: { status: true },
+      });
+      if (!pump) throw new Error('PCA rental pump projection is incomplete');
+      return { ...rental, pump };
+    },
     { requestContext: ctx, maxWaitMs: 10_000, timeoutMs: 20_000 },
   );
   if (!existing) return notFound('PCAポンプレンタルが見つかりません');
@@ -254,15 +289,9 @@ async function authenticatedPATCHHandler(
           };
         }
 
-        const rental = await tx.pcaPumpRental.findFirst({
-          where: { id, org_id: ctx.orgId },
-          include: {
-            accessories: {
-              orderBy: [{ created_at: 'asc' }],
-            },
-            pump: true,
-            institution: true,
-          },
+        const rental = await findPcaPumpRentalProjection(tx, {
+          orgId: ctx.orgId,
+          rentalId: id,
         });
         if (!rental) {
           return {

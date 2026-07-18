@@ -9,6 +9,7 @@ import { withOrgContext } from '@/lib/db/rls';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { buildVisitScheduleBillingPreviewBatch } from '@/server/services/visit-schedule-billing-preview';
 import { visitScheduleDateKeySchema } from '@/lib/validations/visit-schedule';
+import { runSequentially } from '@/lib/utils/concurrency';
 import { z } from 'zod';
 
 const proposedDateSchema = visitScheduleDateKeySchema('日付形式が不正です（YYYY-MM-DD）');
@@ -106,8 +107,8 @@ const authenticatedPOST = withAuthContext(
             )
           : new Set(
               (
-                await Promise.all(
-                  accessWhereByCheck.map(async (item) => {
+                await runSequentially(
+                  accessWhereByCheck.map((item) => async () => {
                     const careCase = await tx.careCase.findFirst({
                       where: {
                         id: item.caseId,
@@ -137,7 +138,7 @@ const authenticatedPOST = withAuthContext(
             excludeProposalId: item.exclude_proposal_id,
           })),
           ctx.orgId,
-          { db: tx },
+          { db: tx, concurrency: 1 },
         );
       },
       { requestContext: ctx },

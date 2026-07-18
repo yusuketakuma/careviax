@@ -9,6 +9,7 @@ import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { allocateDisplayId } from '@/lib/db/display-id';
 import { withOrgContext } from '@/lib/db/rls';
 import { logger } from '@/lib/utils/logger';
+import { runSequentially } from '@/lib/utils/concurrency';
 import { withRoutePerformance } from '@/lib/utils/performance';
 import {
   createPcaPumpRentalSchema,
@@ -83,8 +84,8 @@ async function authenticatedGET(req: NextRequest) {
 
     const rentals = await withOrgContext(
       ctx.orgId,
-      (tx) =>
-        tx.pcaPumpRental.findMany({
+      async (tx) => {
+        const rentalRows = await tx.pcaPumpRental.findMany({
           where: {
             org_id: ctx.orgId,
             ...('statuses' in parsedStatus
@@ -99,32 +100,72 @@ async function authenticatedGET(req: NextRequest) {
               ? { return_inspection_status: parsedInspectionStatus.status }
               : {}),
           },
-          include: {
-            accessories: {
-              orderBy: [{ created_at: 'asc' }],
-            },
-            pump: {
-              select: {
-                id: true,
-                asset_code: true,
-                serial_number: true,
-                model_name: true,
-                status: true,
-              },
-            },
-            institution: {
-              select: {
-                id: true,
-                name: true,
-                institution_code: true,
-                phone: true,
-                fax: true,
-              },
-            },
-          },
           orderBy: [{ rented_at: 'desc' }, { created_at: 'desc' }],
           take: 100,
-        }),
+        });
+        const rentalIds = rentalRows.map((rental) => rental.id);
+        const pumpIds = Array.from(new Set(rentalRows.map((rental) => rental.pump_id)));
+        const institutionIds = Array.from(
+          new Set(rentalRows.map((rental) => rental.institution_id)),
+        );
+        const accessories =
+          rentalIds.length === 0
+            ? []
+            : await tx.pcaPumpRentalAccessory.findMany({
+                where: { org_id: ctx.orgId, rental_id: { in: rentalIds } },
+                orderBy: [{ created_at: 'asc' }],
+              });
+        const pumps =
+          pumpIds.length === 0
+            ? []
+            : await tx.pcaPump.findMany({
+                where: { org_id: ctx.orgId, id: { in: pumpIds } },
+                select: {
+                  id: true,
+                  asset_code: true,
+                  serial_number: true,
+                  model_name: true,
+                  status: true,
+                },
+              });
+        const institutions =
+          institutionIds.length === 0
+            ? []
+            : await tx.prescriberInstitution.findMany({
+                where: { org_id: ctx.orgId, id: { in: institutionIds } },
+                select: {
+                  id: true,
+                  name: true,
+                  institution_code: true,
+                  phone: true,
+                  fax: true,
+                },
+              });
+        const accessoriesByRentalId = new Map<string, typeof accessories>();
+        for (const accessory of accessories) {
+          const current = accessoriesByRentalId.get(accessory.rental_id) ?? [];
+          current.push(accessory);
+          accessoriesByRentalId.set(accessory.rental_id, current);
+        }
+        const pumpById = new Map(pumps.map((pump) => [pump.id, pump]));
+        const institutionById = new Map(
+          institutions.map((institution) => [institution.id, institution]),
+        );
+
+        return rentalRows.map((rental) => {
+          const pump = pumpById.get(rental.pump_id);
+          const institution = institutionById.get(rental.institution_id);
+          if (!pump || !institution) {
+            throw new Error('PCA rental relation projection is incomplete');
+          }
+          return {
+            ...rental,
+            accessories: accessoriesByRentalId.get(rental.id) ?? [],
+            pump,
+            institution,
+          };
+        });
+      },
       { requestContext: ctx, maxWaitMs: 10_000, timeoutMs: 20_000 },
     );
 
@@ -171,15 +212,17 @@ async function authenticatedPOST(req: NextRequest) {
     const [pump, institution] = await withOrgContext(
       ctx.orgId,
       (tx) =>
-        Promise.all([
-          tx.pcaPump.findFirst({
-            where: { id: parsed.data.pump_id, org_id: ctx.orgId },
-            select: { id: true, status: true },
-          }),
-          tx.prescriberInstitution.findFirst({
-            where: { id: parsed.data.institution_id, org_id: ctx.orgId },
-            select: { id: true },
-          }),
+        runSequentially([
+          () =>
+            tx.pcaPump.findFirst({
+              where: { id: parsed.data.pump_id, org_id: ctx.orgId },
+              select: { id: true, status: true },
+            }),
+          () =>
+            tx.prescriberInstitution.findFirst({
+              where: { id: parsed.data.institution_id, org_id: ctx.orgId },
+              select: { id: true },
+            }),
         ]),
       { requestContext: ctx, maxWaitMs: 10_000, timeoutMs: 20_000 },
     );
@@ -220,7 +263,7 @@ async function authenticatedPOST(req: NextRequest) {
           }
 
           const displayId = await allocateDisplayId(tx, 'PcaPumpRental', ctx.orgId);
-          const rental = await tx.pcaPumpRental.create({
+          const rentalRow = await tx.pcaPumpRental.create({
             data: {
               org_id: ctx.orgId,
               display_id: displayId,
@@ -236,32 +279,44 @@ async function authenticatedPOST(req: NextRequest) {
               rental_fee_yen: parsed.data.rental_fee_yen ?? null,
               notes: parsed.data.notes || null,
             },
-            include: {
-              pump: true,
-              institution: true,
-            },
           });
           await createDefaultPcaRentalAccessories(tx, {
             orgId: ctx.orgId,
-            rentalId: rental.id,
+            rentalId: rentalRow.id,
           });
           await createAuditLogEntry(tx, ctx, {
             action: 'pca_pump_rental_created',
             targetType: 'PcaPumpRental',
-            targetId: rental.id,
+            targetId: rentalRow.id,
             changes: {
-              pump_id: rental.pump_id,
-              institution_id: rental.institution_id,
-              status: rental.status,
-              rented_at: toDateKey(rental.rented_at),
-              due_at: toDateKey(rental.due_at),
-              returned_at: toDateKey(rental.returned_at),
-              return_inspection_status: rental.return_inspection_status,
-              rental_fee_yen: rental.rental_fee_yen,
+              pump_id: rentalRow.pump_id,
+              institution_id: rentalRow.institution_id,
+              status: rentalRow.status,
+              rented_at: toDateKey(rentalRow.rented_at),
+              due_at: toDateKey(rentalRow.due_at),
+              returned_at: toDateKey(rentalRow.returned_at),
+              return_inspection_status: rentalRow.return_inspection_status,
+              rental_fee_yen: rentalRow.rental_fee_yen,
             },
           });
+          const [createdPump, createdInstitution] = await runSequentially([
+            () =>
+              tx.pcaPump.findFirst({
+                where: { id: rentalRow.pump_id, org_id: ctx.orgId },
+              }),
+            () =>
+              tx.prescriberInstitution.findFirst({
+                where: { id: rentalRow.institution_id, org_id: ctx.orgId },
+              }),
+          ]);
+          if (!createdPump || !createdInstitution) {
+            throw new Error('Created PCA rental relation projection is incomplete');
+          }
 
-          return { kind: 'rental' as const, rental };
+          return {
+            kind: 'rental' as const,
+            rental: { ...rentalRow, pump: createdPump, institution: createdInstitution },
+          };
         },
         { requestContext: ctx, maxWaitMs: 10_000, timeoutMs: 20_000 },
       );

@@ -5,8 +5,11 @@ const {
   authMock,
   membershipFindFirstMock,
   pcaPumpFindFirstMock,
+  pcaPumpFindManyMock,
   prescriberInstitutionFindFirstMock,
+  prescriberInstitutionFindManyMock,
   pcaPumpRentalFindManyMock,
+  pcaPumpRentalAccessoryFindManyMock,
   pcaPumpRentalCreateMock,
   pcaPumpRentalAccessoryCreateManyMock,
   pcaPumpUpdateManyMock,
@@ -18,8 +21,11 @@ const {
   authMock: vi.fn(),
   membershipFindFirstMock: vi.fn(),
   pcaPumpFindFirstMock: vi.fn(),
+  pcaPumpFindManyMock: vi.fn(),
   prescriberInstitutionFindFirstMock: vi.fn(),
+  prescriberInstitutionFindManyMock: vi.fn(),
   pcaPumpRentalFindManyMock: vi.fn(),
+  pcaPumpRentalAccessoryFindManyMock: vi.fn(),
   pcaPumpRentalCreateMock: vi.fn(),
   pcaPumpRentalAccessoryCreateManyMock: vi.fn(),
   pcaPumpUpdateManyMock: vi.fn(),
@@ -43,9 +49,11 @@ vi.mock('@/lib/db/client', () => ({
     },
     pcaPump: {
       findFirst: pcaPumpFindFirstMock,
+      findMany: pcaPumpFindManyMock,
     },
     prescriberInstitution: {
       findFirst: prescriberInstitutionFindFirstMock,
+      findMany: prescriberInstitutionFindManyMock,
     },
     pcaPumpRental: {
       findMany: pcaPumpRentalFindManyMock,
@@ -143,8 +151,11 @@ describe('/api/pca-pump-rentals', () => {
     authMock.mockResolvedValue({ user: { id: 'user_1' } });
     membershipFindFirstMock.mockResolvedValue({ role: 'admin', site_id: null });
     pcaPumpFindFirstMock.mockResolvedValue({ id: 'pump_1', status: 'available' });
+    pcaPumpFindManyMock.mockResolvedValue([rentalRecord.pump]);
     prescriberInstitutionFindFirstMock.mockResolvedValue({ id: 'institution_1' });
+    prescriberInstitutionFindManyMock.mockResolvedValue([rentalRecord.institution]);
     pcaPumpRentalFindManyMock.mockResolvedValue([rentalRecord]);
+    pcaPumpRentalAccessoryFindManyMock.mockResolvedValue([]);
     pcaPumpRentalCreateMock.mockResolvedValue({
       ...rentalRecord,
       display_id: 'pcar0000000001',
@@ -160,13 +171,16 @@ describe('/api/pca-pump-rentals', () => {
         },
         pcaPumpRentalAccessory: {
           createMany: pcaPumpRentalAccessoryCreateManyMock,
+          findMany: pcaPumpRentalAccessoryFindManyMock,
         },
         pcaPump: {
           findFirst: pcaPumpFindFirstMock,
+          findMany: pcaPumpFindManyMock,
           updateMany: pcaPumpUpdateManyMock,
         },
         prescriberInstitution: {
           findFirst: prescriberInstitutionFindFirstMock,
+          findMany: prescriberInstitutionFindManyMock,
         },
         auditLog: {
           create: auditLogCreateMock,
@@ -206,6 +220,41 @@ describe('/api/pca-pump-rentals', () => {
         },
       ],
     });
+  });
+
+  it('serializes batched relation reads on the org transaction client', async () => {
+    let activeQueries = 0;
+    let maxActiveQueries = 0;
+    const trackQuery = async <T>(value: T) => {
+      activeQueries += 1;
+      maxActiveQueries = Math.max(maxActiveQueries, activeQueries);
+      await Promise.resolve();
+      activeQueries -= 1;
+      return value;
+    };
+    pcaPumpRentalFindManyMock.mockImplementationOnce(() => trackQuery([rentalRecord]));
+    pcaPumpRentalAccessoryFindManyMock.mockImplementationOnce(() => trackQuery([]));
+    pcaPumpFindManyMock.mockImplementationOnce(() => trackQuery([rentalRecord.pump]));
+    prescriberInstitutionFindManyMock.mockImplementationOnce(() =>
+      trackQuery([rentalRecord.institution]),
+    );
+
+    const response = await GET(createRequest('http://localhost/api/pca-pump-rentals?status=open'));
+
+    expect(response.status).toBe(200);
+    expect(maxActiveQueries).toBe(1);
+    expect(pcaPumpRentalAccessoryFindManyMock).toHaveBeenCalledWith({
+      where: { org_id: 'org_1', rental_id: { in: ['rental_1'] } },
+      orderBy: [{ created_at: 'asc' }],
+    });
+    expect(pcaPumpFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { org_id: 'org_1', id: { in: ['pump_1'] } } }),
+    );
+    expect(prescriberInstitutionFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { org_id: 'org_1', id: { in: ['institution_1'] } },
+      }),
+    );
   });
 
   it('lists only open PCA pump rentals for operational queues', async () => {
@@ -427,10 +476,6 @@ describe('/api/pca-pump-rentals', () => {
         contact_phone: '03-1234-5678',
         rental_fee_yen: 12000,
       }),
-      include: {
-        pump: true,
-        institution: true,
-      },
     });
     expect(allocateDisplayIdMock).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -537,10 +582,6 @@ describe('/api/pca-pump-rentals', () => {
         returned_at: new Date('2026-06-18'),
         return_inspection_status: 'pending',
       }),
-      include: {
-        pump: true,
-        institution: true,
-      },
     });
     expect(auditLogCreateMock).toHaveBeenCalledWith({
       data: expect.objectContaining({
@@ -627,7 +668,21 @@ describe('/api/pca-pump-rentals', () => {
   });
 
   it('rejects already rented pumps before creating a rental', async () => {
-    pcaPumpFindFirstMock.mockResolvedValue({ id: 'pump_1', status: 'rented' });
+    let activeQueries = 0;
+    let maxActiveQueries = 0;
+    const trackQuery = async <T>(value: T) => {
+      activeQueries += 1;
+      maxActiveQueries = Math.max(maxActiveQueries, activeQueries);
+      await Promise.resolve();
+      activeQueries -= 1;
+      return value;
+    };
+    pcaPumpFindFirstMock.mockImplementationOnce(() =>
+      trackQuery({ id: 'pump_1', status: 'rented' }),
+    );
+    prescriberInstitutionFindFirstMock.mockImplementationOnce(() =>
+      trackQuery({ id: 'institution_1' }),
+    );
 
     const response = await POST(
       createRequest('http://localhost/api/pca-pump-rentals', {
@@ -639,6 +694,7 @@ describe('/api/pca-pump-rentals', () => {
     );
 
     expect(response.status).toBe(400);
+    expect(maxActiveQueries).toBe(1);
     expect(withOrgContextMock).toHaveBeenCalledTimes(1);
     expect(allocateDisplayIdMock).not.toHaveBeenCalled();
     expect(pcaPumpRentalCreateMock).not.toHaveBeenCalled();

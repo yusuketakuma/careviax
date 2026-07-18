@@ -9,6 +9,7 @@ const {
   membershipFindManyMock,
   pharmacySiteFindFirstMock,
   buildVisitScheduleBillingPreviewBatchMock,
+  caseAccessWhereMock,
 } = vi.hoisted(() => ({
   withAuthContextMock: vi.fn(
     (
@@ -38,6 +39,7 @@ const {
   membershipFindManyMock: vi.fn(),
   pharmacySiteFindFirstMock: vi.fn(),
   buildVisitScheduleBillingPreviewBatchMock: vi.fn(),
+  caseAccessWhereMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
@@ -61,6 +63,10 @@ vi.mock('@/lib/db/client', () => ({
 
 vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
+}));
+
+vi.mock('@/lib/auth/visit-schedule-access', () => ({
+  buildVisitScheduleProposalCaseAccessWhere: caseAccessWhereMock,
 }));
 
 vi.mock('@/server/services/visit-schedule-billing-preview', () => ({
@@ -98,6 +104,7 @@ describe('/api/visit-schedule-proposals/billing-preview-batch POST', () => {
     careCaseFindManyMock.mockResolvedValue([{ id: 'case_1' }]);
     membershipFindManyMock.mockResolvedValue([{ user_id: 'pharm_1' }]);
     pharmacySiteFindFirstMock.mockResolvedValue({ id: 'site_1' });
+    caseAccessWhereMock.mockReturnValue(null);
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
         careCase: {
@@ -187,6 +194,7 @@ describe('/api/visit-schedule-proposals/billing-preview-batch POST', () => {
             findMany: careCaseFindManyMock,
           }),
         }),
+        concurrency: 1,
       },
     );
     expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
@@ -210,6 +218,52 @@ describe('/api/visit-schedule-proposals/billing-preview-batch POST', () => {
         }),
       },
     });
+  });
+
+  it('serializes assignment-scoped access checks on the transaction client', async () => {
+    caseAccessWhereMock.mockImplementation((_ctx, pharmacistId?: string) => ({
+      primary_pharmacist_id: pharmacistId ?? 'user_1',
+    }));
+    let activeQueries = 0;
+    let maxActiveQueries = 0;
+    careCaseFindFirstMock.mockImplementation(async ({ where }: { where: { id: string } }) => {
+      activeQueries += 1;
+      maxActiveQueries = Math.max(maxActiveQueries, activeQueries);
+      await Promise.resolve();
+      activeQueries -= 1;
+      return { id: where.id };
+    });
+
+    const response = await POST(
+      createPostRequest({
+        items: [
+          {
+            key: 'proposal_1',
+            case_id: 'case_1',
+            proposed_date: '2026-04-03',
+            pharmacist_id: 'pharm_1',
+          },
+          {
+            key: 'proposal_2',
+            case_id: 'case_2',
+            proposed_date: '2026-04-04',
+            pharmacist_id: 'pharm_1',
+          },
+        ],
+      }),
+      emptyRouteContext,
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(careCaseFindFirstMock).toHaveBeenCalledTimes(2);
+    expect(careCaseFindManyMock).not.toHaveBeenCalled();
+    expect(maxActiveQueries).toBe(1);
+    expect(buildVisitScheduleBillingPreviewBatchMock).toHaveBeenCalledWith(
+      expect.any(Array),
+      'org_1',
+      expect.objectContaining({ concurrency: 1 }),
+    );
   });
 
   it('passes exclude ids through for batch edit previews', async () => {

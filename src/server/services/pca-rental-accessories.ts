@@ -59,39 +59,37 @@ export async function syncPcaRentalAccessoriesFromReturnInspection(
   tx: PcaRentalAccessoryTx,
   args: { orgId: string; rentalId: string; checklist: AccessoryChecklist },
 ) {
-  await Promise.all(
-    pcaPumpAccessoryChecklistItems.map((item) => {
-      const checked = args.checklist[item.key];
-      if (!checked) return null;
-      const status = checked.status;
-      const update = {
-        name: item.label,
-        returned_quantity: returnedQuantityForStatus(status),
-        return_condition: status,
-        discrepancy_status: discrepancyStatusForStatus(status),
-        billable: false,
-        charge_amount_yen: null,
-        notes: checked.notes?.trim() || null,
-      };
-      return tx.pcaPumpRentalAccessory.upsert({
-        where: {
-          org_id_rental_id_accessory_key: {
-            org_id: args.orgId,
-            rental_id: args.rentalId,
-            accessory_key: item.key,
-          },
-        },
-        create: {
+  for (const item of pcaPumpAccessoryChecklistItems) {
+    const checked = args.checklist[item.key];
+    if (!checked) continue;
+    const status = checked.status;
+    const update = {
+      name: item.label,
+      returned_quantity: returnedQuantityForStatus(status),
+      return_condition: status,
+      discrepancy_status: discrepancyStatusForStatus(status),
+      billable: false,
+      charge_amount_yen: null,
+      notes: checked.notes?.trim() || null,
+    };
+    await tx.pcaPumpRentalAccessory.upsert({
+      where: {
+        org_id_rental_id_accessory_key: {
           org_id: args.orgId,
           rental_id: args.rentalId,
           accessory_key: item.key,
-          expected_quantity: 1,
-          checked_out_quantity: 1,
-          checkout_condition: 'ok',
-          ...update,
         },
-        update,
-      });
-    }),
-  );
+      },
+      create: {
+        org_id: args.orgId,
+        rental_id: args.rentalId,
+        accessory_key: item.key,
+        expected_quantity: 1,
+        checked_out_quantity: 1,
+        checkout_condition: 'ok',
+        ...update,
+      },
+      update,
+    });
+  }
 }

@@ -9,9 +9,11 @@ const {
   prescriberInstitutionFindFirstMock,
   pcaPumpRentalUpdateManyMock,
   pcaPumpRentalRefetchMock,
+  pcaPumpFindFirstMock,
   pcaPumpUpdateMock,
   pcaPumpMaintenanceEventCreateMock,
   pcaPumpRentalAccessoryUpsertMock,
+  pcaPumpRentalAccessoryFindManyMock,
   openRentalFindFirstMock,
   auditLogCreateMock,
   allocateDisplayIdMock,
@@ -24,9 +26,11 @@ const {
   prescriberInstitutionFindFirstMock: vi.fn(),
   pcaPumpRentalUpdateManyMock: vi.fn(),
   pcaPumpRentalRefetchMock: vi.fn(),
+  pcaPumpFindFirstMock: vi.fn(),
   pcaPumpUpdateMock: vi.fn(),
   pcaPumpMaintenanceEventCreateMock: vi.fn(),
   pcaPumpRentalAccessoryUpsertMock: vi.fn(),
+  pcaPumpRentalAccessoryFindManyMock: vi.fn(),
   openRentalFindFirstMock: vi.fn(),
   auditLogCreateMock: vi.fn(),
   allocateDisplayIdMock: vi.fn(),
@@ -122,7 +126,13 @@ describe('/api/pca-pump-rentals/[id] PATCH', () => {
     openRentalFindFirstMock.mockResolvedValue(null);
     pcaPumpRentalUpdateManyMock.mockResolvedValue({ count: 1 });
     pcaPumpRentalRefetchMock.mockResolvedValue(updatedRental);
+    pcaPumpFindFirstMock.mockResolvedValue({
+      id: 'pump_1',
+      asset_code: 'PCA-001',
+      status: 'rented',
+    });
     pcaPumpRentalAccessoryUpsertMock.mockResolvedValue({});
+    pcaPumpRentalAccessoryFindManyMock.mockResolvedValue([]);
     pcaPumpUpdateMock.mockResolvedValue({ id: 'pump_1', status: 'available' });
     allocateDisplayIdMock.mockResolvedValue('pcam0000000001');
     let contextCall = 0;
@@ -133,8 +143,10 @@ describe('/api/pca-pump-rentals/[id] PATCH', () => {
           findFirst:
             contextCall === 1
               ? pcaPumpRentalFindFirstMock
-              : vi.fn((args: { include?: unknown }) =>
-                  args.include ? pcaPumpRentalRefetchMock(args) : openRentalFindFirstMock(args),
+              : vi.fn((args: { where?: { id?: unknown } }) =>
+                  typeof args.where?.id === 'string'
+                    ? pcaPumpRentalRefetchMock(args)
+                    : openRentalFindFirstMock(args),
                 ),
           updateMany: pcaPumpRentalUpdateManyMock,
         },
@@ -142,12 +154,14 @@ describe('/api/pca-pump-rentals/[id] PATCH', () => {
           findFirst: prescriberInstitutionFindFirstMock,
         },
         pcaPump: {
+          findFirst: pcaPumpFindFirstMock,
           update: pcaPumpUpdateMock,
         },
         pcaPumpMaintenanceEvent: {
           create: pcaPumpMaintenanceEventCreateMock,
         },
         pcaPumpRentalAccessory: {
+          findMany: pcaPumpRentalAccessoryFindManyMock,
           upsert: pcaPumpRentalAccessoryUpsertMock,
         },
         auditLog: {
@@ -264,6 +278,7 @@ describe('/api/pca-pump-rentals/[id] PATCH', () => {
       .mockImplementationOnce(async (_orgId, callback) =>
         callback({
           pcaPumpRental: { findFirst: pcaPumpRentalFindFirstMock },
+          pcaPump: { findFirst: pcaPumpFindFirstMock },
         }),
       )
       .mockRejectedValueOnce({ code: 'P2002' });
@@ -447,6 +462,11 @@ describe('/api/pca-pump-rentals/[id] PATCH', () => {
   });
 
   it('marks the pump available when a returned rental passes return inspection', async () => {
+    pcaPumpFindFirstMock.mockResolvedValue({
+      id: 'pump_1',
+      asset_code: 'PCA-001',
+      status: 'maintenance',
+    });
     pcaPumpRentalFindFirstMock.mockResolvedValue({
       id: 'rental_1',
       pump_id: 'pump_1',
@@ -547,6 +567,11 @@ describe('/api/pca-pump-rentals/[id] PATCH', () => {
   });
 
   it('keeps the pump in maintenance when return inspection needs maintenance', async () => {
+    pcaPumpFindFirstMock.mockResolvedValue({
+      id: 'pump_1',
+      asset_code: 'PCA-001',
+      status: 'maintenance',
+    });
     pcaPumpRentalFindFirstMock.mockResolvedValue({
       id: 'rental_1',
       pump_id: 'pump_1',
