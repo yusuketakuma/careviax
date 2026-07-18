@@ -8,6 +8,7 @@ import {
 
 export default defineConfig({
   ...baseConfig,
+  forbidOnly: true,
   outputDir: PLAYWRIGHT_AUDIT_OUTPUT_DIR,
   reporter: [
     ['list'],
@@ -19,6 +20,12 @@ export default defineConfig({
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
+  },
+  webServer: {
+    command: 'pnpm db:e2e:prepare && pnpm build:e2e:local && pnpm start:e2e:local',
+    url: process.env.PLAYWRIGHT_BASE_URL || 'http://localhost:3012',
+    reuseExistingServer: false,
+    timeout: 1_200_000,
   },
   projects: [
     {
@@ -37,7 +44,8 @@ export default defineConfig({
     },
     {
       name: 'mobile-chromium',
-      testMatch: /ui-audit-extensions\.spec\.ts/,
+      testMatch:
+        /(e2e-prescription-dispensing-flow|ui-audit-extensions|ui-mobile-layout|ui-route-mocked-smoke)\.spec\.ts/,
       use: {
         ...devices['Pixel 7'],
       },

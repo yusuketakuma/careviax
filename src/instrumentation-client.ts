@@ -1,8 +1,13 @@
 import * as Sentry from '@sentry/nextjs';
+import { z } from 'zod';
 import {
   sanitizeSentryBreadcrumb,
   sanitizeSentryEvent,
 } from './lib/observability/sentry-redaction';
+
+// Strict CSP intentionally excludes unsafe-eval. Disable Zod's object-parser
+// JIT before hydration so it never probes or compiles with Function().
+z.config({ jitless: true });
 
 function stripRequestSearch(urlValue: string): string {
   try {
