@@ -124,6 +124,67 @@ describe('prepare-e2e-db-core', () => {
     ]);
   });
 
+  it('forces a fresh audit baseline only after the dedicated E2E target guard passes', () => {
+    const calls: string[][] = [];
+    const warnings: string[] = [];
+    const result = runPrepareE2eDb({
+      databaseUrl: 'postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public',
+      directUrl: 'postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public',
+      forceReset: true,
+      runPrisma: (args) => {
+        calls.push(args);
+        return { status: 0, stdout: 'reset ok\n' };
+      },
+      logger: {
+        ...testLogger(),
+        warn: (message) => warnings.push(message),
+      },
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(calls).toEqual([
+      ['migrate', 'reset', '--force', '--schema=prisma/schema/'],
+      ['db', 'seed'],
+    ]);
+    expect(warnings.join('\n')).toContain('deterministic database baseline');
+  });
+
+  it('does not seed when the forced audit reset fails', () => {
+    const calls: string[][] = [];
+    const result = runPrepareE2eDb({
+      databaseUrl: 'postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public',
+      directUrl: 'postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public',
+      forceReset: true,
+      runPrisma: (args) => {
+        calls.push(args);
+        return { status: 1, stderr: 'reset failed\n' };
+      },
+      logger: testLogger(),
+    });
+
+    expect(result.exitCode).toBe(1);
+    expect(calls).toEqual([['migrate', 'reset', '--force', '--schema=prisma/schema/']]);
+  });
+
+  it('does not force-reset a non-canonical database target', () => {
+    const calls: string[][] = [];
+
+    expect(() =>
+      runPrepareE2eDb({
+        databaseUrl: 'postgresql://ph_os:ph_os@localhost:5433/ph_os?schema=public',
+        directUrl: 'postgresql://ph_os:ph_os@localhost:5433/ph_os?schema=public',
+        forceReset: true,
+        runPrisma: (args) => {
+          calls.push(args);
+          return { status: 0 };
+        },
+        logger: testLogger(),
+      }),
+    ).toThrow(/must point to postgresql:\/\/ph_os@localhost:5433\/ph_os_e2e/);
+
+    expect(calls).toEqual([]);
+  });
+
   it('resets after P3005 or P3009 and never for other deploy failures', () => {
     for (const errorCode of ['P3005', 'P3009']) {
       const calls: string[][] = [];

@@ -123,10 +123,28 @@ function writePrismaResult(result: PrismaCommandResult, logger: PrepareE2eDbLogg
 export function runPrepareE2eDb(options: {
   databaseUrl: string;
   directUrl: string;
+  forceReset?: boolean;
   runPrisma: PrismaRunner;
   logger: PrepareE2eDbLogger;
 }): PrepareE2eDbResult {
   const e2eDatabaseTarget = assertMatchingE2eTargets(options.databaseUrl, options.directUrl);
+
+  if (options.forceReset) {
+    options.logger.warn(
+      [
+        `Resetting dedicated local E2E database ${e2eDatabaseTarget.label}.`,
+        'Safety guard: forced reset is allowed only after DATABASE_URL and DIRECT_URL both target local ph_os_e2e.',
+        'Reason: the audit runner requires a deterministic database baseline.',
+      ].join('\n'),
+    );
+    const reset = options.runPrisma(['migrate', 'reset', '--force', '--schema=prisma/schema/']);
+    writePrismaResult(reset, options.logger);
+    if (reset.status !== 0) return { exitCode: reset.status ?? 1 };
+
+    const seed = options.runPrisma(['db', 'seed']);
+    writePrismaResult(seed, options.logger);
+    return { exitCode: seed.status ?? 1 };
+  }
 
   const deploy = options.runPrisma(['migrate', 'deploy', '--schema=prisma/schema/']);
   writePrismaResult(deploy, options.logger);

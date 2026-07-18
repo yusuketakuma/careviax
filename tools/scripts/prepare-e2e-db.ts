@@ -19,6 +19,7 @@ function runPrisma(args: string[]) {
 const result = runPrepareE2eDb({
   databaseUrl: E2E_DATABASE_URL,
   directUrl: E2E_DIRECT_URL,
+  forceReset: process.env.E2E_FORCE_RESET === '1',
   runPrisma,
   logger: {
     warn: (message) => console.warn(message),
