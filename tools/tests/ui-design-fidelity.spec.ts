@@ -23,7 +23,9 @@ import { attachLocalSession, openStableRoute } from './helpers/local-auth';
  *   DESIGN_SCREEN_IDS=p0_07,p0_08 pnpm test:e2e:local -- ui-design-fidelity
  */
 
-const screens = filterScreens(DESIGN_SCREENS);
+const screens = filterScreens(DESIGN_SCREENS).filter(
+  (entry) => process.env.PLAYWRIGHT_AUDIT_TERMINAL_ONLY !== '1' || entry.route !== null,
+);
 
 type CaptureRecord = {
   screenId: string;
