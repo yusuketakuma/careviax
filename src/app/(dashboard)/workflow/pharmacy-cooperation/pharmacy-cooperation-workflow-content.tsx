@@ -2912,15 +2912,14 @@ function ShareCasesTable({
     return <EmptyState title="患者共有ケースはまだありません" />;
   }
 
-  const updateAcceptForm = (
-    id: string,
-    patch: Partial<LinkAcceptForm>,
-    currentForm: LinkAcceptForm,
-  ) => {
-    setLinkAcceptForms((current) => ({
-      ...current,
-      [id]: { ...currentForm, ...patch },
-    }));
+  const updateAcceptForm = (id: string, patch: Partial<LinkAcceptForm>) => {
+    setLinkAcceptForms((current) => {
+      const previous = current[id] ?? EMPTY_LINK_ACCEPT_FORM;
+      return {
+        ...current,
+        [id]: { ...previous, ...patch },
+      };
+    });
   };
 
   const shareCaseColumns: ColumnDef<PatientShareCaseRow>[] = [
@@ -3038,11 +3037,7 @@ function ShareCaseActionCell({
   row: PatientShareCaseRow;
   acceptForm: LinkAcceptForm;
   declineReason: string;
-  updateAcceptForm: (
-    id: string,
-    patch: Partial<LinkAcceptForm>,
-    currentForm: LinkAcceptForm,
-  ) => void;
+  updateAcceptForm: (id: string, patch: Partial<LinkAcceptForm>) => void;
   setLinkDeclineReasons: Dispatch<SetStateAction<Record<string, string>>>;
   isBusy: boolean;
   onActivate: (row: PatientShareCaseRow) => void;
@@ -3116,7 +3111,7 @@ function ShareCaseActionCell({
             <Input
               value={acceptForm.partnerPatientId}
               onChange={(event) =>
-                updateAcceptForm(row.id, { partnerPatientId: event.target.value }, acceptForm)
+                updateAcceptForm(row.id, { partnerPatientId: event.target.value })
               }
               aria-label={`${row.id} の協力側ID`}
             />
@@ -3125,9 +3120,7 @@ function ShareCaseActionCell({
             <FieldLabel>氏名</FieldLabel>
             <Input
               value={acceptForm.name}
-              onChange={(event) =>
-                updateAcceptForm(row.id, { name: event.target.value }, acceptForm)
-              }
+              onChange={(event) => updateAcceptForm(row.id, { name: event.target.value })}
               aria-label={`${row.id} の協力側氏名`}
             />
           </label>
@@ -3135,9 +3128,7 @@ function ShareCaseActionCell({
             <FieldLabel>氏名カナ</FieldLabel>
             <Input
               value={acceptForm.nameKana}
-              onChange={(event) =>
-                updateAcceptForm(row.id, { nameKana: event.target.value }, acceptForm)
-              }
+              onChange={(event) => updateAcceptForm(row.id, { nameKana: event.target.value })}
               aria-label={`${row.id} の協力側氏名カナ`}
             />
           </label>
@@ -3146,9 +3137,7 @@ function ShareCaseActionCell({
             <Input
               type="date"
               value={acceptForm.birthDate}
-              onChange={(event) =>
-                updateAcceptForm(row.id, { birthDate: event.target.value }, acceptForm)
-              }
+              onChange={(event) => updateAcceptForm(row.id, { birthDate: event.target.value })}
               aria-label={`${row.id} の協力側生年月日`}
             />
           </label>
@@ -3156,9 +3145,7 @@ function ShareCaseActionCell({
             <FieldLabel>住所</FieldLabel>
             <Input
               value={acceptForm.address}
-              onChange={(event) =>
-                updateAcceptForm(row.id, { address: event.target.value }, acceptForm)
-              }
+              onChange={(event) => updateAcceptForm(row.id, { address: event.target.value })}
               aria-label={`${row.id} の協力側住所`}
             />
           </label>
@@ -3166,9 +3153,7 @@ function ShareCaseActionCell({
             <FieldLabel>照合補足</FieldLabel>
             <Input
               value={acceptForm.overrideReason}
-              onChange={(event) =>
-                updateAcceptForm(row.id, { overrideReason: event.target.value }, acceptForm)
-              }
+              onChange={(event) => updateAcceptForm(row.id, { overrideReason: event.target.value })}
               aria-label={`${row.id} の照合補足`}
             />
           </label>

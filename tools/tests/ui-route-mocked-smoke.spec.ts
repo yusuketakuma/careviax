@@ -4381,15 +4381,22 @@ test.describe('pharmacy cooperation route-mocked browser workflow smoke', () => 
       )
       .toBe(true);
 
-    await shareCaseRow
-      .getByLabel(`${PHARMACY_COOP_SHARE_CASE_ID} の協力側ID`)
-      .fill('route_partner_patient');
-    await shareCaseRow
-      .getByLabel(`${PHARMACY_COOP_SHARE_CASE_ID} の協力側氏名`, { exact: true })
-      .fill('連携 確認');
-    await shareCaseRow
-      .getByLabel(`${PHARMACY_COOP_SHARE_CASE_ID} の協力側生年月日`)
-      .fill('1942-04-12');
+    const partnerPatientIdInput = shareCaseRow.getByLabel(
+      `${PHARMACY_COOP_SHARE_CASE_ID} の協力側ID`,
+    );
+    const partnerNameInput = shareCaseRow.getByLabel(
+      `${PHARMACY_COOP_SHARE_CASE_ID} の協力側氏名`,
+      { exact: true },
+    );
+    const partnerBirthDateInput = shareCaseRow.getByLabel(
+      `${PHARMACY_COOP_SHARE_CASE_ID} の協力側生年月日`,
+    );
+    await partnerPatientIdInput.fill('route_partner_patient');
+    await partnerNameInput.fill('連携 確認');
+    await partnerBirthDateInput.fill('1942-04-12');
+    await expect(partnerPatientIdInput).toHaveValue('route_partner_patient');
+    await expect(partnerNameInput).toHaveValue('連携 確認');
+    await expect(partnerBirthDateInput).toHaveValue('1942-04-12');
     const partnerAcceptButton = shareCaseRow.getByRole('button', { name: /協力受諾/ });
     await expect(partnerAcceptButton).toBeEnabled({ timeout: 10_000 });
     await partnerAcceptButton.click();
