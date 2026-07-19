@@ -130,6 +130,9 @@ test.describe('limited visual comparison', () => {
   test('patients board layout stays stable', async ({ page }, testInfo) => {
     test.skip(testInfo.project.name !== 'chromium');
 
+    // Keep the entire board inside the viewport so Chromium paints every card row
+    // included in the locator screenshot instead of leaving offscreen pixels blank.
+    await page.setViewportSize({ width: 1280, height: 1600 });
     await stabilizePatientBoard(page);
     await openStableRoute(page, '/patients');
 
