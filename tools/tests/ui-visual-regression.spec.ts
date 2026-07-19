@@ -126,11 +126,14 @@ test.describe('limited visual comparison', () => {
     await expect(page.getByTestId('patients-board-grid')).toBeVisible({ timeout: 30_000 });
     await expect(page.getByTestId('patient-board-card').first()).toBeVisible({ timeout: 30_000 });
     const generatedAtMeta = board.locator('p').filter({ hasText: /\d{1,2}:\d{2}/ });
+    const dynamicChipCounts = page
+      .getByRole('group', { name: '対応カテゴリの絞り込み' })
+      .locator('button > span');
 
     await expect(board).toHaveScreenshot('patients-board.png', {
       animations: 'disabled',
       caret: 'hide',
-      mask: [generatedAtMeta],
+      mask: [generatedAtMeta, dynamicChipCounts],
     });
   });
 
