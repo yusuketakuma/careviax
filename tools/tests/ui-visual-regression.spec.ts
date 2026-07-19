@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { attachLocalSession, openStableRoute } from './helpers/local-auth';
+import { STABLE_PATIENT_BOARD_RESPONSE } from './helpers/patient-board-fixture';
 
 const stableWaitingReplies = [
   {
@@ -93,6 +94,16 @@ async function stabilizeReportWaitingReplies(page: Page) {
   });
 }
 
+async function stabilizePatientBoard(page: Page) {
+  await page.route('**/api/patients/board?**', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(STABLE_PATIENT_BOARD_RESPONSE),
+    });
+  });
+}
+
 test.beforeEach(async ({ context }) => {
   await attachLocalSession(context);
 });
@@ -119,6 +130,7 @@ test.describe('limited visual comparison', () => {
   test('patients board layout stays stable', async ({ page }, testInfo) => {
     test.skip(testInfo.project.name !== 'chromium');
 
+    await stabilizePatientBoard(page);
     await openStableRoute(page, '/patients');
 
     const board = page.getByTestId('patients-board');
