@@ -4392,10 +4392,10 @@ test.describe('pharmacy cooperation route-mocked browser workflow smoke', () => 
       `${PHARMACY_COOP_SHARE_CASE_ID} の協力側生年月日`,
     );
     await partnerPatientIdInput.fill('route_partner_patient');
-    await partnerNameInput.fill('連携 確認');
+    await partnerNameInput.fill('薬局間RouteMock 患者');
     await partnerBirthDateInput.fill('1942-04-12');
     await expect(partnerPatientIdInput).toHaveValue('route_partner_patient');
-    await expect(partnerNameInput).toHaveValue('連携 確認');
+    await expect(partnerNameInput).toHaveValue('薬局間RouteMock 患者');
     await expect(partnerBirthDateInput).toHaveValue('1942-04-12');
     const partnerAcceptButton = shareCaseRow.getByRole('button', { name: /協力受諾/ });
     await expect(partnerAcceptButton).toBeEnabled({ timeout: 10_000 });
@@ -4413,6 +4413,21 @@ test.describe('pharmacy cooperation route-mocked browser workflow smoke', () => 
         { message: 'workflow should accept the patient link after identity confirmation' },
       )
       .toBe(true);
+
+    const partnerAcceptRequest = requests.patientLinks.find(
+      (request) =>
+        request.method === 'PATCH' &&
+        (request.body as { decision?: string } | null)?.decision === 'accept',
+    );
+    expect(partnerAcceptRequest?.body).toEqual({
+      decision: 'accept',
+      expected_patient_updated_at: '2026-06-19T00:00:00.000Z',
+      partner_patient_id: 'route_partner_patient',
+      partner_patient_snapshot: {
+        name: '薬局間RouteMock 患者',
+        birth_date: '1942-04-12',
+      },
+    });
 
     await expect(shareCaseRow.getByText('承認済み')).toBeVisible({ timeout: 10_000 });
     await shareCaseRow.getByRole('button', { name: /共有開始/ }).click();
