@@ -57,11 +57,7 @@ async function resetDocuments() {
   });
 }
 
-async function claimOne(args: {
-  documentId: string;
-  expectedUpdatedAt: Date;
-  action: string;
-}) {
+async function claimOne(args: { documentId: string; expectedUpdatedAt: Date; action: string }) {
   return db().$transaction(
     async (tx) => {
       await claimFirstVisitDocumentVersion(tx, {

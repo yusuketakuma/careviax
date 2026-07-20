@@ -8,10 +8,12 @@ import {
 describe('FirstVisitDocument version claims', () => {
   it('always advances the token by at least one millisecond', () => {
     const expected = new Date('2026-07-17T00:00:00.500Z');
-    expect(nextFirstVisitDocumentVersion(expected, new Date('2026-07-17T00:00:00.100Z')))
-      .toEqual(new Date('2026-07-17T00:00:00.501Z'));
-    expect(nextFirstVisitDocumentVersion(expected, new Date('2026-07-17T00:00:01.000Z')))
-      .toEqual(new Date('2026-07-17T00:00:01.000Z'));
+    expect(nextFirstVisitDocumentVersion(expected, new Date('2026-07-17T00:00:00.100Z'))).toEqual(
+      new Date('2026-07-17T00:00:00.501Z'),
+    );
+    expect(nextFirstVisitDocumentVersion(expected, new Date('2026-07-17T00:00:01.000Z'))).toEqual(
+      new Date('2026-07-17T00:00:01.000Z'),
+    );
   });
 
   it('claims by org, id, and exact version while preserving supplied data', async () => {
@@ -39,14 +41,11 @@ describe('FirstVisitDocument version claims', () => {
   it('throws only the typed conflict when the token no longer matches', async () => {
     const updateMany = vi.fn().mockResolvedValue({ count: 0 });
     await expect(
-      claimFirstVisitDocumentVersion(
-        { firstVisitDocument: { updateMany } } as never,
-        {
-          id: 'doc_1',
-          orgId: 'org_1',
-          expectedUpdatedAt: new Date('2026-07-17T00:00:00.000Z'),
-        },
-      ),
+      claimFirstVisitDocumentVersion({ firstVisitDocument: { updateMany } } as never, {
+        id: 'doc_1',
+        orgId: 'org_1',
+        expectedUpdatedAt: new Date('2026-07-17T00:00:00.000Z'),
+      }),
     ).rejects.toBeInstanceOf(FirstVisitDocumentVersionConflictError);
   });
 
@@ -54,14 +53,11 @@ describe('FirstVisitDocument version claims', () => {
     const failure = new Error('database unavailable');
     const updateMany = vi.fn().mockRejectedValue(failure);
     await expect(
-      claimFirstVisitDocumentVersion(
-        { firstVisitDocument: { updateMany } } as never,
-        {
-          id: 'doc_1',
-          orgId: 'org_1',
-          expectedUpdatedAt: new Date('2026-07-17T00:00:00.000Z'),
-        },
-      ),
+      claimFirstVisitDocumentVersion({ firstVisitDocument: { updateMany } } as never, {
+        id: 'doc_1',
+        orgId: 'org_1',
+        expectedUpdatedAt: new Date('2026-07-17T00:00:00.000Z'),
+      }),
     ).rejects.toBe(failure);
   });
 });

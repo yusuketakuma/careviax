@@ -264,7 +264,7 @@
     },
     {
       "path": "src/app/(dashboard)/reports/print/print-hub-content.tsx",
-      "max_lines": 1420,
+      "max_lines": 1419,
       "task_id": "MAINT-FILE-SIZE-1000-001"
     },
     {

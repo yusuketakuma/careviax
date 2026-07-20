@@ -26,7 +26,6 @@ import type { PatientDocumentsSnapshot, PatientOverview } from './patient-detail
 type FirstVisitDocumentItem = PatientDocumentsSnapshot['first_visit_documents'][number];
 type FirstVisitDocumentStatus = PatientDocumentsSnapshot['document_statuses'][number];
 type FirstVisitPrintReadiness = PatientDocumentsSnapshot['print_readiness'];
-
 // §10 fail-closed: validate the minimal mutation success envelope.
 // Unknown fields are stripped, so the raw FirstVisitDocument row never reaches the client.
 const firstVisitDocumentMutationResponseSchema = apiDataSchema(
@@ -34,12 +33,9 @@ const firstVisitDocumentMutationResponseSchema = apiDataSchema(
 );
 
 class FirstVisitDocumentVersionConflictError extends Error {}
-const FIRST_VISIT_DOCUMENT_VERSION_CONFLICT_REASON =
-  'first_visit_document_version_conflict';
-const ARCHIVED_PATIENT_CONFLICT_MESSAGE =
-  'アーカイブ中の患者は復元するまで更新できません';
-const PRINT_READINESS_CONFLICT_PREFIX =
-  '初回文書の印刷前チェックで必須項目が未完了です。';
+const FIRST_VISIT_DOCUMENT_VERSION_CONFLICT_REASON = 'first_visit_document_version_conflict';
+const ARCHIVED_PATIENT_CONFLICT_MESSAGE = 'アーカイブ中の患者は復元するまで更新できません';
+const PRINT_READINESS_CONFLICT_PREFIX = '初回文書の印刷前チェックで必須項目が未完了です。';
 const PRINT_READINESS_RECOVERY_MESSAGE =
   '初回文書の印刷前チェックが未完了です。患者文書画面で必須項目を確認してください。';
 const FIRST_VISIT_DOCUMENT_MUTATION_RECOVERY_MESSAGE =
@@ -47,7 +43,10 @@ const FIRST_VISIT_DOCUMENT_MUTATION_RECOVERY_MESSAGE =
 
 async function isFirstVisitDocumentVersionConflict(response: Response) {
   if (response.status !== 409) return false;
-  const body = await response.clone().json().catch(() => null);
+  const body = await response
+    .clone()
+    .json()
+    .catch(() => null);
   if (typeof body !== 'object' || body === null || !('details' in body)) return false;
   const details = body.details;
   return (
@@ -65,11 +64,12 @@ async function fixedFirstVisitDocumentMutationError(
   | typeof PRINT_READINESS_RECOVERY_MESSAGE
   | typeof FIRST_VISIT_DOCUMENT_MUTATION_RECOVERY_MESSAGE
 > {
-  const body = await response.clone().json().catch(() => null);
+  const body = await response
+    .clone()
+    .json()
+    .catch(() => null);
   const message =
-    typeof body === 'object' && body !== null && 'message' in body
-      ? body.message
-      : null;
+    typeof body === 'object' && body !== null && 'message' in body ? body.message : null;
   if (message === ARCHIVED_PATIENT_CONFLICT_MESSAGE) return ARCHIVED_PATIENT_CONFLICT_MESSAGE;
   if (typeof message === 'string' && message.startsWith(PRINT_READINESS_CONFLICT_PREFIX)) {
     return PRINT_READINESS_RECOVERY_MESSAGE;

@@ -2,8 +2,7 @@ import type { Prisma } from '@prisma/client';
 
 export const FIRST_VISIT_DOCUMENT_VERSION_CONFLICT_MESSAGE =
   '初回文書が他のユーザーによって更新されています。最新のデータを取得してください。';
-export const FIRST_VISIT_DOCUMENT_VERSION_CONFLICT_REASON =
-  'first_visit_document_version_conflict';
+export const FIRST_VISIT_DOCUMENT_VERSION_CONFLICT_REASON = 'first_visit_document_version_conflict';
 
 export class FirstVisitDocumentVersionConflictError extends Error {
   constructor(message = FIRST_VISIT_DOCUMENT_VERSION_CONFLICT_MESSAGE) {

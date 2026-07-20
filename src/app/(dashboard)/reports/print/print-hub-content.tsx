@@ -80,8 +80,7 @@ type PrintTargetSummary = {
 };
 
 class FirstVisitPrintVersionConflictError extends Error {}
-const FIRST_VISIT_DOCUMENT_VERSION_CONFLICT_REASON =
-  'first_visit_document_version_conflict';
+const FIRST_VISIT_DOCUMENT_VERSION_CONFLICT_REASON = 'first_visit_document_version_conflict';
 
 async function recordFirstVisitPrintHistory({
   orgId,

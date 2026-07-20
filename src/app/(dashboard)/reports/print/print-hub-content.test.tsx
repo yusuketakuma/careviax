@@ -388,8 +388,7 @@ function installFirstVisitFetch(
                 ? {}
                 : {
                     details: {
-                      reason:
-                        args.printBatchReason ?? 'first_visit_document_version_conflict',
+                      reason: args.printBatchReason ?? 'first_visit_document_version_conflict',
                     },
                   }),
             },
@@ -484,9 +483,7 @@ describe('PrintHubContent explicit print target boundary', () => {
         headers: buildOrgJsonHeaders('org_1'),
         body: JSON.stringify({
           patient_id: 'patient_1',
-          documents: [
-            { id: 'doc_1', expected_updated_at: '2026-06-16T00:00:00.000Z' },
-          ],
+          documents: [{ id: 'doc_1', expected_updated_at: '2026-06-16T00:00:00.000Z' }],
           save_copy: true,
         }),
       }),

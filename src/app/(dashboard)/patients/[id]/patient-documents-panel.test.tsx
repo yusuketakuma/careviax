@@ -455,16 +455,14 @@ describe('FirstVisitDocumentsPanel', () => {
   it('encodes first-visit document ids and preserves the update body when saving history', async () => {
     const queryClient = createTestQueryClient();
     const hostileDocumentId = 'doc/1?x=y#z';
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValue(
-        new Response(
-          JSON.stringify({
-            data: { id: hostileDocumentId, updated_at: '2026-06-17T01:00:00.000Z' },
-          }),
-          { status: 200 },
-        ),
-      );
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: { id: hostileDocumentId, updated_at: '2026-06-17T01:00:00.000Z' },
+        }),
+        { status: 200 },
+      ),
+    );
     const sentinelHeaders = { 'x-org-id': 'org_1', 'x-test-helper': 'buildOrgJsonHeaders' };
     vi.mocked(buildOrgJsonHeaders).mockReturnValueOnce(sentinelHeaders);
     vi.stubGlobal('fetch', fetchMock);

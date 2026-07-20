@@ -1,17 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
-const {
-  requireAuthContextMock,
-  patientFindFirstMock,
-  patientUpdateMock,
-  withOrgContextMock,
-} = vi.hoisted(() => ({
-  requireAuthContextMock: vi.fn(),
-  patientFindFirstMock: vi.fn(),
-  patientUpdateMock: vi.fn(),
-  withOrgContextMock: vi.fn(),
-}));
+const { requireAuthContextMock, patientFindFirstMock, patientUpdateMock, withOrgContextMock } =
+  vi.hoisted(() => ({
+    requireAuthContextMock: vi.fn(),
+    patientFindFirstMock: vi.fn(),
+    patientUpdateMock: vi.fn(),
+    withOrgContextMock: vi.fn(),
+  }));
 
 vi.mock('@/lib/auth/context', () => ({
   requireAuthContext: requireAuthContextMock,
