@@ -1,0 +1,20 @@
+[
+  {
+    "path": "pnpm-lock.yaml",
+    "kind": "lockfile",
+    "reason": "Package-manager generated lockfile.",
+    "source_or_generator": "package.json"
+  },
+  {
+    "path": "tools/authz-account-model-v1/inventory.json",
+    "kind": "data_asset",
+    "reason": "Machine-validated authorization and browser freeze data asset.",
+    "source_or_generator": "tools/scripts/check-authz-account-model-v1-inventory.mjs"
+  },
+  {
+    "path": "tools/human-maintained-file-size-baseline.json",
+    "kind": "data_asset",
+    "reason": "Machine-generated exact-path line-count ratchet baseline.",
+    "source_or_generator": "tools/scripts/check-human-maintained-file-size.mjs"
+  }
+]

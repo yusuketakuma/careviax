@@ -103,6 +103,8 @@
     "plans:active:check": "node tools/scripts/check-plans-active-board.mjs",
     "fhir-native:foundation:check": "node tools/scripts/check-fhir-native-foundation.mjs",
     "fhir-native:legacy-inventory:check": "node tools/scripts/check-fhir-native-legacy-inventory.mjs",
+    "authz-account-model-v1:inventory:check": "node tools/scripts/check-authz-account-model-v1-inventory.mjs",
+    "human-maintained-file-size:check": "node tools/scripts/check-human-maintained-file-size.mjs",
     "colors:check": "node tools/scripts/check-raw-state-colors.mjs",
     "typography:check": "node tools/scripts/check-typography-minimum.mjs",
     "boundaries:check": "node tools/scripts/check-module-boundaries.mjs",

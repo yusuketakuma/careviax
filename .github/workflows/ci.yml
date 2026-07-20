@@ -157,6 +157,12 @@ jobs:
       - name: FHIR native legacy inventory drift check
         run: pnpm fhir-native:legacy-inventory:check
 
+      - name: Authorization account model inventory drift check
+        run: pnpm authz-account-model-v1:inventory:check
+
+      - name: Human-maintained file size check
+        run: pnpm human-maintained-file-size:check
+
       - name: DB query shape check
         run: pnpm db:query-shape:check
 

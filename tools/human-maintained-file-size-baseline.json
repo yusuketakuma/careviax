@@ -1,0 +1,1111 @@
+{
+  "schema_version": 1,
+  "bootstrap_commit": "bf5addc9d96d3af26c3935ff95a9a368dd2e7edf",
+  "entries": [
+    {
+      "path": "docs/design-gap-analysis.json",
+      "max_lines": 1965,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "prisma/migrations/20260326000000_baseline/migration.sql",
+      "max_lines": 2118,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "prisma/migrations/20260619110800_add_pharmacy_partnership_foundation/migration.sql",
+      "max_lines": 1510,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "prisma/rls-policies.sql",
+      "max_lines": 1248,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "prisma/seed-design-demo.ts",
+      "max_lines": 4711,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/(dashboard)/admin/drug-masters/drug-master-content-contracts.ts",
+      "max_lines": 1436,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx",
+      "max_lines": 5183,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx",
+      "max_lines": 2604,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/(dashboard)/admin/drug-masters/drug-master-formulary-operations-panel.tsx",
+      "max_lines": 1485,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/(dashboard)/admin/external-professionals/external-professionals-content.tsx",
+      "max_lines": 1187,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/(dashboard)/admin/facilities/facilities-content.tsx",
+      "max_lines": 1404,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/(dashboard)/admin/notification-settings/notification-settings-content.tsx",
+      "max_lines": 1113,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/(dashboard)/admin/pca-pumps/pca-pumps-content.tsx",
+      "max_lines": 1596,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.tsx",
+      "max_lines": 1681,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/(dashboard)/admin/shifts/shifts-content.test.tsx",
+      "max_lines": 1236,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/(dashboard)/admin/shifts/shifts-content.tsx",
+      "max_lines": 2738,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/(dashboard)/admin/uat/uat-content.tsx",
+      "max_lines": 1488,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/(dashboard)/admin/users/users-content.tsx",
+      "max_lines": 1476,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/(dashboard)/billing/candidates/billing-candidates-content.tsx",
+      "max_lines": 1320,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/(dashboard)/billing/partner-cooperation/partner-cooperation-billing-content.test.tsx",
+      "max_lines": 1149,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/(dashboard)/billing/partner-cooperation/partner-cooperation-billing-content.tsx",
+      "max_lines": 1976,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/(dashboard)/communications/inbound/inbound-content.test.tsx",
+      "max_lines": 1512,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/(dashboard)/communications/inbound/inbound-content.tsx",
+      "max_lines": 2806,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/(dashboard)/conferences/conferences-content.test.tsx",
+      "max_lines": 1005,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/(dashboard)/conferences/conferences-content.tsx",
+      "max_lines": 2321,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/(dashboard)/dashboard/dashboard-cockpit.test.tsx",
+      "max_lines": 1324,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/(dashboard)/dashboard/dashboard-cockpit.tsx",
+      "max_lines": 1767,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/(dashboard)/handoff/handoff-workspace.test.tsx",
+      "max_lines": 1502,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/(dashboard)/handoff/handoff-workspace.tsx",
+      "max_lines": 1741,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/(dashboard)/patients/[id]/card-workspace.test.tsx",
+      "max_lines": 5714,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/(dashboard)/patients/[id]/card-workspace.tsx",
+      "max_lines": 6234,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/(dashboard)/patients/[id]/mcs/mcs-content.test.tsx",
+      "max_lines": 1093,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/(dashboard)/patients/[id]/mcs/mcs-content.tsx",
+      "max_lines": 1196,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/(dashboard)/patients/[id]/medications/medications-content.test.tsx",
+      "max_lines": 1515,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/(dashboard)/patients/[id]/medications/medications-content.tsx",
+      "max_lines": 1627,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/(dashboard)/patients/[id]/patient-documents-panel.tsx",
+      "max_lines": 1035,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/(dashboard)/patients/[id]/patient-insurance-card.tsx",
+      "max_lines": 1091,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/(dashboard)/patients/[id]/patient-movement-timeline.tsx",
+      "max_lines": 1540,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/(dashboard)/patients/[id]/prescriptions/prescription-history-content.test.tsx",
+      "max_lines": 2141,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/(dashboard)/patients/[id]/prescriptions/prescription-history-content.tsx",
+      "max_lines": 2187,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/(dashboard)/patients/[id]/share/external-share-content.test.tsx",
+      "max_lines": 2070,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/(dashboard)/patients/[id]/share/external-share-content.tsx",
+      "max_lines": 1334,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/(dashboard)/patients/patients-board.test.tsx",
+      "max_lines": 1326,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/(dashboard)/patients/patients-board.tsx",
+      "max_lines": 1603,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/(dashboard)/prescriptions/new/prescription-intake-form.tsx",
+      "max_lines": 3389,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/(dashboard)/prescriptions/qr-drafts/[id]/page.tsx",
+      "max_lines": 1328,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/(dashboard)/qr-scan/page.tsx",
+      "max_lines": 1101,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/(dashboard)/referrals/new/referral-form.test.tsx",
+      "max_lines": 1022,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/(dashboard)/reports/[id]/page.test.tsx",
+      "max_lines": 2173,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/(dashboard)/reports/[id]/page.tsx",
+      "max_lines": 2195,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/(dashboard)/reports/[id]/share/interprofessional-share-content.test.tsx",
+      "max_lines": 2143,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/(dashboard)/reports/[id]/share/interprofessional-share-content.tsx",
+      "max_lines": 1096,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/(dashboard)/reports/print/print-hub-content.tsx",
+      "max_lines": 1420,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/(dashboard)/reports/report-share-workspace.test.tsx",
+      "max_lines": 1405,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/(dashboard)/reports/report-share-workspace.tsx",
+      "max_lines": 1016,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/(dashboard)/schedules/emergency-route/emergency-route-content.tsx",
+      "max_lines": 1048,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/(dashboard)/schedules/proposals/schedule-proposals-content.test.tsx",
+      "max_lines": 2761,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/(dashboard)/schedules/proposals/schedule-proposals-content.tsx",
+      "max_lines": 3441,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/(dashboard)/schedules/proposals/schedule-weekly-optimizer.test.tsx",
+      "max_lines": 1003,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/(dashboard)/schedules/proposals/schedule-weekly-optimizer.tsx",
+      "max_lines": 2035,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/(dashboard)/schedules/schedule-day-view.helpers.test.ts",
+      "max_lines": 1240,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/(dashboard)/schedules/schedule-team-board.test.tsx",
+      "max_lines": 1755,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/(dashboard)/schedules/schedule-team-board.tsx",
+      "max_lines": 2130,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/(dashboard)/tasks/tasks-content.test.tsx",
+      "max_lines": 2387,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/(dashboard)/tasks/tasks-content.tsx",
+      "max_lines": 1645,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/(dashboard)/visits/[id]/record/visit-record-form.test.tsx",
+      "max_lines": 2524,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx",
+      "max_lines": 3129,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/(dashboard)/visits/[id]/visit-record-detail.tsx",
+      "max_lines": 1391,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx",
+      "max_lines": 3906,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.tsx",
+      "max_lines": 5919,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/(dashboard)/workflow/workflow-dashboard-view.tsx",
+      "max_lines": 1533,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/api/__tests__/protected-get-routes.test.ts",
+      "max_lines": 2548,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/api/__tests__/workflow-full-cycle.test.ts",
+      "max_lines": 1728,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/api/billing-candidates/[id]/collection/route.test.ts",
+      "max_lines": 1031,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/api/care-reports/[id]/route.test.ts",
+      "max_lines": 1270,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/api/care-reports/[id]/send/route.test.ts",
+      "max_lines": 3861,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/api/care-reports/[id]/send/route.ts",
+      "max_lines": 2051,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/api/care-reports/route.test.ts",
+      "max_lines": 2802,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/api/care-reports/route.ts",
+      "max_lines": 1136,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/api/care-reports/today-workspace/route.test.ts",
+      "max_lines": 2438,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/api/care-reports/today-workspace/route.ts",
+      "max_lines": 1523,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/api/communication-requests/[id]/resolve-followup/route.test.ts",
+      "max_lines": 1004,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/api/communication-requests/[id]/responses/route.test.ts",
+      "max_lines": 1216,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/api/communication-requests/[id]/route.test.ts",
+      "max_lines": 2014,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/api/communication-requests/route.test.ts",
+      "max_lines": 1241,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/api/conference-notes/[id]/route.test.ts",
+      "max_lines": 1107,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/api/conference-notes/route.test.ts",
+      "max_lines": 2949,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/api/consent-records/route.test.ts",
+      "max_lines": 1020,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/api/dashboard/cockpit/route.test.ts",
+      "max_lines": 3047,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/api/dashboard/workflow/route.test.ts",
+      "max_lines": 1277,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/api/dispense-audits/route.test.ts",
+      "max_lines": 2122,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/api/dispense-results/[id]/route.test.ts",
+      "max_lines": 1083,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/api/dispense-results/route.test.ts",
+      "max_lines": 4074,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/api/dispense-results/route.ts",
+      "max_lines": 1155,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/api/external-access/route.test.ts",
+      "max_lines": 1500,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/api/facility-visit-batches/[id]/route.test.ts",
+      "max_lines": 1024,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/api/facility-visit-batches/route.test.ts",
+      "max_lines": 1842,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/api/files/presigned-upload/route.test.ts",
+      "max_lines": 1153,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/api/inquiry-records/[id]/route.test.ts",
+      "max_lines": 1324,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/api/jobs/[jobType]/route.test.ts",
+      "max_lines": 1003,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/api/notifications/stream/route.test.ts",
+      "max_lines": 1069,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/api/patient-share-cases/route.test.ts",
+      "max_lines": 1265,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/api/patients/[id]/care-team/route.test.ts",
+      "max_lines": 1029,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/api/patients/[id]/route.test.ts",
+      "max_lines": 2421,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/api/patients/[id]/route.ts",
+      "max_lines": 2398,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/api/patients/board/route.test.ts",
+      "max_lines": 1372,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/api/patients/route.test.ts",
+      "max_lines": 2213,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/api/pharmacy-drug-stocks/bulk/route.test.ts",
+      "max_lines": 1164,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/api/prescription-intakes/[id]/route.test.ts",
+      "max_lines": 1047,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/api/prescription-intakes/facility-batch/route.test.ts",
+      "max_lines": 1081,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/api/prescription-intakes/route.test.ts",
+      "max_lines": 3682,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/api/prescription-intakes/route.ts",
+      "max_lines": 1148,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/api/qr-scan-drafts/[id]/confirm/route.test.ts",
+      "max_lines": 1904,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/api/qr-scan-drafts/route.test.ts",
+      "max_lines": 1436,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/api/set-audits/route.test.ts",
+      "max_lines": 2087,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/api/set-audits/route.ts",
+      "max_lines": 1328,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/api/set-plans/[id]/generate-batches/route.test.ts",
+      "max_lines": 1485,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/api/tasks/route.test.ts",
+      "max_lines": 1390,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/api/tracing-reports/[id]/route.test.ts",
+      "max_lines": 1013,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/api/visit-preparations/[scheduleId]/route.test.ts",
+      "max_lines": 3329,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/api/visit-preparations/[scheduleId]/route.ts",
+      "max_lines": 2274,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/api/visit-records/[id]/handoff/route.test.ts",
+      "max_lines": 1009,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/api/visit-records/[id]/route.test.ts",
+      "max_lines": 1694,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/api/visit-records/route.test.ts",
+      "max_lines": 3171,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/api/visit-records/route.ts",
+      "max_lines": 1903,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/api/visit-routes/route.test.ts",
+      "max_lines": 1019,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/api/visit-schedule-proposals/[id]/route.test.ts",
+      "max_lines": 3775,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/api/visit-schedule-proposals/[id]/route.ts",
+      "max_lines": 2285,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/api/visit-schedule-proposals/route.test.ts",
+      "max_lines": 3464,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/api/visit-schedule-proposals/route.ts",
+      "max_lines": 1957,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/api/visit-schedules/[id]/reschedule/route.test.ts",
+      "max_lines": 1775,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/api/visit-schedules/[id]/reschedule/route.ts",
+      "max_lines": 1365,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/api/visit-schedules/[id]/route.test.ts",
+      "max_lines": 2856,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/api/visit-schedules/[id]/route.ts",
+      "max_lines": 1010,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/api/visit-schedules/day-board/route.test.ts",
+      "max_lines": 2196,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/api/visit-schedules/day-board/route.ts",
+      "max_lines": 1658,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/api/visit-schedules/reorder/route.test.ts",
+      "max_lines": 1817,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/api/visit-schedules/reorder/route.ts",
+      "max_lines": 1081,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/app/api/visit-schedules/route.test.ts",
+      "max_lines": 1713,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/components/features/dispense-workbench/dispensing-workbench.adapter.test.ts",
+      "max_lines": 1062,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/components/features/dispense-workbench/prescription-grid.tsx",
+      "max_lines": 1010,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/components/features/dispense-workbench/right-pane.tsx",
+      "max_lines": 1137,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/components/features/dispense-workbench/use-workbench-view.ts",
+      "max_lines": 1340,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/components/features/dispense-workbench/use-workbench-write-handlers.rollback.test.tsx",
+      "max_lines": 4521,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/components/features/dispense-workbench/use-workbench-write-handlers.ts",
+      "max_lines": 1835,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/components/features/notifications/notification-bell.fetch.test.tsx",
+      "max_lines": 1036,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/components/features/patients/patient-form.test.tsx",
+      "max_lines": 1138,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/components/features/patients/patient-form.tsx",
+      "max_lines": 2817,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/components/features/visits/visit-medication-management-section.tsx",
+      "max_lines": 1384,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/components/features/visits/visit-medication-stock-observation-panel.tsx",
+      "max_lines": 1073,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/components/ui/data-table.tsx",
+      "max_lines": 1005,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/lib/api/rate-limit.test.ts",
+      "max_lines": 1438,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/lib/api/rate-limit.ts",
+      "max_lines": 1446,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/lib/api/route-catalog.ts",
+      "max_lines": 1222,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/lib/contact-profiles.ts",
+      "max_lines": 1083,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/lib/db/display-id.test.ts",
+      "max_lines": 1027,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/lib/pharmacy/__tests__/qr-intake-mapper.test.ts",
+      "max_lines": 1340,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/lib/pharmacy/jahis-qr.ts",
+      "max_lines": 1619,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/lib/stores/sync-engine.test.ts",
+      "max_lines": 1193,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/lib/tasks/task-registry.ts",
+      "max_lines": 1160,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/modules/pharmacy/medication-stock/application/apply-prescription-supply.test.ts",
+      "max_lines": 1204,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/modules/pharmacy/medication-stock/application/apply-prescription-supply.ts",
+      "max_lines": 1356,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/phos/api/client.test.ts",
+      "max_lines": 1668,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/phos/api/client.ts",
+      "max_lines": 1089,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/phos/infra/api-gateway-lambda-template.test.ts",
+      "max_lines": 1185,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/phos/infra/api-gateway-lambda-template.ts",
+      "max_lines": 1193,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/phos/infra/pr15-final-no-go-gate.test.ts",
+      "max_lines": 1262,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/phos/ui/board/BoardClient.test.tsx",
+      "max_lines": 1571,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/phos/ui/board/BoardClient.tsx",
+      "max_lines": 1140,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/proxy.test.ts",
+      "max_lines": 1097,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/server/cds/checker.test.ts",
+      "max_lines": 2512,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/server/cds/checker.ts",
+      "max_lines": 2170,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/server/jobs/daily.test.ts",
+      "max_lines": 3127,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/server/services/billing-evidence.test.ts",
+      "max_lines": 1777,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/server/services/billing-evidence/core.test.ts",
+      "max_lines": 2308,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/server/services/billing-evidence/core.ts",
+      "max_lines": 2317,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/server/services/billing-rules/revisions/medical/2026.ts",
+      "max_lines": 1088,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/server/services/communication-queue.test.ts",
+      "max_lines": 1157,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/server/services/communication-queue.ts",
+      "max_lines": 1287,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/server/services/conference-data-sync.ts",
+      "max_lines": 1038,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/server/services/conference-sync.ts",
+      "max_lines": 1128,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/server/services/dashboard-cockpit.ts",
+      "max_lines": 3904,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/server/services/drug-master-import/mhlw.test.ts",
+      "max_lines": 1609,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/server/services/drug-master-import/mhlw.ts",
+      "max_lines": 1422,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/server/services/external-access.test.ts",
+      "max_lines": 1564,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/server/services/external-access.ts",
+      "max_lines": 1267,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/server/services/file-storage.test.ts",
+      "max_lines": 2806,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/server/services/file-storage.ts",
+      "max_lines": 2108,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/server/services/home-care-ops.ts",
+      "max_lines": 1587,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/server/services/notifications.test.ts",
+      "max_lines": 1448,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/server/services/patient-detail-timeline-registry.ts",
+      "max_lines": 1349,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/server/services/patient-detail.test.ts",
+      "max_lines": 5864,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/server/services/patient-home-operations.test.ts",
+      "max_lines": 1835,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/server/services/patient-home-operations.ts",
+      "max_lines": 1869,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/server/services/patient-mcs.ts",
+      "max_lines": 1210,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/server/services/patient-service.ts",
+      "max_lines": 1296,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/server/services/pdf-bulk-export.test.ts",
+      "max_lines": 1342,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/server/services/pdf-bulk-export.ts",
+      "max_lines": 1242,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/server/services/pdf-documents.tsx",
+      "max_lines": 1737,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/server/services/prescription-intake-service.test.ts",
+      "max_lines": 2488,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/server/services/prescription-intake-service.ts",
+      "max_lines": 1816,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/server/services/report-generator.test.ts",
+      "max_lines": 1364,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/server/services/visit-brief.test.ts",
+      "max_lines": 1712,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/server/services/visit-brief.ts",
+      "max_lines": 2273,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/server/services/visit-handoff.test.ts",
+      "max_lines": 1835,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/server/services/visit-schedule-billing-preview.test.ts",
+      "max_lines": 1256,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/server/services/visit-schedule-billing-preview.ts",
+      "max_lines": 1104,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/server/services/visit-schedule-planner.test.ts",
+      "max_lines": 4395,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/server/services/visit-schedule-planner.ts",
+      "max_lines": 2609,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/server/services/workflow-dashboard-queries.ts",
+      "max_lines": 1703,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "src/server/services/workflow-dashboard-sections.ts",
+      "max_lines": 1206,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "tools/api-route-reachability-inventory.json",
+      "max_lines": 10513,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "tools/fhir-native/legacy-migration-inventory.json",
+      "max_lines": 3408,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "tools/scripts/backfill-display-ids.ts",
+      "max_lines": 1191,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "tools/scripts/check-api-route-reachability.mjs",
+      "max_lines": 1014,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "tools/scripts/check-fhir-native-legacy-inventory.mjs",
+      "max_lines": 1469,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "tools/tests/e2e-prescription-dispensing-flow.spec.ts",
+      "max_lines": 1949,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "tools/tests/helpers/design-screen-map.ts",
+      "max_lines": 1083,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "tools/tests/ui-major-screens.spec.ts",
+      "max_lines": 3187,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "tools/tests/ui-route-mocked-smoke.spec.ts",
+      "max_lines": 5272,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    },
+    {
+      "path": "tools/tests/ui-schedule-visit-report.spec.ts",
+      "max_lines": 1124,
+      "task_id": "MAINT-FILE-SIZE-1000-001"
+    }
+  ]
+}

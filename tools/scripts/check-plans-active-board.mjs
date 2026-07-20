@@ -1,9 +1,7 @@
 #!/usr/bin/env node
 // Plans.md active-board ratchet (PLANS-ACTIVE-LINT-001).
 //
-// This check keeps the implementation entrypoint narrow: the current active
-// backlog is Active Plan Board v9 only. Archived/reference sections may keep
-// historical unchecked tasks, but they must not drift into active counts.
+// This check keeps Plans.md limited to the current unfinished board.
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 
@@ -12,12 +10,24 @@ const PLANS_PATH = 'Plans.md';
 const COMPLETED_ARCHIVE_PATH = 'docs/plans-archive.md';
 const API_RESPONSE_ALLOWLIST_PATH = 'tools/api-response-shape-allowlist.json';
 const ACTIVE_HEADING = '### 2026-07-09 Active Plan Board v9';
-const ARCHIVE_HEADING = '### 2026-07-09 Archived Plan Board';
 
 const ACTIVE_QUEUE_HEADINGS = [
   'Implementation-ready queue — 未実装 / Partial 残スコープのみ',
   'Frontend implementation queue — 未実装だけ',
 ];
+
+const FHIR_PARENT_ROLLUP_IDS = new Set([
+  'FHIR-NATIVE-P0-FOUNDATION-001',
+  'FHIR-NATIVE-PHOS-SERVER-001',
+  'FHIR-NATIVE-CONFORMANCE-001',
+  'FHIR-NATIVE-ADAPTER-PLANE-001',
+  'FHIR-NATIVE-YRESE-SYNC-001',
+  'FHIR-NATIVE-LEGACY-MIGRATION-001',
+  'FHIR-NATIVE-CUTOVER-001',
+  'FHIR-NATIVE-UI-DOGFOOD-001',
+  'FHIR-NATIVE-OFFLINE-EDGE-001',
+  'FHIR-NATIVE-OPEN-ECOSYSTEM-001',
+]);
 
 const LEGACY_COMPLETED_SECTION_MARKERS = ['**Done / frozen', '**今回完了した派生タスク'];
 
@@ -40,11 +50,7 @@ function extractActiveLines(content) {
   const lines = splitLines(content);
   const activeIndex = findLineIndex(lines, ACTIVE_HEADING);
   if (activeIndex === -1) fail(`${ACTIVE_HEADING} is missing`);
-  const archiveIndex = findLineIndex(lines, ARCHIVE_HEADING);
-  if (archiveIndex === -1) fail(`${ARCHIVE_HEADING} is missing`);
-  if (archiveIndex <= activeIndex)
-    fail('Archived Plan Board must appear after Active Plan Board v9');
-  return lines.slice(activeIndex, archiveIndex);
+  return lines.slice(activeIndex);
 }
 
 function findBoldHeadingIndex(lines, heading) {
@@ -88,6 +94,62 @@ function dataRows(tableLines) {
 
 function countRows(lines, heading) {
   return dataRows(extractTableAfterHeading(lines, heading)).length;
+}
+
+function taskRows(lines, heading, idIndex = 0, statusIndex = 1) {
+  return dataRows(extractTableAfterHeading(lines, heading)).map((row) => {
+    const cells = splitTableRow(row);
+    const id = cells[idIndex]?.match(/`([^`]+)`/)?.[1];
+    const status = cells[statusIndex]?.trim();
+    if (!id || !status) fail(`invalid task row in ${heading}`, [row]);
+    return { id, status };
+  });
+}
+
+function readNamedCounts(lines, heading) {
+  const counts = new Map();
+  for (const row of dataRows(extractTableAfterHeading(lines, heading))) {
+    const [name, countText] = splitTableRow(row);
+    const count = Number.parseInt(countText.replace(/[^\d-]/g, ''), 10);
+    if (Number.isSafeInteger(count)) counts.set(name, count);
+  }
+  return counts;
+}
+
+function countTaskBullets(lines, heading) {
+  const headingIndex = findBoldHeadingIndex(lines, heading);
+  if (headingIndex === -1) fail(`section heading is missing: ${heading}`);
+  let count = 0;
+  for (let index = headingIndex + 1; index < lines.length; index += 1) {
+    const line = lines[index].trim();
+    if (line.startsWith('**')) break;
+    if (/^- `[^`]+`/.test(line)) count += 1;
+  }
+  return count;
+}
+
+function countListBullets(lines, heading) {
+  const headingIndex = findBoldHeadingIndex(lines, heading);
+  if (headingIndex === -1) fail(`section heading is missing: ${heading}`);
+  let count = 0;
+  for (let index = headingIndex + 1; index < lines.length; index += 1) {
+    const line = lines[index].trim();
+    if (line.startsWith('**')) break;
+    if (line.startsWith('- ')) count += 1;
+  }
+  return count;
+}
+
+function extractSectionLines(lines, heading) {
+  const headingIndex = findBoldHeadingIndex(lines, heading);
+  if (headingIndex === -1) fail(`section heading is missing: ${heading}`);
+  const sectionLines = [];
+  for (let index = headingIndex + 1; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (line.trim().startsWith('**')) break;
+    sectionLines.push(line);
+  }
+  return sectionLines;
 }
 
 function readBucketCounts(activeLines) {
@@ -146,6 +208,135 @@ function assertCount(counts, bucket, actual) {
   }
 }
 
+function assertDispatchIntegrity(activeLines, bucketCounts, dispatchCounts) {
+  const implementation = taskRows(
+    activeLines,
+    'Implementation-ready queue — 未実装 / Partial 残スコープのみ',
+  );
+  const fhirChildren = taskRows(
+    activeLines,
+    'FHIR Native child execution registry — PR-sized active tasks（2026-07-15）',
+    1,
+    2,
+  );
+  const frontend = taskRows(activeLines, 'Frontend implementation queue — 未実装だけ');
+
+  const queueOccurrences = new Map();
+  for (const [queue, tasks] of [
+    ['Implementation', implementation],
+    ['FHIR child', fhirChildren],
+    ['Frontend', frontend],
+  ]) {
+    for (const { id } of tasks) {
+      const queues = queueOccurrences.get(id) ?? [];
+      queues.push(queue);
+      queueOccurrences.set(id, queues);
+    }
+  }
+  const duplicateQueueIds = [...queueOccurrences]
+    .filter(([, queues]) => queues.length > 1)
+    .map(([id, queues]) => `${id}: ${queues.join(', ')}`);
+  if (duplicateQueueIds.length > 0) {
+    fail('task IDs must be unique within and across all direct queues', duplicateQueueIds);
+  }
+
+  const implementationFhirIds = implementation
+    .map(({ id }) => id)
+    .filter((id) => id.startsWith('FHIR-NATIVE-'));
+  const unknownImplementationFhirIds = implementationFhirIds.filter(
+    (id) => !FHIR_PARENT_ROLLUP_IDS.has(id),
+  );
+  if (unknownImplementationFhirIds.length > 0) {
+    fail('Implementation queue may contain only exact FHIR parent roll-up IDs', [
+      ...unknownImplementationFhirIds,
+    ]);
+  }
+
+  const parentIdsInChildQueue = fhirChildren
+    .map(({ id }) => id)
+    .filter((id) => FHIR_PARENT_ROLLUP_IDS.has(id));
+  if (parentIdsInChildQueue.length > 0) {
+    fail(
+      'FHIR parent roll-up IDs must not appear in the FHIR child registry',
+      parentIdsInChildQueue,
+    );
+  }
+
+  const nonFhirImplementation = implementation.filter(({ id }) => !FHIR_PARENT_ROLLUP_IDS.has(id));
+  const directTasks = [...nonFhirImplementation, ...fhirChildren, ...frontend];
+  const statusCounts = new Map();
+  for (const { id, status } of directTasks) {
+    if (
+      !['In progress', 'Validating', 'Partial', 'Not started', 'Human gate', 'Blocked'].includes(
+        status,
+      )
+    ) {
+      fail('direct claimable task has unsupported status', [`${id}: ${status}`]);
+    }
+    statusCounts.set(status, (statusCounts.get(status) ?? 0) + 1);
+  }
+  const countStatus = (status) => statusCounts.get(status) ?? 0;
+  const readyCount =
+    countStatus('In progress') +
+    countStatus('Validating') +
+    countStatus('Partial') +
+    countStatus('Not started');
+  const humanCount = countStatus('Human gate');
+  const blockedCount = countStatus('Blocked');
+  const residualCount = countRows(activeLines, 'Partial — 残スコープだけを実装するもの');
+  const investigationCount = countTaskBullets(
+    activeLines,
+    'Current unresolved / verification tasks',
+  );
+  const programCount = countRows(activeLines, 'Program backlog —');
+  const externalCount = countListBullets(activeLines, 'External prerequisites —');
+
+  assertCount(bucketCounts, 'FHIR child queue', fhirChildren.length);
+  assertCount(dispatchCounts, 'Continue / ready to cut', readyCount);
+  assertCount(dispatchCounts, 'Human approval required', humanCount);
+  assertCount(dispatchCounts, 'Dependency blocked', blockedCount);
+  assertCount(dispatchCounts, 'Residual track', residualCount);
+  assertCount(dispatchCounts, 'Investigation / verify', investigationCount);
+  assertCount(dispatchCounts, 'Long-term / external', programCount + externalCount);
+
+  const expectedDirect = directTasks.length;
+  const directLine = activeLines.find((line) => line.includes('直接claim可能な正本queueは'));
+  const declaredDirect = directLine?.match(/= \*\*(\d+)件\*\*/)?.[1];
+  if (Number.parseInt(declaredDirect ?? '', 10) !== expectedDirect) {
+    fail('direct claimable task total mismatch', [
+      `expected ${expectedDirect}`,
+      `actual ${declaredDirect ?? 'missing'}`,
+    ]);
+  }
+
+  const dispatchRows = new Map(
+    dataRows(extractTableAfterHeading(activeLines, '実装ディスパッチボード')).map((row) => {
+      const [name, , breakdown] = splitTableRow(row);
+      return [name, breakdown.replace(/\s+/g, ' ').trim()];
+    }),
+  );
+  const expectedBreakdowns = new Map([
+    [
+      'Continue / ready to cut',
+      `In progress ${countStatus('In progress')} / Validating ${countStatus('Validating')} / Partial ${countStatus('Partial')} / Not started ${countStatus('Not started')}`,
+    ],
+    ['Human approval required', `Human gate ${humanCount}`],
+    ['Dependency blocked', `Blocked ${blockedCount}`],
+    ['Residual track', `Partial track ${residualCount}`],
+    ['Investigation / verify', `Unresolved / verification ${investigationCount}`],
+    ['Long-term / external', `Program ${programCount} / External prerequisite ${externalCount}`],
+  ]);
+  for (const [name, expected] of expectedBreakdowns) {
+    const actual = dispatchRows.get(name);
+    if (actual !== expected) {
+      fail(`${name} status breakdown mismatch`, [
+        `expected ${expected}`,
+        `actual ${actual ?? 'missing'}`,
+      ]);
+    }
+  }
+}
+
 function assertNoCompletedStatusesInActiveQueues(activeLines) {
   const completedRows = ACTIVE_QUEUE_HEADINGS.flatMap((heading) =>
     dataRows(extractTableAfterHeading(activeLines, heading)).flatMap((row) => {
@@ -163,18 +354,50 @@ function assertNoCompletedStatusesInActiveQueues(activeLines) {
       completedRows.map(({ heading, id, status }) => `- ${heading}: ${id} (${status})`),
     );
   }
+
+  const completedResidualRows = dataRows(
+    extractTableAfterHeading(activeLines, 'Partial — 残スコープだけを実装するもの'),
+  ).filter((row) =>
+    splitTableRow(row).some((cell) => /^(?:\*\*)?(?:done|completed)(?:\b|\*\*)/i.test(cell)),
+  );
+  if (completedResidualRows.length > 0) {
+    fail('completed residual rows must not remain in Plans.md', completedResidualRows);
+  }
+
+  const hasCompletedMarker = (value) =>
+    /(?:^|[:|])\s*(?:\*\*)?(?:done|completed|完了済み|完了)(?:\b|\*\*|[（(])/i.test(value.trim());
+  const completedProgramRows = dataRows(
+    extractTableAfterHeading(activeLines, 'Program backlog —'),
+  ).filter((row) => splitTableRow(row).some(hasCompletedMarker));
+  if (completedProgramRows.length > 0) {
+    fail('completed program rows must not remain in Plans.md', completedProgramRows);
+  }
+
+  const externalLines = extractSectionLines(activeLines, 'External prerequisites —');
+  const completedExternalBullets = externalLines.filter(
+    (line) => /^\s*-\s+/.test(line) && hasCompletedMarker(line.replace(/^\s*-\s+/, '')),
+  );
+  if (completedExternalBullets.length > 0) {
+    fail('completed external prerequisites must not remain in Plans.md', completedExternalBullets);
+  }
 }
 
 function readActiveQueueIds(activeLines) {
-  return new Set(
-    ACTIVE_QUEUE_HEADINGS.flatMap((heading) =>
+  return new Set([
+    ...ACTIVE_QUEUE_HEADINGS.flatMap((heading) =>
       dataRows(extractTableAfterHeading(activeLines, heading)).flatMap((row) => {
         const [idCell] = splitTableRow(row);
         const match = idCell?.match(/`([^`]+)`/);
         return match ? [match[1]] : [];
       }),
     ),
-  );
+    ...taskRows(
+      activeLines,
+      'FHIR Native child execution registry — PR-sized active tasks（2026-07-15）',
+      1,
+      2,
+    ).map(({ id }) => id),
+  ]);
 }
 
 function assertNoArchivedIdsInActiveQueues(activeLines, completedArchiveContent) {
@@ -268,18 +491,10 @@ function assertApiResponseDebtMatchesAllowlist(activeLines) {
   }
 }
 
-function assertArchiveIsReferenceOnly(content) {
-  const lines = splitLines(content);
-  const archiveIndex = findLineIndex(lines, ARCHIVE_HEADING);
-  const archiveLines = lines.slice(archiveIndex, archiveIndex + 8).join('\n');
-  if (!archiveLines.includes('active backlog として数えない')) {
-    fail('Archived Plan Board must explicitly say it is not counted as active backlog');
-  }
-}
-
 export function checkPlansActiveBoard(content, completedArchiveContent = '') {
   const activeLines = extractActiveLines(content);
   const counts = readBucketCounts(activeLines);
+  const dispatchCounts = readNamedCounts(activeLines, '実装ディスパッチボード');
 
   assertNoCompletedHistorySections(activeLines, counts);
   assertNoCompletedTaskEntries(activeLines);
@@ -287,6 +502,17 @@ export function checkPlansActiveBoard(content, completedArchiveContent = '') {
     counts,
     'Partial / residual track',
     countRows(activeLines, 'Partial — 残スコープだけを実装するもの'),
+  );
+  assertCount(
+    dispatchCounts,
+    'Investigation / verify',
+    countTaskBullets(activeLines, 'Current unresolved / verification tasks'),
+  );
+  assertCount(
+    dispatchCounts,
+    'Long-term / external',
+    countRows(activeLines, 'Program backlog —') +
+      countListBullets(activeLines, 'External prerequisites —'),
   );
   assertCount(
     counts,
@@ -298,13 +524,12 @@ export function checkPlansActiveBoard(content, completedArchiveContent = '') {
     'Frontend queue',
     countRows(activeLines, 'Frontend implementation queue — 未実装だけ'),
   );
-
   assertNoCompletedStatusesInActiveQueues(activeLines);
   assertNoArchivedIdsInActiveQueues(activeLines, completedArchiveContent);
   assertNoLegacyActiveDashboardRail(activeLines);
   assertNoStaleBoardVersion(activeLines);
   assertApiResponseDebtMatchesAllowlist(activeLines);
-  assertArchiveIsReferenceOnly(content);
+  assertDispatchIntegrity(activeLines, counts, dispatchCounts);
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

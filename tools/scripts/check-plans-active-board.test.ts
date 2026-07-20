@@ -34,15 +34,14 @@ function runCheck(root: string) {
 }
 
 function fixturePlans(
-  overrides: Partial<
-    Record<'counts' | 'implementationRows' | 'archiveNote' | 'debtNote', string>
-  > = {},
+  overrides: Partial<Record<'counts' | 'implementationRows' | 'debtNote', string>> = {},
 ) {
   const counts =
     overrides.counts ??
     `| Bucket | Count | 入口 |
 | --- | ---: | --- |
 | Partial / residual track | 1 | partial |
+| FHIR child queue | 1 | child |
 | Implementation queue | 2 | implementation |
 | Frontend queue | 1 | frontend |
 | Archive / reference | - | archive |`;
@@ -52,11 +51,7 @@ function fixturePlans(
     `| ID | Status | Priority | Lane | Plan / DoD | Validation / Stop |
 | --- | --- | --- | --- | --- | --- |
 | \`INBOUND-002-REVIEW-DETAIL\` | Partial | P0/P1 | Inbound | Review detail | tests |
-| \`PLANS-ACTIVE-LINT-001\` | Not started | P2 | Plan hygiene | Check active board | tests |`;
-
-  const archiveNote =
-    overrides.archiveNote ??
-    `> v3 内の Implementation-ready queue は履歴として残すが、active backlog として数えない。`;
+| \`FHIR-NATIVE-P0-FOUNDATION-001\` | In progress | P0 | FHIR | Roll-up only | tests |`;
 
   const debtNote =
     overrides.debtNote ?? `> 追加照合: \`api-response-shape\` allowlist debt は実測 **109**。`;
@@ -71,11 +66,34 @@ ${debtNote}
 
 ${counts}
 
+直接claim可能な正本queueは、Implementation queueの非FHIR親1件 + FHIR child 1件 + Frontend 1件 = **3件**。
+
+**実装ディスパッチボード（fixture）**:
+
+| Dispatch class | Count | Status内訳 | 扱い |
+| --- | ---: | --- | --- |
+| Continue / ready to cut | 2 | In progress 0 / Validating 0 / Partial 2 / Not started 0 | ready |
+| Human approval required | 0 | Human gate 0 | gated |
+| Dependency blocked | 1 | Blocked 1 | blocked |
+| Residual track | 1 | Partial track 1 | residual |
+| Investigation / verify | 1 | Unresolved / verification 1 | verify |
+| Long-term / external | 2 | Program 1 / External prerequisite 1 | long term |
+
+**FHIR Native child execution registry — PR-sized active tasks（2026-07-15）**:
+
+| WP | Task ID | Status | Priority | Seat | Depends on | Scope | Validation / Stop |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| A1 | \`FHIR-NATIVE-CHILD-001\` | Blocked | P0 | codex1 | gate | child | tests |
+
 **Partial — 残スコープだけを実装するもの**:
 
 | Track | 実装済み土台 | 未実装の残スコープ |
 | --- | --- | --- |
 | \`INB-001/002\` | base | review detail |
+
+**Current unresolved / verification tasks**:
+
+- \`VERIFY-001\`: verify one item.
 
 **Implementation-ready queue — 未実装 / Partial 残スコープのみ**:
 
@@ -93,13 +111,15 @@ ${implementationRows}
 | --- | --- | --- | --- | --- | --- |
 | \`FE-INBOUND-001\` | Partial | 他職種受信 | inbound | detail | tests |
 
-### 2026-07-09 Archived Plan Board — 旧分類証跡 \`cc:REFERENCE\`
+**Program backlog — 長期プログラム残スコープ（sprint queue に数えない。着手時に小IDで queue へ昇格）**:
 
-${archiveNote}
-
-| ID | Status |
+| Program | Status |
 | --- | --- |
-| \`DASH-P1-010-RAIL\` | Not started |
+| \`PROGRAM-001\` | Not started |
+
+**External prerequisites — 外部・人間作業（\`cc:blocked\`。Codex 単独で完了扱いにしない）**:
+
+- \`EXTERNAL-001\`: external approval.
 `;
 }
 
@@ -122,6 +142,87 @@ describe('check-plans-active-board', () => {
     );
 
     expect(() => runCheck(root)).toThrow(/Implementation queue count mismatch/);
+  });
+
+  it('rejects direct-claim total and status breakdown drift', () => {
+    const totalDrift = createFixtureRepo(fixturePlans().replace('= **3件**。', '= **4件**。'));
+    expect(() => runCheck(totalDrift)).toThrow(/direct claimable task total mismatch/);
+
+    const statusDrift = createFixtureRepo(
+      fixturePlans().replace(
+        'In progress 0 / Validating 0 / Partial 2 / Not started 0',
+        'In progress 0 / Validating 0 / Partial 1 / Not started 1',
+      ),
+    );
+    expect(() => runCheck(statusDrift)).toThrow(/status breakdown mismatch/);
+  });
+
+  it('rejects duplicate direct task IDs within and across queues', () => {
+    const crossQueueDuplicate = createFixtureRepo(
+      fixturePlans().replace('`FE-INBOUND-001` | Partial', '`INBOUND-002-REVIEW-DETAIL` | Partial'),
+    );
+    expect(() => runCheck(crossQueueDuplicate)).toThrow(/task IDs must be unique/);
+
+    const sameQueueDuplicate = createFixtureRepo(
+      fixturePlans({
+        counts: `| Bucket | Count | 入口 |
+| --- | ---: | --- |
+| Partial / residual track | 1 | partial |
+| FHIR child queue | 1 | child |
+| Implementation queue | 3 | implementation |
+| Frontend queue | 1 | frontend |`,
+        implementationRows: `| ID | Status | Priority | Lane | Plan / DoD | Validation / Stop |
+| --- | --- | --- | --- | --- | --- |
+| \`INBOUND-002-REVIEW-DETAIL\` | Partial | P0/P1 | Inbound | Review detail | tests |
+| \`INBOUND-002-REVIEW-DETAIL\` | Partial | P0/P1 | Inbound | Duplicate | tests |
+| \`FHIR-NATIVE-P0-FOUNDATION-001\` | In progress | P0 | FHIR | Roll-up only | tests |`,
+      }),
+    );
+    expect(() => runCheck(sameQueueDuplicate)).toThrow(/task IDs must be unique/);
+  });
+
+  it('rejects FHIR child duplication and enforces exact parent roll-up classification', () => {
+    const childDuplicatedInImplementation = createFixtureRepo(
+      fixturePlans().replace(
+        '`INBOUND-002-REVIEW-DETAIL` | Partial',
+        '`FHIR-NATIVE-CHILD-001` | Partial',
+      ),
+    );
+    expect(() => runCheck(childDuplicatedInImplementation)).toThrow(/task IDs must be unique/);
+
+    const parentInChildRegistry = createFixtureRepo(
+      fixturePlans().replace(
+        '`FHIR-NATIVE-CHILD-001` | Blocked',
+        '`FHIR-NATIVE-P0-FOUNDATION-001` | Blocked',
+      ),
+    );
+    expect(() => runCheck(parentInChildRegistry)).toThrow(/task IDs must be unique/);
+
+    const unknownFhirImplementation = createFixtureRepo(
+      fixturePlans().replace(
+        '`FHIR-NATIVE-P0-FOUNDATION-001` | In progress',
+        '`FHIR-NATIVE-UNKNOWN-ROLLUP-001` | In progress',
+      ),
+    );
+    expect(() => runCheck(unknownFhirImplementation)).toThrow(/only exact FHIR parent roll-up IDs/);
+  });
+
+  it('rejects residual and long-term dispatch breakdown drift', () => {
+    const residualDrift = createFixtureRepo(
+      fixturePlans().replace(
+        '| Residual track | 1 | Partial track 1 |',
+        '| Residual track | 999 | Partial track 999 |',
+      ),
+    );
+    expect(() => runCheck(residualDrift)).toThrow(/Residual track count mismatch/);
+
+    const longTermDrift = createFixtureRepo(
+      fixturePlans().replace(
+        'Program 1 / External prerequisite 1',
+        'Program 2 / External prerequisite 0',
+      ),
+    );
+    expect(() => runCheck(longTermDrift)).toThrow(/status breakdown mismatch/);
   });
 
   it('rejects a Done / frozen bucket even when its count is zero', () => {
@@ -153,12 +254,12 @@ describe('check-plans-active-board', () => {
 
   it('rejects the legacy completed-derived section', () => {
     const plans = fixturePlans().replace(
-      '### 2026-07-09 Archived Plan Board',
+      '**Frontend implementation queue — 未実装だけ**:',
       `**今回完了した派生タスク（再実装しない）**:
 
 - \`RECENTLY-FINISHED-001\`: done.
 
-### 2026-07-09 Archived Plan Board`,
+**Frontend implementation queue — 未実装だけ**:`,
     );
     const root = createFixtureRepo(plans);
 
@@ -192,6 +293,29 @@ describe('check-plans-active-board', () => {
     );
   });
 
+  it('rejects completed language in residual table cells', () => {
+    const root = createFixtureRepo(
+      fixturePlans().replace('| \`INB-001/002\` | base |', '| \`INB-001/002\` | **Done** base |'),
+    );
+
+    expect(() => runCheck(root)).toThrow(/completed residual rows/);
+  });
+
+  it('rejects completed program rows and external prerequisite bullets', () => {
+    const completedProgram = createFixtureRepo(
+      fixturePlans().replace('| `PROGRAM-001` | Not started |', '| `PROGRAM-001` | Completed |'),
+    );
+    expect(() => runCheck(completedProgram)).toThrow(/completed program rows/);
+
+    const completedExternal = createFixtureRepo(
+      fixturePlans().replace(
+        '- `EXTERNAL-001`: external approval.',
+        '- **Completed** external approval.',
+      ),
+    );
+    expect(() => runCheck(completedExternal)).toThrow(/completed external prerequisites/);
+  });
+
   it('rejects an active task that is already recorded in the completed archive', () => {
     const root = createFixtureRepo(
       fixturePlans(),
@@ -205,6 +329,19 @@ describe('check-plans-active-board', () => {
     expect(() => runCheck(root)).toThrow(
       /completed archive IDs must not remain in active implementation queues/,
     );
+  });
+
+  it('rejects an archived FHIR child that remains active', () => {
+    const root = createFixtureRepo(
+      fixturePlans(),
+      109,
+      `# Completed plan archive
+
+- [x] \`FHIR-NATIVE-CHILD-001\`
+`,
+    );
+
+    expect(() => runCheck(root)).toThrow(/FHIR-NATIVE-CHILD-001/);
   });
 
   it('rejects active-board references to the old dashboard rail task ID', () => {
@@ -258,15 +395,5 @@ describe('check-plans-active-board', () => {
     const root = createFixtureRepo(fixturePlans(), 110);
 
     expect(() => runCheck(root)).toThrow(/expected 110/);
-  });
-
-  it('rejects archived plan boards without an explicit non-active note', () => {
-    const root = createFixtureRepo(
-      fixturePlans({
-        archiveNote: '> this archive can be used as active backlog.',
-      }),
-    );
-
-    expect(() => runCheck(root)).toThrow(/not counted as active backlog/);
   });
 });
