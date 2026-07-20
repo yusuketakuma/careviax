@@ -903,7 +903,7 @@
       },
       {
         "path": "ops/refactor/STATE.md",
-        "sha256": "07ac41dd2efe3c17f0c655a3bcff793c7de4bf6fb13aafc8630051f241502972"
+        "sha256": "cbdd863fdfd87ed7f5806cfd9b76b2d1000965d80b6f041c1ce628905aa5a373"
       },
       {
         "path": "ops/refactor/archive/PERF_FINDINGS.md",
@@ -915,7 +915,7 @@
       },
       {
         "path": "package.json",
-        "sha256": "affc7f3885652402c0e91ea0521523482995c2934378a3f08a04d9f4ff97aba0"
+        "sha256": "23ab4bc0415fea85bab0df3099cb4aac72a6f4b2eb6d659a326b02c2992c781b"
       },
       {
         "path": "playwright.audit.config.ts",
