@@ -2885,8 +2885,6 @@ function PartnerVisitRecordActionCell({
 
 function ShareCasesTable({
   rows,
-  linkAcceptForms,
-  setLinkAcceptForms,
   linkDeclineReasons,
   setLinkDeclineReasons,
   isBusy,
@@ -2897,8 +2895,6 @@ function ShareCasesTable({
   onSelectCorrectionCase,
 }: {
   rows: PatientShareCaseRow[];
-  linkAcceptForms: Record<string, LinkAcceptForm>;
-  setLinkAcceptForms: Dispatch<SetStateAction<Record<string, LinkAcceptForm>>>;
   linkDeclineReasons: Record<string, string>;
   setLinkDeclineReasons: Dispatch<SetStateAction<Record<string, string>>>;
   isBusy: boolean;
@@ -2911,16 +2907,6 @@ function ShareCasesTable({
   if (rows.length === 0) {
     return <EmptyState title="患者共有ケースはまだありません" />;
   }
-
-  const updateAcceptForm = (id: string, patch: Partial<LinkAcceptForm>) => {
-    setLinkAcceptForms((current) => {
-      const previous = current[id] ?? EMPTY_LINK_ACCEPT_FORM;
-      return {
-        ...current,
-        [id]: { ...previous, ...patch },
-      };
-    });
-  };
 
   const shareCaseColumns: ColumnDef<PatientShareCaseRow>[] = [
     {
@@ -2990,9 +2976,7 @@ function ShareCasesTable({
         return (
           <ShareCaseActionCell
             row={shareCase}
-            acceptForm={linkAcceptForms[shareCase.id] ?? EMPTY_LINK_ACCEPT_FORM}
             declineReason={linkDeclineReasons[shareCase.id] ?? ''}
-            updateAcceptForm={updateAcceptForm}
             setLinkDeclineReasons={setLinkDeclineReasons}
             isBusy={isBusy}
             onActivate={onActivate}
@@ -3023,9 +3007,7 @@ function ShareCasesTable({
 
 function ShareCaseActionCell({
   row,
-  acceptForm,
   declineReason,
-  updateAcceptForm,
   setLinkDeclineReasons,
   isBusy,
   onActivate,
@@ -3035,9 +3017,7 @@ function ShareCaseActionCell({
   onSelectCorrectionCase,
 }: {
   row: PatientShareCaseRow;
-  acceptForm: LinkAcceptForm;
   declineReason: string;
-  updateAcceptForm: (id: string, patch: Partial<LinkAcceptForm>) => void;
   setLinkDeclineReasons: Dispatch<SetStateAction<Record<string, string>>>;
   isBusy: boolean;
   onActivate: (row: PatientShareCaseRow) => void;
@@ -3046,6 +3026,7 @@ function ShareCaseActionCell({
   onDeclineLink: (row: PatientShareCaseRow, reason: string) => void;
   onSelectCorrectionCase: (id: string) => void;
 }) {
+  const [acceptForm, setAcceptForm] = useState<LinkAcceptForm>(EMPTY_LINK_ACCEPT_FORM);
   const link = row.patient_link;
   const partnerPharmacyName = row.partnership.partner_pharmacy.name;
   const isPendingLink = link?.match_status === 'pending';
@@ -3058,6 +3039,9 @@ function ShareCaseActionCell({
     acceptForm.name.trim().length > 0 &&
     acceptForm.birthDate.trim().length > 0;
   const canActivate = row.status !== 'active' && partnerAccepted;
+  const updateAcceptForm = (patch: Partial<LinkAcceptForm>) => {
+    setAcceptForm((current) => ({ ...current, ...patch }));
+  };
 
   return (
     <div className="flex flex-col gap-3 text-left">
@@ -3110,9 +3094,7 @@ function ShareCaseActionCell({
             <FieldLabel>協力側ID</FieldLabel>
             <Input
               value={acceptForm.partnerPatientId}
-              onChange={(event) =>
-                updateAcceptForm(row.id, { partnerPatientId: event.target.value })
-              }
+              onChange={(event) => updateAcceptForm({ partnerPatientId: event.target.value })}
               aria-label={`${row.id} の協力側ID`}
             />
           </label>
@@ -3120,7 +3102,7 @@ function ShareCaseActionCell({
             <FieldLabel>氏名</FieldLabel>
             <Input
               value={acceptForm.name}
-              onChange={(event) => updateAcceptForm(row.id, { name: event.target.value })}
+              onChange={(event) => updateAcceptForm({ name: event.target.value })}
               aria-label={`${row.id} の協力側氏名`}
             />
           </label>
@@ -3128,7 +3110,7 @@ function ShareCaseActionCell({
             <FieldLabel>氏名カナ</FieldLabel>
             <Input
               value={acceptForm.nameKana}
-              onChange={(event) => updateAcceptForm(row.id, { nameKana: event.target.value })}
+              onChange={(event) => updateAcceptForm({ nameKana: event.target.value })}
               aria-label={`${row.id} の協力側氏名カナ`}
             />
           </label>
@@ -3137,7 +3119,7 @@ function ShareCaseActionCell({
             <Input
               type="date"
               value={acceptForm.birthDate}
-              onChange={(event) => updateAcceptForm(row.id, { birthDate: event.target.value })}
+              onChange={(event) => updateAcceptForm({ birthDate: event.target.value })}
               aria-label={`${row.id} の協力側生年月日`}
             />
           </label>
@@ -3145,7 +3127,7 @@ function ShareCaseActionCell({
             <FieldLabel>住所</FieldLabel>
             <Input
               value={acceptForm.address}
-              onChange={(event) => updateAcceptForm(row.id, { address: event.target.value })}
+              onChange={(event) => updateAcceptForm({ address: event.target.value })}
               aria-label={`${row.id} の協力側住所`}
             />
           </label>
@@ -3153,7 +3135,7 @@ function ShareCaseActionCell({
             <FieldLabel>照合補足</FieldLabel>
             <Input
               value={acceptForm.overrideReason}
-              onChange={(event) => updateAcceptForm(row.id, { overrideReason: event.target.value })}
+              onChange={(event) => updateAcceptForm({ overrideReason: event.target.value })}
               aria-label={`${row.id} の照合補足`}
             />
           </label>
@@ -4519,7 +4501,6 @@ export function PharmacyCooperationWorkflowContent() {
   const queryClient = useQueryClient();
   const [declineReasons, setDeclineReasons] = useState<Record<string, string>>({});
   const [returnReasons, setReturnReasons] = useState<Record<string, string>>({});
-  const [linkAcceptForms, setLinkAcceptForms] = useState<Record<string, LinkAcceptForm>>({});
   const [linkDeclineReasons, setLinkDeclineReasons] = useState<Record<string, string>>({});
   const [selectedConsentShareCaseId, setSelectedConsentShareCaseId] = useState('');
   const consentFormMethods = useForm<PatientShareConsentForm>({
@@ -5481,8 +5462,6 @@ export function PharmacyCooperationWorkflowContent() {
 
             <ShareCasesTable
               rows={shareCases}
-              linkAcceptForms={linkAcceptForms}
-              setLinkAcceptForms={setLinkAcceptForms}
               linkDeclineReasons={linkDeclineReasons}
               setLinkDeclineReasons={setLinkDeclineReasons}
               isBusy={isBusy}
