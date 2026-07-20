@@ -8,10 +8,7 @@ import {
   DEFAULT_MANIFEST_PATH,
   readRepoFile,
 } from './authz-account-model-v1-inventory/core.mjs';
-import {
-  discoverBrowserAssets,
-  discoverBrowserScenarios,
-} from './authz-account-model-v1-inventory/browser-freeze.mjs';
+import { discoverBrowserFreeze } from './authz-account-model-v1-inventory/browser-freeze.mjs';
 import { checkInventory } from './authz-account-model-v1-inventory/inventory-check.mjs';
 import {
   discoverMigrationAuthzContracts,
@@ -22,6 +19,7 @@ export { AuthzInventoryError } from './authz-account-model-v1-inventory/core.mjs
 export { parseApiPermissionContracts } from './authz-account-model-v1-inventory/api-permission-contracts.mjs';
 export {
   discoverBrowserAssets,
+  discoverBrowserFreeze,
   discoverBrowserScenarios,
   validateBrowserFreeze,
 } from './authz-account-model-v1-inventory/browser-freeze.mjs';
@@ -73,8 +71,9 @@ function main() {
     return;
   }
   if (options.printBrowserFreeze) {
+    const { assets, scenarios } = discoverBrowserFreeze(repoRoot);
     process.stdout.write(
-      `${JSON.stringify({ asset_baseline: discoverBrowserAssets(repoRoot), scenario_baseline: discoverBrowserScenarios(repoRoot) }, null, 2)}\n`,
+      `${JSON.stringify({ asset_baseline: assets, scenario_baseline: scenarios }, null, 2)}\n`,
     );
     return;
   }

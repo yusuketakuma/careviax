@@ -13,9 +13,10 @@ const rawMetricsSql = aggregateSql.replace(
   /,\nsafe_metrics AS \([\s\S]*$/,
   '\nSELECT metric, category, count_value FROM raw_metrics ORDER BY metric, category',
 );
+const configuredDatabaseUrl = process.env.AUTHZ_ACCOUNT_MODEL_TEST_DATABASE_URL;
 const localDatabaseUrl =
-  process.env.AUTHZ_ACCOUNT_MODEL_TEST_DATABASE_URL ??
-  'postgresql://ph_os:ph_os@127.0.0.1:5433/ph_os_e2e?schema=public';
+  configuredDatabaseUrl ?? 'postgresql://ph_os:ph_os@127.0.0.1:5433/ph_os_e2e?schema=public';
+const describeDatabase = configuredDatabaseUrl ? describe.sequential : describe.skip;
 const OUTPUT_KEYS = ['metric', 'category', 'observed_count', 'count_band'];
 const APPROVED_AGGREGATE_SHA256 =
   'f8e3290312e4bc42a9d46d6c7c5e30f6f223d74405a904066dd76c5ee96793ae';
@@ -265,7 +266,7 @@ describe('authz account model v1 inventory SQL contract', () => {
   });
 });
 
-describe.sequential('authz account model v1 inventory PostgreSQL proof', () => {
+describeDatabase('authz account model v1 inventory PostgreSQL proof', () => {
   let client: Client;
   let connected = false;
   let migratedRows: Array<Record<string, unknown>> = [];

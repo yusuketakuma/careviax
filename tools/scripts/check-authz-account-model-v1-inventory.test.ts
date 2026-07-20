@@ -28,11 +28,11 @@ import {
 
 // Repository-wide discovery hashes hundreds of source and browser assets per case.
 describe('check-authz-account-model-v1-inventory', { timeout: 120_000 }, () => {
-  it('accepts the checked-in independent declarations and browser freeze', () => {
-    expect(checkInventory()).toEqual({
+  it('accepts the checked-in independent declarations while the dedicated suite owns browser freeze', () => {
+    expect(checkInventory({ validateBrowser: false })).toEqual({
       entries: 975,
       detectors: 15,
-      browserAssets: 446,
+      browserAssets: 447,
       browserScenarios: 381,
       nonRuntimeContracts: expect.any(Number),
       migrationContracts: 58,

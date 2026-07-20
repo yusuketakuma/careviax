@@ -1,4 +1,3 @@
-import { execFileSync } from 'node:child_process';
 import { existsSync, lstatSync, readdirSync } from 'node:fs';
 
 import {
@@ -19,6 +18,7 @@ import {
   sourceContainsDynamicModuleLoader,
   sourceReferencesPlaywrightPackage,
 } from './browser-module-detection.mjs';
+import { collectGitTrackedPaths, collectTrackedRegularFiles } from './git-tracked-files.mjs';
 
 function collectBrowserSnapshotPaths(repoRoot) {
   const files = [];
@@ -200,20 +200,6 @@ function collectBrowserPackageScriptPaths(repoRoot) {
   return paths;
 }
 
-function collectGitTrackedPaths(repoRoot) {
-  try {
-    const output = execFileSync('git', ['ls-files', '-z', '--'], {
-      cwd: repoRoot,
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'ignore'],
-    });
-    return new Set(output.split('\0').filter(Boolean));
-  } catch {
-    // Standalone fixtures intentionally have no Git metadata.
-    return undefined;
-  }
-}
-
 function collectRepositoryBrowserEntrypoints(repoRoot, trackedPaths) {
   const repositoryFiles = [];
   const visit = (relativePath) => {
@@ -234,7 +220,13 @@ function collectRepositoryBrowserEntrypoints(repoRoot, trackedPaths) {
       visit(path.posix.join(resolved.normalized, entry.name));
     }
   };
-  visit('.');
+  if (trackedPaths) {
+    repositoryFiles.push(
+      ...collectTrackedRegularFiles(repoRoot, trackedPaths, 'browser repository entrypoint'),
+    );
+  } else {
+    visit('.');
+  }
 
   const configPaths = repositoryFiles.filter((sourcePath) =>
     PLAYWRIGHT_CONFIG_PATTERN.test(sourcePath),
@@ -494,18 +486,16 @@ function collectBrowserAssetPaths(repoRoot) {
   return [...paths].sort();
 }
 
-export function discoverBrowserAssets(repoRoot) {
-  return collectBrowserAssetPaths(repoRoot).map((sourcePath) => ({
+function browserAssetsFromPaths(repoRoot, sourcePaths) {
+  return sourcePaths.map((sourcePath) => ({
     path: sourcePath,
     sha256: sha256(readRepoBuffer(repoRoot, sourcePath, 'browser asset')),
   }));
 }
 
-export function discoverBrowserScenarios(repoRoot) {
+function browserScenariosFromPaths(repoRoot, sourcePaths) {
   const scenarios = [];
-  const specPaths = collectBrowserAssetPaths(repoRoot).filter((sourcePath) =>
-    BROWSER_SPEC_PATTERN.test(sourcePath),
-  );
+  const specPaths = sourcePaths.filter((sourcePath) => BROWSER_SPEC_PATTERN.test(sourcePath));
   for (const sourcePath of specPaths) {
     const content = readRepoFile(repoRoot, sourcePath, 'browser spec');
     const source = ts.createSourceFile(
@@ -961,9 +951,24 @@ export function discoverBrowserScenarios(repoRoot) {
   return sorted;
 }
 
+export function discoverBrowserFreeze(repoRoot) {
+  const sourcePaths = collectBrowserAssetPaths(repoRoot);
+  return {
+    assets: browserAssetsFromPaths(repoRoot, sourcePaths),
+    scenarios: browserScenariosFromPaths(repoRoot, sourcePaths),
+  };
+}
+
+export function discoverBrowserAssets(repoRoot) {
+  return discoverBrowserFreeze(repoRoot).assets;
+}
+
+export function discoverBrowserScenarios(repoRoot) {
+  return browserScenariosFromPaths(repoRoot, collectBrowserAssetPaths(repoRoot));
+}
+
 export function validateBrowserFreeze(repoRoot, gate) {
-  const assets = discoverBrowserAssets(repoRoot);
-  const scenarios = discoverBrowserScenarios(repoRoot);
+  const { assets, scenarios } = discoverBrowserFreeze(repoRoot);
   assert(
     assets.filter((entry) => BROWSER_SPEC_PATTERN.test(entry.path)).length === 29,
     'Playwright spec baseline must remain 29',

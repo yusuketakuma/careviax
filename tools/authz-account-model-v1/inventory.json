@@ -2083,7 +2083,7 @@
       },
       {
         "path": "tools/scripts/authz-account-model-v1-inventory/browser-freeze.mjs",
-        "sha256": "6d0085527afa9cb7cee32d809d5ef035fd7522f9f50c10aa97ca8090da91d035"
+        "sha256": "ccf4348e63930cc6bfc6d648a3c3fcf853dac3b19c1e2a73df030b588368903c"
       },
       {
         "path": "tools/scripts/authz-account-model-v1-inventory/browser-module-detection.d.mts",
@@ -2104,6 +2104,10 @@
       {
         "path": "tools/scripts/authz-account-model-v1-inventory/fixtures/test-fixtures.ts",
         "sha256": "79e958f6a101205e13a45b9edd3646890f4da5dc76c5a17066f349829b7b1041"
+      },
+      {
+        "path": "tools/scripts/authz-account-model-v1-inventory/git-tracked-files.mjs",
+        "sha256": "e030e2b96a9cdde1330e804e7b431cca6e428f38181b945ccc26ebde5eb9b4d6"
       },
       {
         "path": "tools/scripts/authz-account-model-v1-inventory/inventory-check.mjs",
@@ -2131,11 +2135,11 @@
       },
       {
         "path": "tools/scripts/check-authz-account-model-v1-inventory-browser-freeze.test.ts",
-        "sha256": "2904071033e47ca685683994a3fb43fc57c8d682ada8002834b3327b86d8bb21"
+        "sha256": "951351af2b4b71ac02357aa5f2a5d2df5f2753c39f8d361c309923ed758ead23"
       },
       {
         "path": "tools/scripts/check-authz-account-model-v1-inventory.mjs",
-        "sha256": "e91382933427189f46900fca2ab149c5e4848d34eb91b2b85d10fc14071a1176"
+        "sha256": "b9cefa0930d21cc82e8b140277d853418910a9b999f629edc0ac1b0a5755d1e6"
       },
       {
         "path": "tools/scripts/check-care-report-duplicates.ts",
@@ -34310,7 +34314,7 @@
       "path": "tools/scripts/authz-account-model-v1-inventory-sql-contract.test.ts",
       "classes": ["test"],
       "detectors": ["override_flag", "platform_role", "qualification", "tenant_role"],
-      "sha256": "ae4fea385efe599fbf9fc76a87a0a4f8b8a4a6071b4ebffc71decea9e98854e0"
+      "sha256": "497b123d67e1eec0de166ec5a734a0a049adacba67b15c5fe59fb568b12a7a48"
     },
     {
       "path": "tools/scripts/authz-account-model-v1-inventory/callback-analysis.mjs",
@@ -34394,7 +34398,7 @@
       "path": "tools/scripts/check-authz-account-model-v1-inventory.d.mts",
       "classes": ["tooling"],
       "detectors": ["phos_scope"],
-      "sha256": "7812e58f65d3c786f40b3a87ddfb85c1d4e3e76684b20f6d1e2e3a13a2937b97"
+      "sha256": "2ed8329fee1a35abb1c4a05703c29b54f1175444c8b309185ee7221b4d83dc49"
     },
     {
       "path": "tools/scripts/check-authz-account-model-v1-inventory.test.ts",
@@ -34413,7 +34417,7 @@
         "tenant_role",
         "ui_role_affordance"
       ],
-      "sha256": "4ed051e6b47aa8f7d45a63bfaba82be1150b8e8ad4d9c4c813643334647fec60"
+      "sha256": "5f568d15b63d8bdb69f8e226de003267cb4969f63ccbdcff33135e5219df65c8"
     },
     {
       "path": "tools/scripts/check-human-maintained-file-size.mjs",

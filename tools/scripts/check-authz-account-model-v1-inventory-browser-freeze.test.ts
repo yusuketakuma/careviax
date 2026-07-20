@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   discoverBrowserAssets,
+  discoverBrowserFreeze,
   discoverBrowserScenarios,
   validateBrowserFreeze,
 } from './check-authz-account-model-v1-inventory.mjs';
@@ -22,7 +23,8 @@ import {
   sourceReferencesPlaywrightPackage,
 } from './authz-account-model-v1-inventory/browser-module-detection.mjs';
 
-describe('check-authz-account-model-v1-inventory browser freeze', { timeout: 120_000 }, () => {
+// Full tracked-repository discovery is intentionally exhaustive and runs under coverage contention in CI.
+describe('check-authz-account-model-v1-inventory browser freeze', { timeout: 180_000 }, () => {
   it('excludes untracked browser-like files in a Git checkout', () => {
     const root = temporaryRoot('authz-browser-tracked-');
     writeRepoFile(root, 'tools/tests/tracked.spec.ts', "test('tracked', async () => {});\n");
@@ -93,10 +95,9 @@ describe('check-authz-account-model-v1-inventory browser freeze', { timeout: 120
     const manifest = JSON.parse(
       readFileSync(path.join(REPO_ROOT, MANIFEST_PATH), 'utf8'),
     ) as InventoryManifest;
-    expect(discoverBrowserAssets(REPO_ROOT)).toEqual(manifest.browser_cutover_gate.asset_baseline);
-    expect(discoverBrowserScenarios(REPO_ROOT)).toEqual(
-      manifest.browser_cutover_gate.scenario_baseline,
-    );
+    const { assets, scenarios } = discoverBrowserFreeze(REPO_ROOT);
+    expect(assets).toEqual(manifest.browser_cutover_gate.asset_baseline);
+    expect(scenarios).toEqual(manifest.browser_cutover_gate.scenario_baseline);
 
     const root = temporaryRoot('authz-browser-freeze-');
     mkdirSync(path.join(root, 'tools/tests'), { recursive: true });

@@ -82,6 +82,11 @@ export type BrowserScenario = {
   modifier: string;
 };
 
+export function discoverBrowserFreeze(repoRoot: string): {
+  assets: Array<{ path: string; sha256: string }>;
+  scenarios: BrowserScenario[];
+};
+
 export function discoverBrowserScenarios(repoRoot: string): BrowserScenario[];
 
 export function validateBrowserFreeze(
