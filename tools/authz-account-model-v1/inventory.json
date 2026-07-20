@@ -903,7 +903,7 @@
       },
       {
         "path": "ops/refactor/STATE.md",
-        "sha256": "ec700920367a966c3a73f26aa1c6b15f0c58799894919058f85e8da251f29cdf"
+        "sha256": "07ac41dd2efe3c17f0c655a3bcff793c7de4bf6fb13aafc8630051f241502972"
       },
       {
         "path": "ops/refactor/archive/PERF_FINDINGS.md",
@@ -915,7 +915,7 @@
       },
       {
         "path": "package.json",
-        "sha256": "edd14de61ca03228e3c76b843c9fd6e817070f7a5f3da1b2f97a16b07032ad06"
+        "sha256": "affc7f3885652402c0e91ea0521523482995c2934378a3f08a04d9f4ff97aba0"
       },
       {
         "path": "playwright.audit.config.ts",
@@ -2140,6 +2140,10 @@
       {
         "path": "tools/scripts/check-authz-account-model-v1-inventory.mjs",
         "sha256": "b9cefa0930d21cc82e8b140277d853418910a9b999f629edc0ac1b0a5755d1e6"
+      },
+      {
+        "path": "tools/scripts/check-authz-account-model-v1-inventory.test.ts",
+        "sha256": "c3bfe89bd3ecd4306e50d469e8245048c8df4bdde72e29b47b407e7ac9958d69"
       },
       {
         "path": "tools/scripts/check-care-report-duplicates.ts",
@@ -34417,7 +34421,7 @@
         "tenant_role",
         "ui_role_affordance"
       ],
-      "sha256": "5f568d15b63d8bdb69f8e226de003267cb4969f63ccbdcff33135e5219df65c8"
+      "sha256": "c3bfe89bd3ecd4306e50d469e8245048c8df4bdde72e29b47b407e7ac9958d69"
     },
     {
       "path": "tools/scripts/check-human-maintained-file-size.mjs",
