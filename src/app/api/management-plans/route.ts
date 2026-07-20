@@ -165,7 +165,7 @@ async function managementPlanGET(req: NextRequest, ctx: AuthContext) {
   );
 
   if (result.kind === 'not_found') return notFound('ケースが見つかりません');
-  return success(result.envelope);
+  return success({ data: result.envelope.data, meta: result.envelope.meta });
 }
 
 async function managementPlanPOST(req: NextRequest, ctx: AuthContext) {
