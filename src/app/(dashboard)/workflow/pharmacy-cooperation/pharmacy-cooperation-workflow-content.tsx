@@ -2,7 +2,7 @@
 
 import type { Dispatch, FormEvent, ReactNode, SetStateAction } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm, useWatch, type UseFormReturn } from 'react-hook-form';
@@ -240,6 +240,8 @@ type LinkAcceptForm = {
   address: string;
   overrideReason: string;
 };
+
+type LinkAcceptFormStore = { value: LinkAcceptForm };
 
 type CorrectionRequestRow = PatientShareCorrectionRequestRow;
 const correctionRequestStatuses = ['open', 'responded', 'resolved', 'cancelled'] as const;
@@ -2904,9 +2906,20 @@ function ShareCasesTable({
   onDeclineLink: (row: PatientShareCaseRow, reason: string) => void;
   onSelectCorrectionCase: (id: string) => void;
 }) {
+  const linkAcceptFormStores = useRef(new Map<string, LinkAcceptFormStore>());
+
   if (rows.length === 0) {
     return <EmptyState title="患者共有ケースはまだありません" />;
   }
+
+  const getLinkAcceptFormStore = (id: string) => {
+    const existing = linkAcceptFormStores.current.get(id);
+    if (existing) return existing;
+
+    const created = { value: { ...EMPTY_LINK_ACCEPT_FORM } };
+    linkAcceptFormStores.current.set(id, created);
+    return created;
+  };
 
   const shareCaseColumns: ColumnDef<PatientShareCaseRow>[] = [
     {
@@ -2973,9 +2986,16 @@ function ShareCasesTable({
       meta: { label: '操作' },
       cell: ({ row }) => {
         const shareCase = row.original;
+        const acceptFormStore = getLinkAcceptFormStore(shareCase.id);
         return (
           <ShareCaseActionCell
             row={shareCase}
+            initialAcceptForm={acceptFormStore.value}
+            persistAcceptFormPatch={(patch) => {
+              const next = { ...acceptFormStore.value, ...patch };
+              acceptFormStore.value = next;
+              return next;
+            }}
             declineReason={linkDeclineReasons[shareCase.id] ?? ''}
             setLinkDeclineReasons={setLinkDeclineReasons}
             isBusy={isBusy}
@@ -3007,6 +3027,8 @@ function ShareCasesTable({
 
 function ShareCaseActionCell({
   row,
+  initialAcceptForm,
+  persistAcceptFormPatch,
   declineReason,
   setLinkDeclineReasons,
   isBusy,
@@ -3017,6 +3039,8 @@ function ShareCaseActionCell({
   onSelectCorrectionCase,
 }: {
   row: PatientShareCaseRow;
+  initialAcceptForm: LinkAcceptForm;
+  persistAcceptFormPatch: (patch: Partial<LinkAcceptForm>) => LinkAcceptForm;
   declineReason: string;
   setLinkDeclineReasons: Dispatch<SetStateAction<Record<string, string>>>;
   isBusy: boolean;
@@ -3026,7 +3050,7 @@ function ShareCaseActionCell({
   onDeclineLink: (row: PatientShareCaseRow, reason: string) => void;
   onSelectCorrectionCase: (id: string) => void;
 }) {
-  const [acceptForm, setAcceptForm] = useState<LinkAcceptForm>(EMPTY_LINK_ACCEPT_FORM);
+  const [acceptForm, setAcceptForm] = useState<LinkAcceptForm>(() => initialAcceptForm);
   const link = row.patient_link;
   const partnerPharmacyName = row.partnership.partner_pharmacy.name;
   const isPendingLink = link?.match_status === 'pending';
@@ -3040,7 +3064,8 @@ function ShareCaseActionCell({
     acceptForm.birthDate.trim().length > 0;
   const canActivate = row.status !== 'active' && partnerAccepted;
   const updateAcceptForm = (patch: Partial<LinkAcceptForm>) => {
-    setAcceptForm((current) => ({ ...current, ...patch }));
+    const next = persistAcceptFormPatch(patch);
+    setAcceptForm(next);
   };
 
   return (
