@@ -682,10 +682,6 @@
         "sha256": "5260dc09b969b50290f209c9229453d54847dd9f4cacec9570f7773933fb0e87"
       },
       {
-        "path": ".codex/archive/ralph-state-archive-20260620.md",
-        "sha256": "092f6c95362965054c22e15f0398d9fe8e8e0da0cc70d0b2eaf3786e7c67874f"
-      },
-      {
         "path": ".codex/medical-ui-ux-completion-audit.md",
         "sha256": "053c6bc44d6cc452cdcb16934a5ec1aec8863a7d0ceeecba53525ab42e1b2f23"
       },
@@ -698,76 +694,8 @@
         "sha256": "666a6f8dad1437700ddb95e84c46d0af70adab45d38ca62da7aee34b4d5a3094"
       },
       {
-        "path": ".ds-sync/lib/common.mjs",
-        "sha256": "5399836cce8c3921f21f5db97e30e245ed816f8aec3536b1a6f090f46ff3fad5"
-      },
-      {
-        "path": ".ds-sync/lib/detect.mjs",
-        "sha256": "ae4e5357631762764d54a70f3b57138e3bb1e5d44021a7c2443443bc0e2e7c55"
-      },
-      {
-        "path": ".ds-sync/lib/preview-rebuild.mjs",
-        "sha256": "3d57fddf3f6402e69a92e4522c0ae39201a57462800a66b9895926c40de600b7"
-      },
-      {
-        "path": ".ds-sync/lib/source-storybook.mjs",
-        "sha256": "77affac0f185ac3b1fab92855ee913f87dcc2520b4c4e08dd10e942aa424124e"
-      },
-      {
-        "path": ".ds-sync/lib/story-imports.mjs",
-        "sha256": "fea081f78c252944f6022713b540ef6df92e8942c85e57386b303217f88bba95"
-      },
-      {
-        "path": ".ds-sync/lib/sync-hashes.mjs",
-        "sha256": "6d347ad5400f36349d0767abe2a4d23de6f067368fa86e19b9e581c81aa530a0"
-      },
-      {
-        "path": ".ds-sync/package-build.mjs",
-        "sha256": "3a5947899decec952417f373cfb6ce207aa14a9f9fca9211fed3885663c377db"
-      },
-      {
-        "path": ".ds-sync/package-capture.mjs",
-        "sha256": "180feee911b1e8c2f8c7ad4155470e64292f7c9d3bd876d967ae540babd53cb5"
-      },
-      {
-        "path": ".ds-sync/package-lock.json",
-        "sha256": "331d0ff7e695df25933230d236d4fd33963ef3d723890e004c603ed1f4b0b195"
-      },
-      {
-        "path": ".ds-sync/package-validate.mjs",
-        "sha256": "63447dfe85ae204436467ae7b83a2b81ee0f3d9e9417610da88057896ba30181"
-      },
-      {
-        "path": ".ds-sync/package.json",
-        "sha256": "befe82edf6d5d9ad796ab7c523ade8527418c7a7b321569bd79f7e90f2307b7d"
-      },
-      {
-        "path": ".ds-sync/storybook/SKILL.md",
-        "sha256": "b352462db032340259ce35ef83ab3a48d69ede8d52717b0a72025a737f6d288b"
-      },
-      {
-        "path": ".ds-sync/storybook/compare.mjs",
-        "sha256": "03aee2718e6e7715ad2b35e8bf57b722f894430089e72e78601595539babdd25"
-      },
-      {
-        "path": ".ds-sync/storybook/http-serve.mjs",
-        "sha256": "ccc3b4acfad0bfeb097ca92c2ee9550fbc5230a963830d14f916ccfc0547e6af"
-      },
-      {
-        "path": ".ds-sync/storybook/probe.mjs",
-        "sha256": "6ead68c0e1012231fb95664197e2a0153d59661322ef12e639d296725f32896c"
-      },
-      {
         "path": ".github/workflows/ci.yml",
         "sha256": "fca723136f8c8d68f31e65f8820506feda3330b06238dc8f71b7bb9623e39b8d"
-      },
-      {
-        "path": ".omc/project-memory.json",
-        "sha256": "18eec300eb56a2662cd0b6c3eb1b09708afbf5a187fbdf3871ff2b142e2c36d7"
-      },
-      {
-        "path": ".omc/state/sessions/b7d1bb79-1339-4e44-9f49-baf2c4d86740/last-tool-error-state.json",
-        "sha256": "01d3f8be90c333869036a2101a25ed3f807004d57ba780cde1620ffe02c147dd"
       },
       {
         "path": ".omx/context/repo-audit-20260404T114947Z.md",
@@ -824,14 +752,6 @@
       {
         "path": "REFACTOR_RISK_MAP.md",
         "sha256": "af8a3de1e405f720d1c0a5380d11fb2c8ab3d9d99e952d000830270c25681b18"
-      },
-      {
-        "path": "agmsg/app/pnpm-lock.yaml",
-        "sha256": "ee68bb510b185e783f48ec1847f4aa68922bf6c9f78e43f3e6585925e94d443a"
-      },
-      {
-        "path": "audits/playwright-audit-report.md",
-        "sha256": "07c52750fb4354872aa8492f2849350928c3c337cc8ec6fff0dc4b4a8040ade6"
       },
       {
         "path": "docs/README.md",
@@ -983,7 +903,7 @@
       },
       {
         "path": "ops/refactor/STATE.md",
-        "sha256": "bba55ffc8a6c23b4ea3a7b7ea5ac5b23ab17aa63894dc1e44c05651011a1eeb8"
+        "sha256": "a293c54480202756b891aab7ba2c45c8e7fb11888768dbcd1369d4e7f4cec7de"
       },
       {
         "path": "ops/refactor/archive/PERF_FINDINGS.md",
@@ -2163,7 +2083,7 @@
       },
       {
         "path": "tools/scripts/authz-account-model-v1-inventory/browser-freeze.mjs",
-        "sha256": "cccda98df420083ae279e15bf54b245ef8758b60c0b84f08cc9b4cc923a212a1"
+        "sha256": "6d0085527afa9cb7cee32d809d5ef035fd7522f9f50c10aa97ca8090da91d035"
       },
       {
         "path": "tools/scripts/authz-account-model-v1-inventory/browser-module-detection.d.mts",
@@ -2211,7 +2131,7 @@
       },
       {
         "path": "tools/scripts/check-authz-account-model-v1-inventory-browser-freeze.test.ts",
-        "sha256": "1800c30759049d118072de82e25a5aae95c9f0e9eabce2d1b66c5596c99cc2b4"
+        "sha256": "2904071033e47ca685683994a3fb43fc57c8d682ada8002834b3327b86d8bb21"
       },
       {
         "path": "tools/scripts/check-authz-account-model-v1-inventory.mjs",
@@ -2340,198 +2260,6 @@
       {
         "path": "tools/shared/abort-timeout.ts",
         "sha256": "ca11546ecb70155d4b7930cd97a778b9ca56d5521f8d87e234e134bd5607b9cb"
-      },
-      {
-        "path": "tools/tests/.artifacts/audit/evidence/report-diag-login-bulk.json",
-        "sha256": "02dba91cadf37feb9a0e3cc6703b574a977b2c85ff12b36859576de6ce25a9a7"
-      },
-      {
-        "path": "tools/tests/.artifacts/audit/evidence/report-diag-patients-1.json",
-        "sha256": "76e9ce08c1ebea86ff6b7eca47a183caf110fb63cdbf1bc8eb2dd2a40b0ff5e3"
-      },
-      {
-        "path": "tools/tests/.artifacts/audit/evidence/report-diag-patients-2.json",
-        "sha256": "222f3d05d03ac2e66529125088d717a64a6e812db456986f61ce703d66a851a2"
-      },
-      {
-        "path": "tools/tests/.artifacts/audit/evidence/report-diag-patients-3.json",
-        "sha256": "dfe8b0420d9bcf6462d35b5ec36d1be4bad66588a1a067e440294b6d86f0e508"
-      },
-      {
-        "path": "tools/tests/.artifacts/audit/evidence/report-final-aa.json",
-        "sha256": "08557e1ead408dec46b524d2b207af47dd9bddadadc7264b5e13af14a49c49c7"
-      },
-      {
-        "path": "tools/tests/.artifacts/audit/evidence/report-final-ab.json",
-        "sha256": "0ebbdacdd1642ea7fa1502a1c011b6c76ab2151417093850e152db319dad7739"
-      },
-      {
-        "path": "tools/tests/.artifacts/audit/evidence/report-final-ad.json",
-        "sha256": "ab30d565fe0846b8543394117eac3b1df6e15a42d66223cb31c5ce85b91db22b"
-      },
-      {
-        "path": "tools/tests/.artifacts/audit/evidence/report-final-af.json",
-        "sha256": "4f7cf84a925d6a6bb866527643ebb42b5b11308813b0e0fa9ec54dfcaa22f282"
-      },
-      {
-        "path": "tools/tests/.artifacts/audit/evidence/report-final-ag.json",
-        "sha256": "d8c06b098d22eb7256d00a925001e0fc537b1e0196bb0fcd4ae0678392740575"
-      },
-      {
-        "path": "tools/tests/.artifacts/audit/evidence/report-final-ah-target.json",
-        "sha256": "5b7ecb8c963416bb60d146519d5a2faf65f75c07fa810920fd998073abc94d87"
-      },
-      {
-        "path": "tools/tests/.artifacts/audit/evidence/report-final-aj.json",
-        "sha256": "ff93fcdc362712e74499116da7a78a89dc4443df5e4eb5a0cd6be23f519707de"
-      },
-      {
-        "path": "tools/tests/.artifacts/audit/evidence/report-final-ak-target.json",
-        "sha256": "8049c111dc810e9421857c777e959d2d564361057c397ac8223c6ae1d6986e13"
-      },
-      {
-        "path": "tools/tests/.artifacts/audit/evidence/report-final-am.json",
-        "sha256": "055921abfa8b121dffb0ccd193ee1fbd5fc432081c9893e889aea6080c0360d8"
-      },
-      {
-        "path": "tools/tests/.artifacts/audit/evidence/report-final-an.json",
-        "sha256": "a7f8b8f7ae883c9c9ed3f27b62ebabd5b55f4ca3ef0fdca36c2e147549368841"
-      },
-      {
-        "path": "tools/tests/.artifacts/audit/evidence/report-final-ao-target.json",
-        "sha256": "704d7193a7c5a799ce98e928c81d91eefa48836b42bc97616498317300815af9"
-      },
-      {
-        "path": "tools/tests/.artifacts/audit/evidence/report-final-aq.json",
-        "sha256": "b7908cf0036e0e900acd4cf64e0f56d010cea11275b524fa5f654899ce240ea3"
-      },
-      {
-        "path": "tools/tests/.artifacts/audit/evidence/report-final-ar.json",
-        "sha256": "a6d6876d433f07fa8f9b666cd8cbc3755faa41021180e1866b31c736c53c477b"
-      },
-      {
-        "path": "tools/tests/.artifacts/audit/evidence/report-final-e.json",
-        "sha256": "f134a7dcd0bd1af3c35474dfddd78da5362e6bf75f0b2ace320cdee8b5ae60e5"
-      },
-      {
-        "path": "tools/tests/.artifacts/audit/evidence/report-final-f.json",
-        "sha256": "c15f7901ee80b72dce37f0e68d51fee48b4141f188ba8b248a59d6bb2e0cd343"
-      },
-      {
-        "path": "tools/tests/.artifacts/audit/evidence/report-final-g.json",
-        "sha256": "e471156f356838e759c8379b2c1ce586bae62c717022b6029db0a95396b2cb6e"
-      },
-      {
-        "path": "tools/tests/.artifacts/audit/evidence/report-final-i.json",
-        "sha256": "ae1cfe3cf8e720fb841f67c1b6b431ebf4491a5ae1bc1df7422aa90ba8f35acb"
-      },
-      {
-        "path": "tools/tests/.artifacts/audit/evidence/report-final-k.json",
-        "sha256": "8109c31335e324c927c34bb61d0503ff62ea331c5ccddf3454ab907458066f35"
-      },
-      {
-        "path": "tools/tests/.artifacts/audit/evidence/report-final-m.json",
-        "sha256": "5c633f63bc496017b53453fdf24c6d618541ff439b911a101e8ebfb52098ff30"
-      },
-      {
-        "path": "tools/tests/.artifacts/audit/evidence/report-final-n.json",
-        "sha256": "a249a6b577b0a06918092464aa1d526e2d016179c85088e794c99839bc127e90"
-      },
-      {
-        "path": "tools/tests/.artifacts/audit/evidence/report-final-p.json",
-        "sha256": "6f648c7e5155957f49f55ecb3042b3bc1bd59c803356db73b57855b77d4e5b2b"
-      },
-      {
-        "path": "tools/tests/.artifacts/audit/evidence/report-final-q.json",
-        "sha256": "00bc55f986880d1cbd93011d7e73514449a0166cc0f699b49c2fde3853146f5d"
-      },
-      {
-        "path": "tools/tests/.artifacts/audit/evidence/report-final-s.json",
-        "sha256": "6b93ba2ba9e228b5ef081436de377e9febdbc170f365d96b4dd0bb854666d44d"
-      },
-      {
-        "path": "tools/tests/.artifacts/audit/evidence/report-final-v.json",
-        "sha256": "effb674c2ba75494c9511ef3dd554e897eed223e36200d41b4f05d91996be0f7"
-      },
-      {
-        "path": "tools/tests/.artifacts/audit/evidence/report-final-w.json",
-        "sha256": "3cc4b0897fe7c0c9831a525c8195923a9e30b74500e374b5b9b1577c6db5a77c"
-      },
-      {
-        "path": "tools/tests/.artifacts/audit/evidence/report-final-x.json",
-        "sha256": "187c1440e48fb4f7f760a1899a66a9c2bc11b4177638d2bfa58b6e613c1e69b8"
-      },
-      {
-        "path": "tools/tests/.artifacts/audit/evidence/report-final-y.json",
-        "sha256": "050e466ee37609acbbfafb71987a5ea3ee7e1f5509b4926db2cecfb1adca3f60"
-      },
-      {
-        "path": "tools/tests/.artifacts/audit/evidence/report-final-z.json",
-        "sha256": "ed7a72eb5d93ed84f52453d1eb819336fc2335a8a60c65adf83d3adfa844278e"
-      },
-      {
-        "path": "tools/tests/.artifacts/audit/evidence/report-pharmacy-coop-form-race-verify.json",
-        "sha256": "fad3e075f75f9f04b2886041eb25a5f5e74b1344d23846c6e7fd9f60cf4f2d08"
-      },
-      {
-        "path": "tools/tests/.artifacts/audit/evidence/report-visual-fixture-update.json",
-        "sha256": "1b425cace68f9924c15fdfba194adbfc31ce4631d7a897e0f3c3b930a28d38a8"
-      },
-      {
-        "path": "tools/tests/.artifacts/audit/evidence/report-visual-fixture-verify.json",
-        "sha256": "b2137f536f7183416ca961fcdec3172bee62daf16cb42db15e67c90e3b3c83a0"
-      },
-      {
-        "path": "tools/tests/.artifacts/audit/evidence/report-visual-fixture4-update.json",
-        "sha256": "73fde7b99b38471ce238103094f1a8f6ba6c3c8f9145ebdf440fe28c417951bf"
-      },
-      {
-        "path": "tools/tests/.artifacts/audit/evidence/report-visual-fixture4-verify.json",
-        "sha256": "5bcfcb1557e26760a4b16962c6bdba01b5a2e0f241b56866a2bcc7ccb4f62ff7"
-      },
-      {
-        "path": "tools/tests/.artifacts/audit/evidence/report-visual-full-viewport-update.json",
-        "sha256": "9476cf191c41effdeedd70cf87921c14843cc151c989bac560b1a8314d8b7475"
-      },
-      {
-        "path": "tools/tests/.artifacts/audit/evidence/report-visual-full-viewport-verify.json",
-        "sha256": "725e6292a7179403f8a44d6e941613244607321d14034050d1c476298425a0d9"
-      },
-      {
-        "path": "tools/tests/.artifacts/audit/evidence/report-visual-mask-update.json",
-        "sha256": "3effc74496708f2b562fa67b609e605666268123e2ca1fb0dacf116c741e4115"
-      },
-      {
-        "path": "tools/tests/.artifacts/audit/evidence/report-visual-mask-verify.json",
-        "sha256": "97fc0a22cf1b183fb65de759731d1da3632025246e862fb2e83eecac99ebe8bc"
-      },
-      {
-        "path": "tools/tests/.artifacts/audit/evidence/report-visual-unmask-update.json",
-        "sha256": "4e0288ee5ef26500c3e7c6daf4afd75c5ec618a5f27b94c80b9126d1207cd490"
-      },
-      {
-        "path": "tools/tests/.artifacts/audit/evidence/report-visual-unmask-verify.json",
-        "sha256": "76938f750d65966b26369cd452258b90fa8f3f7f38c3efee7bb364f2bf945ce0"
-      },
-      {
-        "path": "tools/tests/.artifacts/audit/output/.last-run.json",
-        "sha256": "91d1c43004802cd49950d78eb11c8fa7d05da8ffffe219a8b13b2f561bc00903"
-      },
-      {
-        "path": "tools/tests/.artifacts/design-fidelity/capture-report.json",
-        "sha256": "7a6f953433d964f35903d882f66f18c0a2bcb190196156d2fbfb426b8338bbb6"
-      },
-      {
-        "path": "tools/tests/.artifacts/flagship-fullpage.mts",
-        "sha256": "8c5719e49dbb2bd6d425149334c53e23f7d8fcd5e76b713ee1aeb2a8e0666778"
-      },
-      {
-        "path": "tools/tests/.artifacts/results/.last-run.json",
-        "sha256": "b98ed0c143b5644c65ccc85eb42c25e596f9a5944c487c653b36f9284eecad36"
-      },
-      {
-        "path": "tools/tests/.artifacts/results/ui-route-mocked-smoke-phar-7b5e1-lling-and-report-draft-flow-chromium/error-context.md",
-        "sha256": "9ee834d523f03e95db87977da82faeef4c6c0b97171bc5dacd7407504fbea7ba"
       },
       {
         "path": "tools/tests/README.md",
@@ -34685,7 +34413,7 @@
         "tenant_role",
         "ui_role_affordance"
       ],
-      "sha256": "5ff6305978071aab62db291c5f0c2dcc46750609d6c898884d2fb2dbb5c244ac"
+      "sha256": "4ed051e6b47aa8f7d45a63bfaba82be1150b8e8ad4d9c4c813643334647fec60"
     },
     {
       "path": "tools/scripts/check-human-maintained-file-size.mjs",

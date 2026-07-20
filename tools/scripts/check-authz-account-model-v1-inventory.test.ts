@@ -32,7 +32,7 @@ describe('check-authz-account-model-v1-inventory', { timeout: 120_000 }, () => {
     expect(checkInventory()).toEqual({
       entries: 975,
       detectors: 15,
-      browserAssets: 514,
+      browserAssets: 446,
       browserScenarios: 381,
       nonRuntimeContracts: expect.any(Number),
       migrationContracts: 58,

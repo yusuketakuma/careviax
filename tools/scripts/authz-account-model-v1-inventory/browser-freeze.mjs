@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { existsSync, lstatSync, readdirSync } from 'node:fs';
 
 import {
@@ -199,7 +200,21 @@ function collectBrowserPackageScriptPaths(repoRoot) {
   return paths;
 }
 
-function collectRepositoryBrowserEntrypoints(repoRoot) {
+function collectGitTrackedPaths(repoRoot) {
+  try {
+    const output = execFileSync('git', ['ls-files', '-z', '--'], {
+      cwd: repoRoot,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    });
+    return new Set(output.split('\0').filter(Boolean));
+  } catch {
+    // Standalone fixtures intentionally have no Git metadata.
+    return undefined;
+  }
+}
+
+function collectRepositoryBrowserEntrypoints(repoRoot, trackedPaths) {
   const repositoryFiles = [];
   const visit = (relativePath) => {
     const resolved = safePath(repoRoot, relativePath, 'browser repository entrypoint');
@@ -208,7 +223,9 @@ function collectRepositoryBrowserEntrypoints(repoRoot) {
       relativePath,
     ]);
     if (stat.isFile()) {
-      repositoryFiles.push(resolved.normalized);
+      if (!trackedPaths || trackedPaths.has(resolved.normalized)) {
+        repositoryFiles.push(resolved.normalized);
+      }
       return;
     }
     assert(stat.isDirectory(), 'browser repository entrypoint must be a directory', [relativePath]);
@@ -404,11 +421,12 @@ function collectRepositoryBrowserEntrypoints(repoRoot) {
 
 function collectBrowserAssetPaths(repoRoot) {
   const paths = new Set();
+  const trackedPaths = collectGitTrackedPaths(repoRoot);
   for (const sourcePath of walkFiles(repoRoot, ['tools/tests'], [])) paths.add(sourcePath);
   for (const sourcePath of collectBrowserExtendedModulePaths(repoRoot)) paths.add(sourcePath);
   for (const sourcePath of collectBrowserSnapshotPaths(repoRoot)) paths.add(sourcePath);
   for (const sourcePath of collectBrowserHarnessPaths(repoRoot)) paths.add(sourcePath);
-  const browserEntrypoints = collectRepositoryBrowserEntrypoints(repoRoot);
+  const browserEntrypoints = collectRepositoryBrowserEntrypoints(repoRoot, trackedPaths);
   for (const config of browserEntrypoints.configPaths) paths.add(config);
   for (const spec of browserEntrypoints.specPaths) paths.add(spec);
   for (const sourcePath of browserEntrypoints.repositoryFiles) {
@@ -437,7 +455,20 @@ function collectBrowserAssetPaths(repoRoot) {
   ]) {
     paths.add(config);
   }
-  for (const sourcePath of collectBrowserPackageScriptPaths(repoRoot)) paths.add(sourcePath);
+  for (const sourcePath of collectBrowserPackageScriptPaths(repoRoot)) {
+    assert(
+      !trackedPaths || trackedPaths.has(sourcePath),
+      'browser package script asset is untracked',
+      [sourcePath],
+    );
+    paths.add(sourcePath);
+  }
+
+  if (trackedPaths) {
+    for (const sourcePath of paths) {
+      if (!trackedPaths.has(sourcePath)) paths.delete(sourcePath);
+    }
+  }
 
   const visited = new Set();
   const pending = [...paths].filter((sourcePath) => /\.[cm]?[jt]sx?$/.test(sourcePath));
@@ -451,6 +482,11 @@ function collectBrowserAssetPaths(repoRoot) {
     )) {
       const dependencyPath = resolveBrowserToolDependency(repoRoot, sourcePath, moduleSpecifier);
       if (!dependencyPath || paths.has(dependencyPath)) continue;
+      assert(
+        !trackedPaths || trackedPaths.has(dependencyPath),
+        'browser asset dependency is untracked',
+        [sourcePath, dependencyPath],
+      );
       paths.add(dependencyPath);
       if (/\.[cm]?[jt]sx?$/.test(dependencyPath)) pending.push(dependencyPath);
     }

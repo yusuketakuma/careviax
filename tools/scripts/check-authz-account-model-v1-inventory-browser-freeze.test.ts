@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
@@ -22,6 +23,28 @@ import {
 } from './authz-account-model-v1-inventory/browser-module-detection.mjs';
 
 describe('check-authz-account-model-v1-inventory browser freeze', { timeout: 120_000 }, () => {
+  it('excludes untracked browser-like files in a Git checkout', () => {
+    const root = temporaryRoot('authz-browser-tracked-');
+    writeRepoFile(root, 'tools/tests/tracked.spec.ts', "test('tracked', async () => {});\n");
+    writePlaywrightFixtureConfig(root);
+    writeRepoFile(root, 'package.json', JSON.stringify({ scripts: {} }));
+    writeRepoFile(root, 'pnpm-lock.yaml', 'lockfileVersion: 9\n');
+    writeRepoFile(root, '.github/workflows/ci.yml', 'playwright: frozen\n');
+    writeRepoFile(root, '.agent-loop/GATE_CONFIG.md', 'playwright frozen\n');
+    execFileSync('git', ['init'], { cwd: root, stdio: 'ignore' });
+    execFileSync('git', ['add', '.'], { cwd: root, stdio: 'ignore' });
+
+    writeRepoFile(root, 'docs/untracked-playwright.md', '# Untracked Playwright notes\n');
+    writeRepoFile(root, 'tools/tests/untracked.spec.ts', "test('untracked', async () => {});\n");
+
+    expect(discoverBrowserAssets(root).map((entry) => entry.path)).not.toContain(
+      'docs/untracked-playwright.md',
+    );
+    expect(discoverBrowserScenarios(root)).toEqual([
+      { path: 'tools/tests/tracked.spec.ts', suite: '', title: 'tracked', modifier: 'run' },
+    ]);
+  });
+
   it('recognizes Playwright subpaths and statically resolvable loader aliases', () => {
     expect(
       sourceReferencesPlaywrightPackage(
