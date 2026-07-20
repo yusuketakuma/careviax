@@ -903,7 +903,7 @@
       },
       {
         "path": "ops/refactor/STATE.md",
-        "sha256": "2017e2791019201f5abf9e8afd6830c9e02f5fc77fcceb8e7adc77666e22cac7"
+        "sha256": "ec700920367a966c3a73f26aa1c6b15f0c58799894919058f85e8da251f29cdf"
       },
       {
         "path": "ops/refactor/archive/PERF_FINDINGS.md",
@@ -935,7 +935,7 @@
       },
       {
         "path": "pnpm-lock.yaml",
-        "sha256": "b583d5bc3978cf929b558227558da9debea1abae5268aed373d91921e9c17bf0"
+        "sha256": "b1b8a4a7a90342b921800778c0b5451fd50d6acb221d477cdc1f06e4138cfc4b"
       },
       {
         "path": "projects/careviax/blocked/2026-06-22/prescription-intake-transaction-timeout.md",
