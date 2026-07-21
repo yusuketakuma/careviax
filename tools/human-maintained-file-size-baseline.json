@@ -608,11 +608,6 @@
       "task_id": "MAINT-FILE-SIZE-1000-001"
     },
     {
-      "path": "src/components/ui/data-table.tsx",
-      "max_lines": 1005,
-      "task_id": "MAINT-FILE-SIZE-1000-001"
-    },
-    {
       "path": "src/lib/api/rate-limit.test.ts",
       "max_lines": 1438,
       "task_id": "MAINT-FILE-SIZE-1000-001"

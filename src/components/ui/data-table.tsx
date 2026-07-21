@@ -58,6 +58,11 @@ import {
   getApprovedServerExportDescriptorProblem,
   type ApprovedServerExportDescriptor,
 } from '@/lib/audit/server-export-registry';
+import {
+  normalizeDataTableServerExportEndpoint,
+  normalizeNonPhiDataTableExportFileName,
+  stringifyDataTableExportValue,
+} from './data-table-export';
 
 const DATA_TABLE_FILTER_DEBOUNCE_MS = 150;
 const DATA_TABLE_RENDER_WARNING_THRESHOLD = 100;
@@ -141,31 +146,6 @@ function getColumnLabel<TData>(column: ColumnDef<TData>, fallbackId: string) {
   }
 
   return fallbackId;
-}
-
-function stringifyExportValue(value: unknown) {
-  if (value == null) return '';
-  if (typeof value === 'string') return value;
-  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
-  if (value instanceof Date) return value.toISOString();
-  return JSON.stringify(value);
-}
-
-function normalizeServerExportEndpoint(endpoint: string | undefined) {
-  const trimmed = endpoint?.trim();
-  if (!trimmed) return null;
-  if (!trimmed.startsWith('/') || trimmed.startsWith('//')) return null;
-  if (!trimmed.startsWith('/api/')) return null;
-  if (/[\r\n\t]/.test(trimmed)) return null;
-  return trimmed;
-}
-
-function normalizeNonPhiClientExportFileName(fileName: string | undefined) {
-  const fallback = 'table-export.csv';
-  const trimmed = fileName?.trim();
-  if (!trimmed) return fallback;
-  if (!/^[a-z0-9][a-z0-9._-]{0,78}\.csv$/i.test(trimmed)) return fallback;
-  return trimmed;
 }
 
 const TOOLBAR_ACTION_BUTTON_CLASSNAME = 'min-h-[44px] !min-h-[44px]';
@@ -450,7 +430,7 @@ export function DataTable<TData>({
   );
   const serverExportEndpoint =
     serverExportDescriptorProblem === undefined
-      ? normalizeServerExportEndpoint(toolbar?.serverExport?.endpoint)
+      ? normalizeDataTableServerExportEndpoint(toolbar?.serverExport?.endpoint)
       : null;
   const hasServerExport = Boolean(toolbar?.serverExport);
   const serverExportBlockReason = toolbar?.serverExport?.disabledReason
@@ -512,7 +492,7 @@ export function DataTable<TData>({
       visibleLeafColumns.map((column) => {
         const meta = getColumnMeta(column.columnDef);
         const value = meta?.exportValue ? meta.exportValue(row.original) : row.getValue(column.id);
-        return stringifyExportValue(value);
+        return stringifyDataTableExportValue(value);
       }),
     );
 
@@ -521,7 +501,7 @@ export function DataTable<TData>({
     const objectUrl = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = objectUrl;
-    link.download = normalizeNonPhiClientExportFileName(toolbar?.clientExport?.fileName);
+    link.download = normalizeNonPhiDataTableExportFileName(toolbar?.clientExport?.fileName);
     document.body.appendChild(link);
     link.click();
     link.remove();
