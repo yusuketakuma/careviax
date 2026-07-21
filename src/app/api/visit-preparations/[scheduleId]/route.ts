@@ -1,9 +1,8 @@
 import { NextRequest } from 'next/server';
-import { unstable_rethrow } from 'next/navigation';
 import { deriveFacilityLabel, deriveVisitPlaceGroup } from '@/lib/utils/facility';
 import { facilityPacketMemoToDisplayText } from '@/lib/visits/facility-packet';
 import { Prisma } from '@prisma/client';
-import { requireAuthContext, type AuthContext } from '@/lib/auth/context';
+import { withAuthContext, type AuthContext } from '@/lib/auth/context';
 import {
   canAccessVisitScheduleAssignment,
   canManageVisitScheduleLifecycle,
@@ -20,9 +19,7 @@ import {
   notFound,
   forbiddenResponse,
   conflict,
-  internalError,
 } from '@/lib/api/response';
-import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { hasPermission } from '@/lib/auth/permissions';
 import { upsertVisitPreparationSchema } from '@/lib/validations/visit-preparation';
@@ -791,15 +788,9 @@ function buildConferenceHighlights(
 
 async function authenticatedGET(
   req: NextRequest,
+  ctx: AuthContext,
   { params }: { params: Promise<{ scheduleId: string }> },
 ) {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canVisit',
-    message: '訪問準備情報の閲覧権限がありません',
-  });
-  if ('response' in authResult) return authResult.response;
-  const { ctx } = authResult;
-
   const { scheduleId } = await params;
   const normalizedScheduleId = normalizeRequiredRouteParam(scheduleId);
   if (!normalizedScheduleId) return validationError('訪問予定IDが不正です');
@@ -1687,29 +1678,16 @@ async function authenticatedGET(
   });
 }
 
-export async function GET(
-  req: NextRequest,
-  routeContext: { params: Promise<{ scheduleId: string }> },
-) {
-  try {
-    return withSensitiveNoStore(await authenticatedGET(req, routeContext));
-  } catch (err) {
-    unstable_rethrow(err);
-    return withSensitiveNoStore(internalError());
-  }
-}
+export const GET = withAuthContext(authenticatedGET, {
+  permission: 'canVisit',
+  message: '訪問準備情報の閲覧権限がありません',
+});
 
 async function authenticatedPUT(
   req: NextRequest,
+  ctx: AuthContext,
   { params }: { params: Promise<{ scheduleId: string }> },
 ) {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canVisit',
-    message: '訪問準備情報の更新権限がありません',
-  });
-  if ('response' in authResult) return authResult.response;
-  const { ctx } = authResult;
-
   const { scheduleId } = await params;
   const normalizedScheduleId = normalizeRequiredRouteParam(scheduleId);
   if (!normalizedScheduleId) return validationError('訪問予定IDが不正です');
@@ -2261,14 +2239,7 @@ async function authenticatedPUT(
   return success({ data: result });
 }
 
-export async function PUT(
-  req: NextRequest,
-  routeContext: { params: Promise<{ scheduleId: string }> },
-) {
-  try {
-    return withSensitiveNoStore(await authenticatedPUT(req, routeContext));
-  } catch (err) {
-    unstable_rethrow(err);
-    return withSensitiveNoStore(internalError());
-  }
-}
+export const PUT = withAuthContext(authenticatedPUT, {
+  permission: 'canVisit',
+  message: '訪問準備情報の更新権限がありません',
+});
