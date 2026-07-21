@@ -735,7 +735,7 @@
       },
       {
         "path": "Plans.md",
-        "sha256": "6574fefd6637f27a96b4e4fa7d9aa567f2717883d287ba8247f0d890ce03c815"
+        "sha256": "2b3f969f6530fa0619f5c6bb0786b8c5d22bb7dbca4ed1d6728f768de03132ed"
       },
       {
         "path": "README.md",
@@ -903,7 +903,7 @@
       },
       {
         "path": "ops/refactor/STATE.md",
-        "sha256": "06e191015a5b2352a4ccec96cbde1db6d315ee1c8ec773db5ac79783bdefe074"
+        "sha256": "55161f3baa4e26b7259e0b45085e13f0b04aee1a91641ecf4e3ab051d94339fc"
       },
       {
         "path": "ops/refactor/archive/PERF_FINDINGS.md",
@@ -16391,6 +16391,32 @@
       "capability_profile": "p_d89f555cccec"
     },
     {
+      "id": "permission_capability:src/lib/api/route-catalog.patient-schedule.ts",
+      "detector": "permission_capability",
+      "path": "src/lib/api/route-catalog.patient-schedule.ts",
+      "evidence_sha256": "f6c0eaea17858296931fcaee954db57cb1723988cdc98fa1df6e43b5cc3a9839",
+      "principal": "human",
+      "lifecycles": ["request"],
+      "surfaces": ["reader_evaluator"],
+      "exact_values_or_scopes": [
+        "supporting_literal:canManagePatientSharing",
+        "supporting_literal:canViewDashboard",
+        "supporting_literal:canVisit"
+      ],
+      "route_method_purpose": "not_applicable:non-route-source:src/lib/api/route-catalog.patient-schedule.ts",
+      "precedence_selection": "not_applicable:no-selection-observed:src/lib/api/route-catalog.patient-schedule.ts",
+      "synthetic_derived_mapping": "not_applicable:no-synthetic-mapping-observed:src/lib/api/route-catalog.patient-schedule.ts",
+      "persistence_contract": "not_applicable:no-persistence-observed:src/lib/api/route-catalog.patient-schedule.ts",
+      "ttl_contract": "not_applicable:no-ttl-observed:src/lib/api/route-catalog.patient-schedule.ts",
+      "mapping_disposition": "inventory_only",
+      "owner": "Permission matrix",
+      "approval_status": "pending_owner_review",
+      "test_refs": ["uncovered:no-focused-test:src/lib/api/route-catalog.patient-schedule.ts"],
+      "reprojection_or_removal": "owner_review_required_before_cutover:src/lib/api/route-catalog.patient-schedule.ts",
+      "binding_profile": "p_c677e401782f",
+      "capability_profile": "p_9bfae92801f8"
+    },
+    {
       "id": "permission_capability:src/lib/api/route-catalog.ts",
       "detector": "permission_capability",
       "path": "src/lib/api/route-catalog.ts",
@@ -16423,6 +16449,28 @@
       "approval_status": "pending_owner_review",
       "test_refs": ["src/lib/api/route-catalog.test.ts"],
       "reprojection_or_removal": "owner_review_required_before_cutover:src/lib/api/route-catalog.ts",
+      "binding_profile": "p_c677e401782f",
+      "capability_profile": "p_9bfae92801f8"
+    },
+    {
+      "id": "permission_capability:src/lib/api/route-catalog.types.ts",
+      "detector": "permission_capability",
+      "path": "src/lib/api/route-catalog.types.ts",
+      "evidence_sha256": "beab30972490fa38e1b52fe4c3da955a8b1e55a220c9348dda8fa7eb08c56375",
+      "principal": "human",
+      "lifecycles": ["request"],
+      "surfaces": ["reader_evaluator"],
+      "exact_values_or_scopes": ["supporting_literal:canAdmin"],
+      "route_method_purpose": "not_applicable:non-route-source:src/lib/api/route-catalog.types.ts",
+      "precedence_selection": "not_applicable:no-selection-observed:src/lib/api/route-catalog.types.ts",
+      "synthetic_derived_mapping": "not_applicable:no-synthetic-mapping-observed:src/lib/api/route-catalog.types.ts",
+      "persistence_contract": "not_applicable:no-persistence-observed:src/lib/api/route-catalog.types.ts",
+      "ttl_contract": "not_applicable:no-ttl-observed:src/lib/api/route-catalog.types.ts",
+      "mapping_disposition": "inventory_only",
+      "owner": "Permission matrix",
+      "approval_status": "pending_owner_review",
+      "test_refs": ["uncovered:no-focused-test:src/lib/api/route-catalog.types.ts"],
+      "reprojection_or_removal": "owner_review_required_before_cutover:src/lib/api/route-catalog.types.ts",
       "binding_profile": "p_c677e401782f",
       "capability_profile": "p_9bfae92801f8"
     },
@@ -26836,7 +26884,7 @@
       "id": "ui_role_affordance:src/lib/api/route-catalog.ts",
       "detector": "ui_role_affordance",
       "path": "src/lib/api/route-catalog.ts",
-      "evidence_sha256": "2119d089d54f625d85dbfb993a41b72342091ed03b1a41c331b20f4ae7a42910",
+      "evidence_sha256": "8e492453bf913456de7e374e68a92405dff9c0650d917b64b41248438462e207",
       "principal": "human",
       "lifecycles": ["request"],
       "surfaces": ["writer"],
@@ -26853,6 +26901,30 @@
       "approval_status": "pending_owner_review",
       "test_refs": ["src/lib/api/route-catalog.test.ts"],
       "reprojection_or_removal": "owner_review_required_before_cutover:src/lib/api/route-catalog.ts",
+      "binding_profile": "p_c677e401782f",
+      "capability_profile": "p_9bfae92801f8"
+    },
+    {
+      "id": "ui_role_affordance:src/lib/api/route-catalog.types.ts",
+      "detector": "ui_role_affordance",
+      "path": "src/lib/api/route-catalog.types.ts",
+      "evidence_sha256": "341cdcb1fe87da35bce44e5e63b795d77e6639906d7a48c891caa9ee46bb9dc0",
+      "principal": "human",
+      "lifecycles": ["request"],
+      "surfaces": ["writer"],
+      "exact_values_or_scopes": [
+        "not_applicable:ui_role_affordance:no-enumerated-value:src/lib/api/route-catalog.types.ts"
+      ],
+      "route_method_purpose": "not_applicable:non-route-source:src/lib/api/route-catalog.types.ts",
+      "precedence_selection": "not_applicable:no-selection-observed:src/lib/api/route-catalog.types.ts",
+      "synthetic_derived_mapping": "not_applicable:no-synthetic-mapping-observed:src/lib/api/route-catalog.types.ts",
+      "persistence_contract": "not_applicable:no-persistence-observed:src/lib/api/route-catalog.types.ts",
+      "ttl_contract": "not_applicable:no-ttl-observed:src/lib/api/route-catalog.types.ts",
+      "mapping_disposition": "inventory_only",
+      "owner": "Frontend / Authz",
+      "approval_status": "pending_owner_review",
+      "test_refs": ["uncovered:no-focused-test:src/lib/api/route-catalog.types.ts"],
+      "reprojection_or_removal": "owner_review_required_before_cutover:src/lib/api/route-catalog.types.ts",
       "binding_profile": "p_c677e401782f",
       "capability_profile": "p_9bfae92801f8"
     },
