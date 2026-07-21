@@ -9,53 +9,27 @@ import { logger } from '@/lib/utils/logger';
 import { addUtcDays, japanDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 import { resolveBillingAmountByKey } from './billing-evidence/billing-amount-resolver';
 import { billingMonthForJapanTimestamp } from './billing-evidence/core';
+import {
+  CONFERENCE_BILLING_CONFIG,
+  CONFERENCE_OPERATION_REPORT_TYPES,
+  NOTE_TYPE_LABEL,
+  REPORT_TYPE_MAP,
+  type SupportedBillingNoteType,
+} from './conference-sync.config';
+import type {
+  ActionItem,
+  ConferenceSyncResult,
+  NoteInput,
+  Participant,
+  ReportType,
+  StructuredSection,
+  TransactionClient,
+} from './conference-sync.types';
 
-type ReportType =
-  | 'physician_report'
-  | 'care_manager_report'
-  | 'facility_handoff'
-  | 'nurse_share'
-  | 'family_share'
-  | 'internal_record';
-
-export type ConferenceSyncTransactionClient = {
-  billingCandidate: {
-    upsert(args: unknown): Promise<{ id: string }>;
-  };
-  careCase: {
-    findFirst(
-      args: unknown,
-    ): Promise<{ patient_id: string | null; primary_pharmacist_id: string | null } | null>;
-  };
-  careReport: {
-    findMany?(args: unknown): Promise<Array<{ id: string; report_type: ReportType }>>;
-    createMany?(args: unknown): Promise<unknown>;
-    findFirst?(args: unknown): Promise<{ id: string } | null>;
-    create?(args: unknown): Promise<{ id: string }>;
-  };
-  consentRecord: {
-    findFirst(args: unknown): Promise<{ id: string } | null>;
-  };
-  managementPlan: {
-    findFirst(args: unknown): Promise<{ id: string } | null>;
-  };
-  medicationIssue: {
-    findMany?(args: unknown): Promise<Array<{ title: string }>>;
-    createMany?(args: unknown): Promise<unknown>;
-    create?(args: unknown): Promise<unknown>;
-  };
-  task: {
-    findMany?(args: unknown): Promise<Array<{ dedupe_key: string | null }>>;
-    createMany?(args: unknown): Promise<unknown>;
-    upsert?(args: unknown): Promise<unknown>;
-  };
-  visitScheduleProposal: {
-    findFirst(args: unknown): Promise<{ id: string } | null>;
-    create(args: unknown): Promise<{ id: string }>;
-  };
-};
-
-type TransactionClient = ConferenceSyncTransactionClient;
+export type {
+  ConferenceSyncResult,
+  ConferenceSyncTransactionClient,
+} from './conference-sync.types';
 
 function stableHashId(prefix: string, parts: Array<string | null | undefined>) {
   const hash = createHash('sha256')
@@ -68,98 +42,6 @@ function stableHashId(prefix: string, parts: Array<string | null | undefined>) {
 function conferenceReportDraftId(orgId: string, noteId: string, reportType: string) {
   return stableHashId('crpt', [orgId, noteId, reportType]);
 }
-
-type ActionItem = {
-  title?: string;
-  assignee?: string;
-  converted_task_id?: string;
-  converted_at?: string;
-};
-
-type StructuredSection = {
-  key: string;
-  label: string;
-  body?: string;
-};
-
-type Participant = {
-  name?: string;
-  role?: string;
-  attended?: boolean;
-  is_report_recipient?: boolean;
-  organization_name?: string;
-  email?: string;
-  fax?: string;
-};
-
-type NoteInput = {
-  id: string;
-  case_id: string | null;
-  patient_id?: string | null;
-  note_type: string;
-  title: string;
-  content?: string;
-  /** ISO 8601 string or Date — when the conference was held */
-  conference_date?: Date | string;
-  /** [{name, role}] participant list */
-  participants?: unknown;
-  structured_content: unknown;
-  metadata: unknown;
-  action_items: unknown;
-};
-
-const CONFERENCE_OPERATION_REPORT_TYPES = new Set<ReportType>([
-  'physician_report',
-  'care_manager_report',
-  'facility_handoff',
-  'nurse_share',
-  'family_share',
-  'internal_record',
-]);
-
-/**
- * Billing configuration per conference note_type.
- * billing_code follows the レセ電コード standard:
- *   B011-6: 退院時共同指導料（薬局）
- *   C013:   在宅患者訪問薬剤管理指導料 ターミナルケア加算
- */
-const CONFERENCE_BILLING_CONFIG = {
-  pre_discharge: {
-    billing_code: 'B011-6',
-    billing_name: '退院時共同指導料（薬局）',
-    // points は billing-rules/revisions(ssot_key)の amount を SSOT として解決する。
-    // ここの値はレジストリ未収載時のフォールバックのみ。
-    ssot_key: 'medical.discharge_joint_guidance',
-    points: 600,
-    ssot_ref: '調剤報酬点数表 B011-6 退院時共同指導料',
-  },
-  service_manager: {
-    billing_code: 'MED_INFO_PROVISION_2_HA',
-    billing_name: '服薬情報等提供料2 ハ',
-    ssot_key: 'medical.information_provision.2_care_manager',
-    points: 20,
-    ssot_ref: '調剤報酬点数表 区分15の5 服薬情報等提供料2 ハ',
-  },
-  death_conference: {
-    billing_code: 'C013',
-    billing_name: 'ターミナルケア管理料（在宅ターミナルケア加算）',
-    ssot_key: 'medical.addition.terminal_care',
-    points: 2500,
-    ssot_ref: '調剤報酬点数表 C013 在宅患者訪問薬剤管理指導料 ターミナルケア加算',
-  },
-} as const;
-
-type SupportedBillingNoteType = keyof typeof CONFERENCE_BILLING_CONFIG;
-
-/** Maps note_type → CareReport report_type(s) per SSOT section 7-1 */
-const REPORT_TYPE_MAP: Record<string, string[]> = {
-  pre_discharge: ['physician_report'],
-  service_manager: ['care_manager_report'],
-  death_conference: ['internal_record'],
-  care_team: ['internal_record'],
-  emergency: ['physician_report', 'internal_record'],
-  regular: ['internal_record'],
-};
 
 function resolveOperationReportTypes(metadata: unknown): ReportType[] | undefined {
   const value = readJsonObject(metadata);
@@ -176,28 +58,10 @@ function resolveOperationReportTypes(metadata: unknown): ReportType[] | undefine
   return [reportType as ReportType];
 }
 
-/** Human-readable Japanese label per note_type */
-const NOTE_TYPE_LABEL: Record<string, string> = {
-  pre_discharge: '退院前カンファレンス',
-  service_manager: 'サービス担当者会議',
-  death_conference: 'デスカンファレンス',
-  care_team: '薬剤師間カンファレンス',
-  emergency: '緊急カンファレンス',
-  regular: '定例会議',
-};
-
 /** Parse participants from note.participants field (JSON array [{name, role}]). */
 function parseParticipants(raw: unknown): Participant[] {
   if (!Array.isArray(raw)) return [];
   return raw.filter((item): item is Participant => typeof item === 'object' && item !== null);
-}
-
-export interface ConferenceSyncResult {
-  tasks_created: number;
-  billing_candidate_id?: string;
-  visit_proposal_id?: string;
-  medication_issues_created: number;
-  report_draft_ids?: string[];
 }
 
 function parseStructuredSections(structuredContent: unknown): StructuredSection[] {
