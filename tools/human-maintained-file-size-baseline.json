@@ -673,11 +673,6 @@
       "task_id": "MAINT-FILE-SIZE-1000-001"
     },
     {
-      "path": "src/proxy.test.ts",
-      "max_lines": 1097,
-      "task_id": "MAINT-FILE-SIZE-1000-001"
-    },
-    {
       "path": "src/server/cds/checker.test.ts",
       "max_lines": 2512,
       "task_id": "MAINT-FILE-SIZE-1000-001"
