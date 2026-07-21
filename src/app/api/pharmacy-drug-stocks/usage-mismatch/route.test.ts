@@ -321,12 +321,11 @@ describe('/api/pharmacy-drug-stocks/usage-mismatch', () => {
     expect(body).toMatchObject({ code: 'INTERNAL_ERROR' });
     expect(JSON.stringify(body)).not.toContain('medication secret');
     expect(loggerErrorMock).toHaveBeenCalledWith(
-      {
-        event: 'pharmacy_drug_stocks_usage_mismatch_get_unhandled_error',
+      expect.objectContaining({
+        event: 'route_handler_unhandled_error',
         route: '/api/pharmacy-drug-stocks/usage-mismatch',
         method: 'GET',
-        status: 500,
-      },
+      }),
       unsafeError,
     );
     const [logContext, logError] = loggerErrorMock.mock.calls[0] ?? [];

@@ -735,7 +735,7 @@
       },
       {
         "path": "Plans.md",
-        "sha256": "fcca00129573c5b917a72e677df8e0dffc72b656064033b9af5dffa2d0b05900"
+        "sha256": "5662fc136f7acb0decddf06a1d04ad6893be38d7615b55269a562b7bdd9b826c"
       },
       {
         "path": "README.md",
@@ -903,7 +903,7 @@
       },
       {
         "path": "ops/refactor/STATE.md",
-        "sha256": "324e464e55971d8ec0b5449de5c15e82686b154e854a487f97332a6b27d14228"
+        "sha256": "5c2d7d5ab86e91a75ffb5a2a6c2f1ea2e84af5765beb73571606eaa28dd95ad8"
       },
       {
         "path": "ops/refactor/archive/PERF_FINDINGS.md",
@@ -6324,30 +6324,6 @@
       "reprojection_or_removal": "owner_review_required_before_cutover:src/app/api/pharmacists/route.ts",
       "binding_profile": "p_707b8d027643",
       "capability_profile": "p_6e2fcf09f584"
-    },
-    {
-      "id": "mapping_precedence:src/app/api/pharmacy-drug-stocks/usage-mismatch/route.ts",
-      "detector": "mapping_precedence",
-      "path": "src/app/api/pharmacy-drug-stocks/usage-mismatch/route.ts",
-      "evidence_sha256": "3354690fb47d310481304ae58ed221df383ba4e4362ec0896c6307f3dcacfc74",
-      "principal": "human",
-      "lifecycles": ["request"],
-      "surfaces": ["rls", "writer"],
-      "exact_values_or_scopes": [
-        "not_applicable:mapping_precedence:no-enumerated-value:src/app/api/pharmacy-drug-stocks/usage-mismatch/route.ts"
-      ],
-      "route_method_purpose": "GET /api/pharmacy-drug-stocks/usage-mismatch purpose=legacy_unspecified_pending_review",
-      "precedence_selection": "legacy_observed_requires_human_review",
-      "synthetic_derived_mapping": "not_applicable:no-synthetic-mapping-observed:src/app/api/pharmacy-drug-stocks/usage-mismatch/route.ts",
-      "persistence_contract": "not_applicable:no-persistence-observed:src/app/api/pharmacy-drug-stocks/usage-mismatch/route.ts",
-      "ttl_contract": "not_applicable:no-ttl-observed:src/app/api/pharmacy-drug-stocks/usage-mismatch/route.ts",
-      "mapping_disposition": "candidate_requires_human",
-      "owner": "Identity / Authz",
-      "approval_status": "pending_owner_review",
-      "test_refs": ["src/app/api/pharmacy-drug-stocks/usage-mismatch/route.test.ts"],
-      "reprojection_or_removal": "owner_review_required_before_cutover:src/app/api/pharmacy-drug-stocks/usage-mismatch/route.ts",
-      "binding_profile": "p_26b6d3d5bc5d",
-      "capability_profile": "p_7849344c32d2"
     },
     {
       "id": "mapping_precedence:src/app/api/prescription-intakes/facility-batch/route.ts",
@@ -32267,7 +32243,7 @@
       "path": "src/app/api/pharmacy-drug-stocks/usage-mismatch/route.test.ts",
       "classes": ["test"],
       "detectors": ["mapping_precedence", "raw_role_semantics"],
-      "sha256": "885d698aa61d6092127261b69879699d90e3e5d4394fda11e6dbc1e66f7dbb01"
+      "sha256": "820aa76f9e694a7bb890b64b1dc808f3f2aca8aec5f4e7ba264e4527a9f61aeb"
     },
     {
       "path": "src/app/api/pharmacy-invoices/[id]/pdf/route.test.ts",
