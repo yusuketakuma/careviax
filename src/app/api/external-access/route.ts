@@ -8,7 +8,7 @@ import { validateOrgReferences } from '@/lib/api/org-reference';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { withOrgContext } from '@/lib/db/rls';
 import { toPrismaJsonInput } from '@/lib/db/json';
-import { conflict, error, forbidden, success, validationError } from '@/lib/api/response';
+import { conflict, forbidden, registeredError, success, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { prisma } from '@/lib/db/client';
 import { SmsNotificationAdapter } from '@/server/adapters/sms';
@@ -565,10 +565,9 @@ export const POST = withAuthContext(
         if (errorValue instanceof MissingExternalAccessSecretError) {
           return {
             ok: false as const,
-            response: error(
+            response: registeredError(
               'EXTERNAL_ACCESS_SECRET_MISSING',
               '外部共有リンクの署名設定が不足しています',
-              500,
             ),
           };
         }
@@ -649,10 +648,9 @@ export const POST = withAuthContext(
           );
         }
         return withSensitiveNoStore(
-          error(
+          registeredError(
             'EXTERNAL_ACCESS_OTP_DELIVERY_AUDIT_FAILED',
             '外部共有OTPの配送結果監査を記録できませんでした',
-            500,
           ),
         );
       }

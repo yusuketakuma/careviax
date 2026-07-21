@@ -60,6 +60,20 @@ export const API_ERROR_CODE_REGISTRY = Object.freeze({
     recoveryAction: 'sign_in',
     messageLabel: 'api.error.auth.unauthenticated',
   },
+  EXTERNAL_ACCESS_OTP_DELIVERY_AUDIT_FAILED: {
+    httpStatus: 500,
+    logLevel: 'error',
+    retryable: true,
+    recoveryAction: 'retry',
+    messageLabel: 'api.error.external_access.otp_delivery_audit_failed',
+  },
+  EXTERNAL_ACCESS_SECRET_MISSING: {
+    httpStatus: 500,
+    logLevel: 'error',
+    retryable: false,
+    recoveryAction: 'return_to_previous',
+    messageLabel: 'api.error.external_access.secret_missing',
+  },
   BILLING_DOCUMENT_PDF_EXPORT_AUDIT_FAILED: {
     httpStatus: 500,
     logLevel: 'error',

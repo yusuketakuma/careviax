@@ -107,6 +107,20 @@ describe('API error code registry', () => {
           "recoveryAction": "return_to_previous",
           "retryable": false,
         },
+        "EXTERNAL_ACCESS_OTP_DELIVERY_AUDIT_FAILED": {
+          "httpStatus": 500,
+          "logLevel": "error",
+          "messageLabel": "api.error.external_access.otp_delivery_audit_failed",
+          "recoveryAction": "retry",
+          "retryable": true,
+        },
+        "EXTERNAL_ACCESS_SECRET_MISSING": {
+          "httpStatus": 500,
+          "logLevel": "error",
+          "messageLabel": "api.error.external_access.secret_missing",
+          "recoveryAction": "return_to_previous",
+          "retryable": false,
+        },
         "EXTERNAL_ACCESS_VIEW_AUDIT_FAILED": {
           "httpStatus": 500,
           "logLevel": "error",

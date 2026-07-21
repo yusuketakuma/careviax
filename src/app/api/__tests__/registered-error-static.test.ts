@@ -97,16 +97,6 @@ const allowedRawLiteralErrorUsages: RawLiteralErrorUsage[] = [
     httpStatus: 403,
   },
   {
-    filePath: 'src/app/api/external-access/route.ts',
-    code: 'EXTERNAL_ACCESS_OTP_DELIVERY_AUDIT_FAILED',
-    httpStatus: 500,
-  },
-  {
-    filePath: 'src/app/api/external-access/route.ts',
-    code: 'EXTERNAL_ACCESS_SECRET_MISSING',
-    httpStatus: 500,
-  },
-  {
     filePath: 'src/app/api/patients/[id]/prescriptions/e-prescription/route.ts',
     code: 'AMBIGUOUS_ACTIVE_CYCLE',
     httpStatus: 409,
