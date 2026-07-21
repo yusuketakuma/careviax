@@ -119,9 +119,9 @@ const authenticatedPOST = withAuthContext(
         const scheduleAssignmentWhere = buildVisitScheduleAssignmentWhere(ctx);
         const proposalAssignmentWhere = buildVisitScheduleProposalAssignmentWhere(ctx);
 
-        const [schedules, proposals, persistedVehicleResource] = await Promise.all([
+        const scheduleRows =
           parsed.data.schedule_ids.length > 0
-            ? tx.visitSchedule.findMany({
+            ? await tx.visitSchedule.findMany({
                 where: {
                   org_id: ctx.orgId,
                   id: { in: parsed.data.schedule_ids },
@@ -133,37 +133,14 @@ const authenticatedPOST = withAuthContext(
                   priority: true,
                   time_window_start: true,
                   time_window_end: true,
-                  site: {
-                    select: {
-                      id: true,
-                      name: true,
-                      lat: true,
-                      lng: true,
-                    },
-                  },
-                  case_: {
-                    select: {
-                      patient: {
-                        select: {
-                          name: true,
-                          residences: {
-                            where: { is_primary: true },
-                            select: {
-                              address: true,
-                              lat: true,
-                              lng: true,
-                            },
-                            take: 1,
-                          },
-                        },
-                      },
-                    },
-                  },
+                  site_id: true,
+                  case_id: true,
                 },
               })
-            : Promise.resolve([]),
+            : [];
+        const proposalRows =
           parsed.data.proposal_ids.length > 0
-            ? tx.visitScheduleProposal.findMany({
+            ? await tx.visitScheduleProposal.findMany({
                 where: {
                   org_id: ctx.orgId,
                   id: { in: parsed.data.proposal_ids },
@@ -176,53 +153,104 @@ const authenticatedPOST = withAuthContext(
                   priority: true,
                   time_window_start: true,
                   time_window_end: true,
-                  site: {
-                    select: {
-                      id: true,
-                      name: true,
-                      lat: true,
-                      lng: true,
-                    },
-                  },
-                  case_: {
-                    select: {
-                      patient: {
-                        select: {
-                          name: true,
-                          residences: {
-                            where: { is_primary: true },
-                            select: {
-                              address: true,
-                              lat: true,
-                              lng: true,
-                            },
-                            take: 1,
-                          },
-                        },
-                      },
-                    },
-                  },
+                  site_id: true,
+                  case_id: true,
                 },
               })
-            : Promise.resolve([]),
-          parsed.data.vehicle_resource_id
-            ? tx.visitVehicleResource.findFirst({
+            : [];
+        const siteIds = Array.from(
+          new Set(
+            [...scheduleRows, ...proposalRows]
+              .map((row) => row.site_id)
+              .filter((siteId): siteId is string => siteId !== null),
+          ),
+        );
+        const sites =
+          siteIds.length > 0
+            ? await tx.pharmacySite.findMany({
+                where: { org_id: ctx.orgId, id: { in: siteIds } },
+                select: { id: true, name: true, lat: true, lng: true },
+              })
+            : [];
+        const caseIds = Array.from(
+          new Set([...scheduleRows, ...proposalRows].map((row) => row.case_id)),
+        );
+        const cases =
+          caseIds.length > 0
+            ? await tx.careCase.findMany({
+                where: { org_id: ctx.orgId, id: { in: caseIds } },
+                select: { id: true, patient_id: true },
+              })
+            : [];
+        const patientIds = Array.from(new Set(cases.map((careCase) => careCase.patient_id)));
+        const patients =
+          patientIds.length > 0
+            ? await tx.patient.findMany({
+                where: { org_id: ctx.orgId, id: { in: patientIds } },
+                select: { id: true, name: true },
+              })
+            : [];
+        const residences =
+          patientIds.length > 0
+            ? await tx.residence.findMany({
                 where: {
                   org_id: ctx.orgId,
-                  id: parsed.data.vehicle_resource_id,
-                  available: true,
+                  patient_id: { in: patientIds },
+                  is_primary: true,
                 },
-                select: {
-                  id: true,
-                  site_id: true,
-                  label: true,
-                  travel_mode: true,
-                  max_stops: true,
-                  max_route_duration_minutes: true,
-                },
+                orderBy: [{ created_at: 'asc' }, { id: 'asc' }],
+                select: { patient_id: true, address: true, lat: true, lng: true },
               })
-            : Promise.resolve(null),
-        ]);
+            : [];
+        const siteById = new Map(sites.map((site) => [site.id, site]));
+        const caseById = new Map(cases.map((careCase) => [careCase.id, careCase]));
+        const patientById = new Map(patients.map((patient) => [patient.id, patient]));
+        const primaryResidenceByPatientId = new Map(
+          residences.map((residence) => [residence.patient_id, residence]),
+        );
+        const hydrateRouteTarget = <
+          T extends (typeof scheduleRows)[number] | (typeof proposalRows)[number],
+        >(
+          row: T,
+        ) => {
+          const careCase = caseById.get(row.case_id);
+          const patient = careCase ? patientById.get(careCase.patient_id) : undefined;
+          if (!patient) return null;
+          const residence = primaryResidenceByPatientId.get(patient.id);
+          return {
+            ...row,
+            site: row.site_id ? (siteById.get(row.site_id) ?? null) : null,
+            case_: {
+              patient: {
+                name: patient.name,
+                residences: residence ? [residence] : [],
+              },
+            },
+          };
+        };
+        const schedules = scheduleRows
+          .map(hydrateRouteTarget)
+          .filter((row): row is NonNullable<typeof row> => row !== null);
+        const proposals = proposalRows
+          .map(hydrateRouteTarget)
+          .filter((row): row is NonNullable<typeof row> => row !== null);
+        const persistedVehicleResource = parsed.data.vehicle_resource_id
+          ? await tx.visitVehicleResource.findFirst({
+              where: {
+                org_id: ctx.orgId,
+                id: parsed.data.vehicle_resource_id,
+                available: true,
+              },
+              select: {
+                id: true,
+                site_id: true,
+                label: true,
+                travel_mode: true,
+                max_stops: true,
+                max_route_duration_minutes: true,
+              },
+            })
+          : null;
 
         if (parsed.data.vehicle_resource_id && !persistedVehicleResource) {
           return { error: 'vehicle_resource_not_found' } satisfies RoutePlanLookupError;

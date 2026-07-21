@@ -73,20 +73,84 @@ function createMalformedJsonRequest() {
   });
 }
 
+function createDeferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
+}
+
+type RouteTargetFixture = {
+  id: string;
+  case_id?: string;
+  site_id?: string | null;
+  site?: { id: string; name: string; lat: number | null; lng: number | null } | null;
+  case_?: {
+    patient: {
+      name: string;
+      residences: Array<{ address: string; lat: number | null; lng: number | null }>;
+    };
+  };
+};
+
 function mockRouteContext() {
-  withOrgContextMock.mockImplementation(async (_orgId, callback) =>
-    callback({
+  withOrgContextMock.mockImplementation(async (_orgId, callback) => {
+    const fixtures: RouteTargetFixture[] = [];
+    const registerFixtures = (rows: RouteTargetFixture[]) => {
+      fixtures.push(...rows);
+      return rows.map((row) => ({
+        ...row,
+        case_id: row.case_id ?? `case:${row.id}`,
+        site_id: row.site_id ?? row.site?.id ?? null,
+      }));
+    };
+
+    return callback({
       visitSchedule: {
-        findMany: scheduleFindManyMock,
+        findMany: async (args: unknown) =>
+          registerFixtures((await scheduleFindManyMock(args)) as RouteTargetFixture[]),
       },
       visitScheduleProposal: {
-        findMany: proposalFindManyMock,
+        findMany: async (args: unknown) =>
+          registerFixtures((await proposalFindManyMock(args)) as RouteTargetFixture[]),
       },
       visitVehicleResource: {
         findFirst: vehicleResourceFindFirstMock,
       },
-    }),
-  );
+      pharmacySite: {
+        findMany: async () =>
+          Array.from(
+            new Map(
+              fixtures.flatMap((row) => (row.site ? [[row.site.id, row.site]] : [])),
+            ).values(),
+          ),
+      },
+      careCase: {
+        findMany: async () =>
+          fixtures.map((row) => ({
+            id: row.case_id ?? `case:${row.id}`,
+            patient_id: `patient:${row.case_id ?? row.id}`,
+          })),
+      },
+      patient: {
+        findMany: async () =>
+          fixtures.map((row) => ({
+            id: `patient:${row.case_id ?? row.id}`,
+            name: row.case_?.patient.name ?? '',
+          })),
+      },
+      residence: {
+        findMany: async () =>
+          fixtures.flatMap((row) =>
+            (row.case_?.patient.residences ?? []).map((residence) => ({
+              patient_id: `patient:${row.case_id ?? row.id}`,
+              ...residence,
+            })),
+          ),
+      },
+    });
+  });
 }
 
 describe('/api/visit-routes POST', () => {
@@ -97,6 +161,38 @@ describe('/api/visit-routes POST', () => {
     scheduleFindManyMock.mockResolvedValue([]);
     proposalFindManyMock.mockResolvedValue([]);
     vehicleResourceFindFirstMock.mockResolvedValue(null);
+  });
+
+  it('serializes transaction-client lookups on the shared database connection', async () => {
+    const schedules = createDeferred<unknown[]>();
+    const proposals = createDeferred<unknown[]>();
+    scheduleFindManyMock.mockReturnValue(schedules.promise);
+    proposalFindManyMock.mockReturnValue(proposals.promise);
+    vehicleResourceFindFirstMock.mockResolvedValue(null);
+    mockRouteContext();
+
+    const responsePromise = POST(
+      createRequest({
+        schedule_ids: ['schedule_missing'],
+        proposal_ids: ['proposal_missing'],
+        vehicle_resource_id: 'vehicle_missing',
+      }),
+    );
+
+    await vi.waitFor(() => expect(scheduleFindManyMock).toHaveBeenCalledTimes(1));
+    expect(proposalFindManyMock).not.toHaveBeenCalled();
+    expect(vehicleResourceFindFirstMock).not.toHaveBeenCalled();
+
+    schedules.resolve([]);
+    await vi.waitFor(() => expect(proposalFindManyMock).toHaveBeenCalledTimes(1));
+    expect(vehicleResourceFindFirstMock).not.toHaveBeenCalled();
+
+    proposals.resolve([]);
+    await vi.waitFor(() => expect(vehicleResourceFindFirstMock).toHaveBeenCalledTimes(1));
+
+    const response = await responsePromise;
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(404);
   });
 
   it('computes an optimized route from selected schedules', async () => {

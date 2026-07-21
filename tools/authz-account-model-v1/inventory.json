@@ -903,7 +903,7 @@
       },
       {
         "path": "ops/refactor/STATE.md",
-        "sha256": "ddb10a2d24d28ec70acad977a5150b9f4c52115c2515db4d6ab4c0c62a27224d"
+        "sha256": "54994fe96ff7e38346974d11ee331b4387f4ed13a99602f486536472851b8e33"
       },
       {
         "path": "ops/refactor/archive/PERF_FINDINGS.md",
@@ -33022,19 +33022,19 @@
       "path": "src/app/api/visit-routes/reorder/route.test.ts",
       "classes": ["test"],
       "detectors": ["mapping_precedence", "tenant_role"],
-      "sha256": "08ad69373e980415e269fab632555c2d21c3541c847fd4d8e78cbd944555b165"
+      "sha256": "874cfb1152d4c8061afde4c1e9493e775700cfa443d605efaaf2668a6587141d"
     },
     {
       "path": "src/app/api/visit-routes/route.locked.test.ts",
       "classes": ["test"],
       "detectors": ["mapping_precedence", "raw_role_semantics"],
-      "sha256": "e7c33079906a7ec49e8d94f5f1b3ddef4bbec0d4e90e1802f31c5b5ee6d3c9d4"
+      "sha256": "406cb07f13307d5b11c5fcad64e7a3f139f92fb68ccfe6b5caf59ab953677033"
     },
     {
       "path": "src/app/api/visit-routes/route.test.ts",
       "classes": ["test"],
       "detectors": ["mapping_precedence", "raw_role_semantics"],
-      "sha256": "ce0a01c731e361c5641e91c6e3c6c82d0dfbd52d2bb72576e8fcb42e49e59476"
+      "sha256": "c5ed5e181e5dac40234083e24b723251d3a3a6d392a97f973c90f9ac5fcd9bd6"
     },
     {
       "path": "src/app/api/visit-schedule-proposals/[id]/route.test.ts",

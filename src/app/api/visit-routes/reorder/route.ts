@@ -169,9 +169,9 @@ const authenticatedPATCH = withAuthContext(
         async (tx) => {
           const scheduleAssignmentWhere = buildVisitScheduleAssignmentWhere(ctx);
           const proposalAssignmentWhere = buildVisitScheduleProposalAssignmentWhere(ctx);
-          const [schedules, proposals] = await Promise.all([
+          const schedules =
             scheduleIds.length > 0
-              ? tx.visitSchedule.findMany({
+              ? await tx.visitSchedule.findMany({
                   where: {
                     org_id: ctx.orgId,
                     id: { in: scheduleIds },
@@ -222,9 +222,10 @@ const authenticatedPATCH = withAuthContext(
                     },
                   },
                 })
-              : Promise.resolve([]),
+              : [];
+          const proposals =
             proposalIds.length > 0
-              ? tx.visitScheduleProposal.findMany({
+              ? await tx.visitScheduleProposal.findMany({
                   where: {
                     org_id: ctx.orgId,
                     id: { in: proposalIds },
@@ -240,8 +241,7 @@ const authenticatedPATCH = withAuthContext(
                     route_order: true,
                   },
                 })
-              : Promise.resolve([]),
-          ]);
+              : [];
 
           if (schedules.length !== scheduleIds.length || proposals.length !== proposalIds.length) {
             return { error: 'not_found' as const };
@@ -496,56 +496,52 @@ const authenticatedPATCH = withAuthContext(
             }
           }
 
-          await Promise.all(
-            scheduleUpdates.map(async (item) => {
-              const schedule = scheduleById.get(item.id);
-              if (!schedule) throw new MixedRouteReorderConflictError();
-              const updateResult = await tx.visitSchedule.updateMany({
-                where: {
-                  org_id: ctx.orgId,
-                  id: item.id,
-                  pharmacist_id: firstCell.pharmacistId,
-                  scheduled_date: new Date(firstCell.dateKey),
-                  schedule_status: schedule.schedule_status,
-                  confirmed_at: schedule.confirmed_at,
-                  version: schedule.version,
-                  ...(item.expected_route_order !== undefined
-                    ? { route_order: item.expected_route_order }
-                    : {}),
-                  ...(schedule.vehicle_resource_id
-                    ? { vehicle_resource_id: schedule.vehicle_resource_id }
-                    : {}),
-                  ...(scheduleAssignmentWhere ? { AND: [scheduleAssignmentWhere] } : {}),
-                },
-                data: {
-                  route_order: item.route_order,
-                  version: { increment: 1 },
-                },
-              });
-              if (updateResult.count !== 1) throw new MixedRouteReorderConflictError();
-            }),
-          );
+          for (const item of scheduleUpdates) {
+            const schedule = scheduleById.get(item.id);
+            if (!schedule) throw new MixedRouteReorderConflictError();
+            const updateResult = await tx.visitSchedule.updateMany({
+              where: {
+                org_id: ctx.orgId,
+                id: item.id,
+                pharmacist_id: firstCell.pharmacistId,
+                scheduled_date: new Date(firstCell.dateKey),
+                schedule_status: schedule.schedule_status,
+                confirmed_at: schedule.confirmed_at,
+                version: schedule.version,
+                ...(item.expected_route_order !== undefined
+                  ? { route_order: item.expected_route_order }
+                  : {}),
+                ...(schedule.vehicle_resource_id
+                  ? { vehicle_resource_id: schedule.vehicle_resource_id }
+                  : {}),
+                ...(scheduleAssignmentWhere ? { AND: [scheduleAssignmentWhere] } : {}),
+              },
+              data: {
+                route_order: item.route_order,
+                version: { increment: 1 },
+              },
+            });
+            if (updateResult.count !== 1) throw new MixedRouteReorderConflictError();
+          }
 
-          await Promise.all(
-            proposalUpdates.map(async (item) => {
-              const updateResult = await tx.visitScheduleProposal.updateMany({
-                where: {
-                  org_id: ctx.orgId,
-                  id: item.id,
-                  proposed_pharmacist_id: firstCell.pharmacistId,
-                  proposed_date: new Date(firstCell.dateKey),
-                  ...(item.expected_route_order !== undefined
-                    ? { route_order: item.expected_route_order }
-                    : {}),
-                  finalized_schedule_id: null,
-                  proposal_status: { in: OPEN_PROPOSAL_STATUSES },
-                  ...(proposalAssignmentWhere ? { AND: [proposalAssignmentWhere] } : {}),
-                },
-                data: { route_order: item.route_order },
-              });
-              if (updateResult.count !== 1) throw new MixedRouteReorderConflictError();
-            }),
-          );
+          for (const item of proposalUpdates) {
+            const updateResult = await tx.visitScheduleProposal.updateMany({
+              where: {
+                org_id: ctx.orgId,
+                id: item.id,
+                proposed_pharmacist_id: firstCell.pharmacistId,
+                proposed_date: new Date(firstCell.dateKey),
+                ...(item.expected_route_order !== undefined
+                  ? { route_order: item.expected_route_order }
+                  : {}),
+                finalized_schedule_id: null,
+                proposal_status: { in: OPEN_PROPOSAL_STATUSES },
+                ...(proposalAssignmentWhere ? { AND: [proposalAssignmentWhere] } : {}),
+              },
+              data: { route_order: item.route_order },
+            });
+            if (updateResult.count !== 1) throw new MixedRouteReorderConflictError();
+          }
 
           await createAuditLogEntry(tx, ctx, {
             action: 'visit_routes_mixed_reordered',

@@ -59,14 +59,74 @@ function createRequest(body: unknown) {
   });
 }
 
+type RouteTargetFixture = {
+  id: string;
+  case_id?: string;
+  site_id?: string | null;
+  site?: { id: string; name: string; lat: number | null; lng: number | null } | null;
+  case_?: {
+    patient: {
+      name: string;
+      residences: Array<{ address: string; lat: number | null; lng: number | null }>;
+    };
+  };
+};
+
 function mockRouteContext() {
-  withOrgContextMock.mockImplementation(async (_orgId, callback) =>
-    callback({
-      visitSchedule: { findMany: scheduleFindManyMock },
-      visitScheduleProposal: { findMany: proposalFindManyMock },
+  withOrgContextMock.mockImplementation(async (_orgId, callback) => {
+    const fixtures: RouteTargetFixture[] = [];
+    const registerFixtures = (rows: RouteTargetFixture[]) => {
+      fixtures.push(...rows);
+      return rows.map((row) => ({
+        ...row,
+        case_id: row.case_id ?? `case:${row.id}`,
+        site_id: row.site_id ?? row.site?.id ?? null,
+      }));
+    };
+
+    return callback({
+      visitSchedule: {
+        findMany: async (args: unknown) =>
+          registerFixtures((await scheduleFindManyMock(args)) as RouteTargetFixture[]),
+      },
+      visitScheduleProposal: {
+        findMany: async (args: unknown) =>
+          registerFixtures((await proposalFindManyMock(args)) as RouteTargetFixture[]),
+      },
       visitVehicleResource: { findFirst: vehicleResourceFindFirstMock },
-    }),
-  );
+      pharmacySite: {
+        findMany: async () =>
+          Array.from(
+            new Map(
+              fixtures.flatMap((row) => (row.site ? [[row.site.id, row.site]] : [])),
+            ).values(),
+          ),
+      },
+      careCase: {
+        findMany: async () =>
+          fixtures.map((row) => ({
+            id: row.case_id ?? `case:${row.id}`,
+            patient_id: `patient:${row.case_id ?? row.id}`,
+          })),
+      },
+      patient: {
+        findMany: async () =>
+          fixtures.map((row) => ({
+            id: `patient:${row.case_id ?? row.id}`,
+            name: row.case_?.patient.name ?? '',
+          })),
+      },
+      residence: {
+        findMany: async () =>
+          fixtures.flatMap((row) =>
+            (row.case_?.patient.residences ?? []).map((residence) => ({
+              patient_id: `patient:${row.case_id ?? row.id}`,
+              ...residence,
+            })),
+          ),
+      },
+    });
+  });
 }
 
 function siteFor() {

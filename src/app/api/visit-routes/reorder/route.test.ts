@@ -84,6 +84,14 @@ function createMalformedJsonRequest() {
   });
 }
 
+function createDeferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
+}
+
 function expectNoWriteAuditOrNotify() {
   expect(scheduleUpdateManyMock).not.toHaveBeenCalled();
   expect(proposalUpdateManyMock).not.toHaveBeenCalled();
@@ -207,6 +215,61 @@ describe('/api/visit-routes/reorder PATCH', () => {
     expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
       isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
     });
+  });
+
+  it('serializes transaction-client reads and writes on the shared database connection', async () => {
+    const schedules = createDeferred<ReturnType<typeof buildRouteSchedule>[]>();
+    const proposals = createDeferred<
+      Array<{
+        id: string;
+        case_id: string;
+        proposed_date: Date;
+        proposed_pharmacist_id: string;
+        finalized_schedule_id: null;
+        proposal_status: string;
+        route_order: null;
+      }>
+    >();
+    const scheduleWrite = createDeferred<{ count: number }>();
+    scheduleFindManyMock.mockReturnValue(schedules.promise);
+    proposalFindManyMock.mockReturnValue(proposals.promise);
+    scheduleUpdateManyMock.mockReturnValue(scheduleWrite.promise);
+
+    const responsePromise = PATCH(
+      createRequest({
+        updates: [
+          { item_type: 'schedule', id: 'schedule_1', route_order: 1 },
+          { item_type: 'proposal', id: 'proposal_1', route_order: 2 },
+        ],
+      }),
+    );
+
+    await vi.waitFor(() => expect(scheduleFindManyMock).toHaveBeenCalledTimes(1));
+    expect(proposalFindManyMock).not.toHaveBeenCalled();
+
+    schedules.resolve([buildRouteSchedule()]);
+    await vi.waitFor(() => expect(proposalFindManyMock).toHaveBeenCalledTimes(1));
+    expect(scheduleUpdateManyMock).not.toHaveBeenCalled();
+
+    proposals.resolve([
+      {
+        id: 'proposal_1',
+        case_id: 'case_proposal',
+        proposed_date: new Date('2026-04-09T00:00:00.000Z'),
+        proposed_pharmacist_id: 'user_1',
+        finalized_schedule_id: null,
+        proposal_status: 'patient_contact_pending',
+        route_order: null,
+      },
+    ]);
+    await vi.waitFor(() => expect(scheduleUpdateManyMock).toHaveBeenCalledTimes(1));
+    expect(proposalUpdateManyMock).not.toHaveBeenCalled();
+
+    scheduleWrite.resolve({ count: 1 });
+    await vi.waitFor(() => expect(proposalUpdateManyMock).toHaveBeenCalledTimes(1));
+
+    const response = await responsePromise;
+    expect(response?.status).toBe(200);
   });
 
   it('retries serializable route-order conflicts and succeeds on retry', async () => {
