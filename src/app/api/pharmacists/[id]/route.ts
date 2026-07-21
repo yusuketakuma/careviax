@@ -1,19 +1,15 @@
-import { unstable_rethrow } from 'next/navigation';
 import { NextRequest } from 'next/server';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
-import { requireAuthContext } from '@/lib/auth/context';
+import { withAuthContext, type AuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { prisma } from '@/lib/db/client';
 import { toPrismaJsonInput } from '@/lib/db/json';
-import { internalError, success, validationError, notFound } from '@/lib/api/response';
-import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
+import { success, validationError, notFound } from '@/lib/api/response';
 import { validateOrgReferences } from '@/lib/api/org-reference';
 import { isOperationalMemberRole, membershipFlagsForRole } from '@/lib/auth/member-roles';
 import { phosRoleFromMemberRole } from '@/lib/auth/phos-role';
-import { logger } from '@/lib/utils/logger';
-import { withRoutePerformance } from '@/lib/utils/performance';
 import { updatePharmacistSchema } from '@/lib/validations/pharmacist';
 import {
   disableCognitoUser,
@@ -22,19 +18,11 @@ import {
   updateCognitoUserProfile,
 } from '@/server/services/cognito-admin';
 
-const ROUTE = '/api/pharmacists/[id]';
-
 async function authenticatedPATCH(
   req: NextRequest,
+  ctx: AuthContext,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canAdmin',
-    message: '薬剤師管理の権限がありません',
-  });
-  if ('response' in authResult) return authResult.response;
-  const ctx = authResult.ctx;
-
   const payload = await readJsonObjectRequestBody(req);
   if (!payload) return validationError('リクエストボディが不正です');
 
@@ -270,22 +258,7 @@ async function authenticatedPATCH(
   return success({ data: updated });
 }
 
-export async function PATCH(req: NextRequest, routeContext: { params: Promise<{ id: string }> }) {
-  return withRoutePerformance(req, async () => {
-    try {
-      return withSensitiveNoStore(await authenticatedPATCH(req, routeContext));
-    } catch (err) {
-      unstable_rethrow(err);
-      logger.error(
-        {
-          event: 'pharmacists_id_patch_unhandled_error',
-          route: ROUTE,
-          method: req.method,
-          status: 500,
-        },
-        err,
-      );
-      return withSensitiveNoStore(internalError());
-    }
-  });
-}
+export const PATCH = withAuthContext(authenticatedPATCH, {
+  permission: 'canAdmin',
+  message: '薬剤師管理の権限がありません',
+});

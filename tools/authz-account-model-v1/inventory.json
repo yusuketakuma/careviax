@@ -735,7 +735,7 @@
       },
       {
         "path": "Plans.md",
-        "sha256": "3f36f4c8881b82e5a25da6a89294093a6bf5fa025b4b451fdb3f0c8f1185ec0b"
+        "sha256": "dc25dfc4f59aab2cd8f52af57d26f683e6ca587b7028acb2d23b34eddae5c53e"
       },
       {
         "path": "README.md",
@@ -903,7 +903,7 @@
       },
       {
         "path": "ops/refactor/STATE.md",
-        "sha256": "8634316ee78a723069c4938e00c678515caa4775e5b9757f555c6847cd67f83a"
+        "sha256": "a3fbe3615ad5e5d51be55f68b2e922ac1acb5a5fa6a9aa3faf0f157a989857cf"
       },
       {
         "path": "ops/refactor/archive/PERF_FINDINGS.md",
@@ -32328,7 +32328,7 @@
       "path": "src/app/api/pharmacists/[id]/route.test.ts",
       "classes": ["test"],
       "detectors": ["override_flag", "raw_role_semantics", "tenant_role"],
-      "sha256": "8cd8f60e3fa008a624b9da817aa6c7fd0a009cd7061b83cd7e48f0424ed3e15d"
+      "sha256": "79073ddb299a49e4b517d7f87023f523f3e723f15d17ec1ef73ece257b1afeec"
     },
     {
       "path": "src/app/api/pharmacists/import/route.test.ts",
