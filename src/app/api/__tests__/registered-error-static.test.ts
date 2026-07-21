@@ -63,58 +63,13 @@ type RawRegisteredErrorUsage = RawLiteralErrorUsage & {
 const allowedRawLiteralErrorUsages: RawLiteralErrorUsage[] = [
   {
     filePath: 'src/app/api/patients/[id]/prescriptions/e-prescription/route.ts',
-    code: 'AMBIGUOUS_ACTIVE_CYCLE',
-    httpStatus: 409,
-  },
-  {
-    filePath: 'src/app/api/patients/[id]/prescriptions/e-prescription/route.ts',
-    code: 'CASE_NOT_ACCESSIBLE',
-    httpStatus: 422,
-  },
-  {
-    filePath: 'src/app/api/patients/[id]/prescriptions/e-prescription/route.ts',
     code: 'CONFLICT',
     httpStatus: 409,
   },
   {
     filePath: 'src/app/api/patients/[id]/prescriptions/e-prescription/route.ts',
-    code: 'EPRESCRIPTION_CASE_CONFLICT',
-    httpStatus: 409,
-  },
-  {
-    filePath: 'src/app/api/patients/[id]/prescriptions/e-prescription/route.ts',
-    code: 'EPRESCRIPTION_CASE_CONFLICT',
-    httpStatus: 409,
-  },
-  {
-    filePath: 'src/app/api/patients/[id]/prescriptions/e-prescription/route.ts',
-    code: 'EPRESCRIPTION_CASE_CONFLICT',
-    httpStatus: 409,
-  },
-  {
-    filePath: 'src/app/api/patients/[id]/prescriptions/e-prescription/route.ts',
-    code: 'EPRESCRIPTION_CONFIGURATION_ERROR',
-    httpStatus: 503,
-  },
-  {
-    filePath: 'src/app/api/patients/[id]/prescriptions/e-prescription/route.ts',
     code: 'EPRESCRIPTION_UPSTREAM_FAILURE',
     httpStatus: null,
-  },
-  {
-    filePath: 'src/app/api/patients/[id]/prescriptions/e-prescription/route.ts',
-    code: 'EPRESCRIPTION_UPSTREAM_UNAUTHORIZED',
-    httpStatus: 502,
-  },
-  {
-    filePath: 'src/app/api/patients/[id]/prescriptions/e-prescription/route.ts',
-    code: 'NO_ACCESSIBLE_CASE',
-    httpStatus: 422,
-  },
-  {
-    filePath: 'src/app/api/patients/[id]/prescriptions/e-prescription/route.ts',
-    code: 'NO_ACTIVE_CYCLE',
-    httpStatus: 422,
   },
   {
     filePath: 'src/app/api/platform/break-glass/route.ts',
@@ -266,14 +221,6 @@ const allowedRawNonliteralMessageUsages: RawNonliteralMessageUsage[] = [
     statusExpression: 'cause.status',
   },
   {
-    filePath: 'src/app/api/patients/[id]/prescriptions/e-prescription/route.ts',
-    helper: 'error',
-    codeExpression: "'AMBIGUOUS_ACTIVE_CYCLE'",
-    messageExpression:
-      "requestedCaseId ? '指定されたケースには受付可能な服薬サイクルが複数あります。サイクルを整理してから再実行してください。' : 'この患者には受付可能なケースが複数あります。case_id を指定してください。'",
-    statusExpression: '409',
-  },
-  {
     filePath: 'src/app/api/patients/medications/bulk-export/route.ts',
     helper: 'error',
     codeExpression: 'cause.code',
@@ -320,44 +267,8 @@ const allowedRawErrorDetailsUsages: RawErrorDetailsUsage[] = [
   {
     filePath: 'src/app/api/patients/[id]/prescriptions/e-prescription/route.ts',
     helper: 'error',
-    codeExpression: "'AMBIGUOUS_ACTIVE_CYCLE'",
-    detailsExpression: '{ case_ids: Array.from(new Set(cycles.map((cycle) => cycle.case_id))) }',
-  },
-  {
-    filePath: 'src/app/api/patients/[id]/prescriptions/e-prescription/route.ts',
-    helper: 'error',
-    codeExpression: "'EPRESCRIPTION_CASE_CONFLICT'",
-    detailsExpression: '{ existing_case_id: existing.cycle.case_id }',
-  },
-  {
-    filePath: 'src/app/api/patients/[id]/prescriptions/e-prescription/route.ts',
-    helper: 'error',
-    codeExpression: "'EPRESCRIPTION_CASE_CONFLICT'",
-    detailsExpression: '{ existing_case_id: existingByRequestId.cycle.case_id }',
-  },
-  {
-    filePath: 'src/app/api/patients/[id]/prescriptions/e-prescription/route.ts',
-    helper: 'error',
-    codeExpression: "'EPRESCRIPTION_CASE_CONFLICT'",
-    detailsExpression: '{ existing_case_id: replayed.cycle.case_id }',
-  },
-  {
-    filePath: 'src/app/api/patients/[id]/prescriptions/e-prescription/route.ts',
-    helper: 'error',
-    codeExpression: "'EPRESCRIPTION_CONFIGURATION_ERROR'",
-    detailsExpression: '{ retriable: false }',
-  },
-  {
-    filePath: 'src/app/api/patients/[id]/prescriptions/e-prescription/route.ts',
-    helper: 'error',
     codeExpression: "'EPRESCRIPTION_UPSTREAM_FAILURE'",
     detailsExpression: '{ retriable: cause.retriable, upstream_status: cause.status ?? null, }',
-  },
-  {
-    filePath: 'src/app/api/patients/[id]/prescriptions/e-prescription/route.ts',
-    helper: 'error',
-    codeExpression: "'EPRESCRIPTION_UPSTREAM_UNAUTHORIZED'",
-    detailsExpression: '{ retriable: false, upstream_status: cause.status ?? null }',
   },
 ];
 

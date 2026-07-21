@@ -85,18 +85,16 @@ function ePrescriptionAdapterErrorResponse(cause: EPrescriptionAdapterError) {
     return registeredError('EPRESCRIPTION_NOT_ENABLED', '電子処方箋連携はまだ有効化されていません');
   }
   if (cause.code === 'INVALID_CONFIGURATION') {
-    return error(
+    return registeredError(
       'EPRESCRIPTION_CONFIGURATION_ERROR',
       '電子処方箋連携の設定が不完全です。管理者に確認してください。',
-      503,
       { retriable: false },
     );
   }
   if (cause.code === 'UNAUTHORIZED') {
-    return error(
+    return registeredError(
       'EPRESCRIPTION_UPSTREAM_UNAUTHORIZED',
       '電子処方箋 API の認証に失敗しました。連携設定を確認してください。',
-      502,
       { retriable: false, upstream_status: cause.status ?? null },
     );
   }
@@ -204,17 +202,15 @@ async function authenticatedPOST(
     accessContext: { userId: ctx.userId, role: ctx.role },
   });
   if (caseIds.length === 0) {
-    return error(
+    return registeredError(
       'NO_ACCESSIBLE_CASE',
       'この患者にアクセス可能なケースがありません。担当者割り当てを確認してください。',
-      422,
     );
   }
   if (requestedCaseId && !caseIds.includes(requestedCaseId)) {
-    return error(
+    return registeredError(
       'CASE_NOT_ACCESSIBLE',
       '指定されたケースにアクセスできません。担当者割り当てを確認してください。',
-      422,
     );
   }
 
@@ -226,10 +222,9 @@ async function authenticatedPOST(
   });
   if (existingByRequestId) {
     if (requestedCaseId && existingByRequestId.cycle.case_id !== requestedCaseId) {
-      return error(
+      return registeredError(
         'EPRESCRIPTION_CASE_CONFLICT',
         'この電子処方箋は別のケースで受付済みです。',
-        409,
         { existing_case_id: existingByRequestId.cycle.case_id },
       );
     }
@@ -297,10 +292,9 @@ async function authenticatedPOST(
     });
     if (existing) {
       if (requestedCaseId && existing.cycle.case_id !== requestedCaseId) {
-        return error(
+        return registeredError(
           'EPRESCRIPTION_CASE_CONFLICT',
           'この電子処方箋は別のケースで受付済みです。',
-          409,
           { existing_case_id: existing.cycle.case_id },
         );
       }
@@ -330,20 +324,18 @@ async function authenticatedPOST(
     });
 
     if (cycles.length === 0) {
-      return error(
+      return registeredError(
         'NO_ACTIVE_CYCLE',
         'この患者にアクティブな服薬サイクルがありません。先にケースを開始してください。',
-        422,
       );
     }
 
     if (cycles.length > 1) {
-      return error(
+      return registeredError(
         'AMBIGUOUS_ACTIVE_CYCLE',
         requestedCaseId
           ? '指定されたケースには受付可能な服薬サイクルが複数あります。サイクルを整理してから再実行してください。'
           : 'この患者には受付可能なケースが複数あります。case_id を指定してください。',
-        409,
         { case_ids: Array.from(new Set(cycles.map((cycle) => cycle.case_id))) },
       );
     }
@@ -394,10 +386,9 @@ async function authenticatedPOST(
     });
     if (!replayed) throw cause;
     if (requestedCaseId && replayed.cycle.case_id !== requestedCaseId) {
-      return error(
+      return registeredError(
         'EPRESCRIPTION_CASE_CONFLICT',
         'この電子処方箋は別のケースで受付済みです。',
-        409,
         { existing_case_id: replayed.cycle.case_id },
       );
     }

@@ -8,6 +8,7 @@ export type ApiErrorHttpStatus =
   | 409
   | 410
   | 413
+  | 422
   | 429
   | 500
   | 501
@@ -164,6 +165,55 @@ export const API_ERROR_CODE_REGISTRY = Object.freeze({
     retryable: false,
     recoveryAction: 'return_to_previous',
     messageLabel: 'api.error.e_prescription.not_enabled',
+  },
+  EPRESCRIPTION_CASE_CONFLICT: {
+    httpStatus: 409,
+    logLevel: 'warn',
+    retryable: false,
+    recoveryAction: 'reload',
+    messageLabel: 'api.error.e_prescription.case_conflict',
+  },
+  EPRESCRIPTION_CONFIGURATION_ERROR: {
+    httpStatus: 503,
+    logLevel: 'error',
+    retryable: false,
+    recoveryAction: 'return_to_previous',
+    messageLabel: 'api.error.e_prescription.configuration_error',
+  },
+  EPRESCRIPTION_UPSTREAM_UNAUTHORIZED: {
+    httpStatus: 502,
+    logLevel: 'error',
+    retryable: false,
+    recoveryAction: 'return_to_previous',
+    messageLabel: 'api.error.e_prescription.upstream_unauthorized',
+  },
+  AMBIGUOUS_ACTIVE_CYCLE: {
+    httpStatus: 409,
+    logLevel: 'warn',
+    retryable: false,
+    recoveryAction: 'correct_input',
+    messageLabel: 'api.error.e_prescription.ambiguous_active_cycle',
+  },
+  CASE_NOT_ACCESSIBLE: {
+    httpStatus: 422,
+    logLevel: 'warn',
+    retryable: false,
+    recoveryAction: 'request_access',
+    messageLabel: 'api.error.e_prescription.case_not_accessible',
+  },
+  NO_ACCESSIBLE_CASE: {
+    httpStatus: 422,
+    logLevel: 'warn',
+    retryable: false,
+    recoveryAction: 'request_access',
+    messageLabel: 'api.error.e_prescription.no_accessible_case',
+  },
+  NO_ACTIVE_CYCLE: {
+    httpStatus: 422,
+    logLevel: 'warn',
+    retryable: false,
+    recoveryAction: 'correct_input',
+    messageLabel: 'api.error.e_prescription.no_active_cycle',
   },
   EXTERNAL_ACCESS_VIEW_AUDIT_FAILED: {
     httpStatus: 500,

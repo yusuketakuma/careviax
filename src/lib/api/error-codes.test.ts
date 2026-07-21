@@ -9,6 +9,13 @@ describe('API error code registry', () => {
   it('keeps the shared error contract as an explicit snapshot', () => {
     expect(API_ERROR_CODE_REGISTRY).toMatchInlineSnapshot(`
       {
+        "AMBIGUOUS_ACTIVE_CYCLE": {
+          "httpStatus": 409,
+          "logLevel": "warn",
+          "messageLabel": "api.error.e_prescription.ambiguous_active_cycle",
+          "recoveryAction": "correct_input",
+          "retryable": false,
+        },
         "AUTH_FORBIDDEN": {
           "httpStatus": 403,
           "logLevel": "warn",
@@ -79,6 +86,13 @@ describe('API error code registry', () => {
           "recoveryAction": "retry",
           "retryable": true,
         },
+        "CASE_NOT_ACCESSIBLE": {
+          "httpStatus": 422,
+          "logLevel": "warn",
+          "messageLabel": "api.error.e_prescription.case_not_accessible",
+          "recoveryAction": "request_access",
+          "retryable": false,
+        },
         "CLAIMS_EXPORT_NOT_IMPLEMENTED": {
           "httpStatus": 501,
           "logLevel": "info",
@@ -121,10 +135,31 @@ describe('API error code registry', () => {
           "recoveryAction": "return_to_previous",
           "retryable": false,
         },
+        "EPRESCRIPTION_CASE_CONFLICT": {
+          "httpStatus": 409,
+          "logLevel": "warn",
+          "messageLabel": "api.error.e_prescription.case_conflict",
+          "recoveryAction": "reload",
+          "retryable": false,
+        },
+        "EPRESCRIPTION_CONFIGURATION_ERROR": {
+          "httpStatus": 503,
+          "logLevel": "error",
+          "messageLabel": "api.error.e_prescription.configuration_error",
+          "recoveryAction": "return_to_previous",
+          "retryable": false,
+        },
         "EPRESCRIPTION_NOT_ENABLED": {
           "httpStatus": 501,
           "logLevel": "info",
           "messageLabel": "api.error.e_prescription.not_enabled",
+          "recoveryAction": "return_to_previous",
+          "retryable": false,
+        },
+        "EPRESCRIPTION_UPSTREAM_UNAUTHORIZED": {
+          "httpStatus": 502,
+          "logLevel": "error",
+          "messageLabel": "api.error.e_prescription.upstream_unauthorized",
           "recoveryAction": "return_to_previous",
           "retryable": false,
         },
@@ -252,6 +287,20 @@ describe('API error code registry', () => {
           "logLevel": "warn",
           "messageLabel": "api.error.medication_stock_observation.unavailable",
           "recoveryAction": "return_to_previous",
+          "retryable": false,
+        },
+        "NO_ACCESSIBLE_CASE": {
+          "httpStatus": 422,
+          "logLevel": "warn",
+          "messageLabel": "api.error.e_prescription.no_accessible_case",
+          "recoveryAction": "request_access",
+          "retryable": false,
+        },
+        "NO_ACTIVE_CYCLE": {
+          "httpStatus": 422,
+          "logLevel": "warn",
+          "messageLabel": "api.error.e_prescription.no_active_cycle",
+          "recoveryAction": "correct_input",
           "retryable": false,
         },
         "OQC_NOT_ENABLED": {
