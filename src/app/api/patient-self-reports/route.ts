@@ -1,9 +1,7 @@
-import { unstable_rethrow } from 'next/navigation';
 import { NextRequest } from 'next/server';
-import { requireAuthContext } from '@/lib/auth/context';
-import { runWithRequestAuthContext } from '@/lib/auth/request-context';
+import { withAuthContext, type AuthContext } from '@/lib/auth/context';
 import { buildCursorPage, parsePaginationParams } from '@/lib/api/pagination';
-import { internalError, success, validationError } from '@/lib/api/response';
+import { success, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
@@ -21,10 +19,6 @@ import {
   selfReportStatusSchema,
 } from '@/lib/validations/self-report';
 import { trimStringOrUndefined } from '@/lib/validations/string';
-import { logger } from '@/lib/utils/logger';
-import { withRoutePerformance } from '@/lib/utils/performance';
-
-const ROUTE = '/api/patient-self-reports';
 
 const requiredTrimmedStringSchema = (message: string) => z.string().trim().min(1, message);
 const optionalTrimmedStringSchema = (max: number) =>
@@ -62,211 +56,159 @@ function readPresentOptionalSearchParam(
   return { ok: true as const, value };
 }
 
-async function authenticatedGET(req: NextRequest) {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canReport',
-    message: '患者自己申告の閲覧権限がありません',
-  });
-  if ('response' in authResult) return authResult.response;
-  const { ctx } = authResult;
-
-  return runWithRequestAuthContext(ctx, async () => {
-    const { searchParams } = new URL(req.url);
-    const { cursor, limit } = parsePaginationParams(searchParams);
-    const patientIdResult = readPresentOptionalSearchParam(
-      searchParams,
-      'patient_id',
-      '患者IDを指定してください',
+async function authenticatedGET(req: NextRequest, ctx: AuthContext) {
+  const { searchParams } = new URL(req.url);
+  const { cursor, limit } = parsePaginationParams(searchParams);
+  const patientIdResult = readPresentOptionalSearchParam(
+    searchParams,
+    'patient_id',
+    '患者IDを指定してください',
+  );
+  if (!patientIdResult.ok) return withSensitiveNoStore(patientIdResult.response);
+  const statusResult = readPresentOptionalSearchParam(
+    searchParams,
+    'status',
+    'ステータスを指定してください',
+  );
+  if (!statusResult.ok) return withSensitiveNoStore(statusResult.response);
+  const patientId = patientIdResult.value;
+  const statusParam = statusResult.value;
+  const status = statusParam ? selfReportStatusSchema.safeParse(statusParam) : null;
+  if (status && !status.success) {
+    return withSensitiveNoStore(
+      validationError('患者自己申告ステータスが不正です', {
+        status: ['対応していないステータスです'],
+      }),
     );
-    if (!patientIdResult.ok) return withSensitiveNoStore(patientIdResult.response);
-    const statusResult = readPresentOptionalSearchParam(
-      searchParams,
-      'status',
-      'ステータスを指定してください',
-    );
-    if (!statusResult.ok) return withSensitiveNoStore(statusResult.response);
-    const patientId = patientIdResult.value;
-    const statusParam = statusResult.value;
-    const status = statusParam ? selfReportStatusSchema.safeParse(statusParam) : null;
-    if (status && !status.success) {
-      return withSensitiveNoStore(
-        validationError('患者自己申告ステータスが不正です', {
-          status: ['対応していないステータスです'],
-        }),
-      );
-    }
+  }
 
-    const accessiblePatients = await prisma.patient.findMany({
-      where: applyPatientAssignmentWhere(
-        {
-          org_id: ctx.orgId,
-          ...(patientId ? { id: patientId } : {}),
-        },
-        ctx,
-      ),
-      select: {
-        id: true,
-        name: true,
-        name_kana: true,
-      },
-    });
-    const patientMap = new Map(accessiblePatients.map((patient) => [patient.id, patient]));
-    const accessiblePatientIds = accessiblePatients.map((patient) => patient.id);
-
-    if (accessiblePatientIds.length === 0) {
-      const page = buildCursorPage<never>([], limit, () => undefined);
-      return withSensitiveNoStore(
-        success({
-          data: page.data,
-          meta: { has_more: page.hasMore, next_cursor: page.nextCursor ?? null },
-        }),
-      );
-    }
-
-    const reports = await prisma.patientSelfReport.findMany({
-      where: {
+  const accessiblePatients = await prisma.patient.findMany({
+    where: applyPatientAssignmentWhere(
+      {
         org_id: ctx.orgId,
-        patient_id: patientId ?? { in: accessiblePatientIds },
-        ...(status ? { status: status.data } : {}),
+        ...(patientId ? { id: patientId } : {}),
       },
-      take: limit + 1,
-      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-      orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
-      select: patientSelfReportResponseSelect,
-    });
+      ctx,
+    ),
+    select: {
+      id: true,
+      name: true,
+      name_kana: true,
+    },
+  });
+  const patientMap = new Map(accessiblePatients.map((patient) => [patient.id, patient]));
+  const accessiblePatientIds = accessiblePatients.map((patient) => patient.id);
 
-    const page = buildCursorPage(reports, limit, (report) => report.id);
-    const privacy = getPatientPrivacyFlags(ctx.role);
-    const data = page.data.map((report) =>
-      serializePatientSelfReport(report, privacy, patientMap.get(report.patient_id)),
-    );
-
+  if (accessiblePatientIds.length === 0) {
+    const page = buildCursorPage<never>([], limit, () => undefined);
     return withSensitiveNoStore(
       success({
-        data,
+        data: page.data,
         meta: { has_more: page.hasMore, next_cursor: page.nextCursor ?? null },
       }),
     );
+  }
+
+  const reports = await prisma.patientSelfReport.findMany({
+    where: {
+      org_id: ctx.orgId,
+      patient_id: patientId ?? { in: accessiblePatientIds },
+      ...(status ? { status: status.data } : {}),
+    },
+    take: limit + 1,
+    ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+    orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
+    select: patientSelfReportResponseSelect,
   });
+
+  const page = buildCursorPage(reports, limit, (report) => report.id);
+  const privacy = getPatientPrivacyFlags(ctx.role);
+  const data = page.data.map((report) =>
+    serializePatientSelfReport(report, privacy, patientMap.get(report.patient_id)),
+  );
+
+  return withSensitiveNoStore(
+    success({
+      data,
+      meta: { has_more: page.hasMore, next_cursor: page.nextCursor ?? null },
+    }),
+  );
 }
 
-export async function GET(req: NextRequest, routeContext?: unknown) {
-  void routeContext;
-  return withRoutePerformance(req, async () => {
-    try {
-      return withSensitiveNoStore(await authenticatedGET(req));
-    } catch (err) {
-      unstable_rethrow(err);
-      logger.error(
-        {
-          event: 'patient_self_reports_get_unhandled_error',
-          route: ROUTE,
-          method: req.method,
-          status: 500,
-        },
-        err,
-      );
-      return withSensitiveNoStore(internalError());
-    }
-  });
-}
+export const GET = withAuthContext(authenticatedGET, {
+  permission: 'canReport',
+  message: '患者自己申告の閲覧権限がありません',
+});
 
-async function authenticatedPOST(req: NextRequest) {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canReport',
-    message: '患者自己申告の登録権限がありません',
-  });
-  if ('response' in authResult) return authResult.response;
-  const { ctx } = authResult;
+async function authenticatedPOST(req: NextRequest, ctx: AuthContext) {
+  const payload = await readJsonObjectRequestBody(req);
+  if (!payload) return withSensitiveNoStore(validationError('リクエストボディが不正です'));
 
-  return runWithRequestAuthContext(ctx, async () => {
-    const payload = await readJsonObjectRequestBody(req);
-    if (!payload) return withSensitiveNoStore(validationError('リクエストボディが不正です'));
-
-    const parsed = createSelfReportSchema.safeParse(payload);
-    if (!parsed.success) {
-      return withSensitiveNoStore(
-        validationError('入力値が不正です', parsed.error.flatten().fieldErrors),
-      );
-    }
-
-    const patient = await prisma.patient.findFirst({
-      where: applyPatientAssignmentWhere(
-        {
-          id: parsed.data.patient_id,
-          org_id: ctx.orgId,
-        },
-        ctx,
-      ),
-      select: { id: true },
-    });
-    if (!patient) {
-      return withSensitiveNoStore(
-        validationError('入力値が不正です', {
-          patient_id: ['指定された患者を確認できません'],
-        }),
-      );
-    }
-
-    const created = await withOrgContext(ctx.orgId, async (tx) => {
-      const report = await tx.patientSelfReport.create({
-        data: {
-          org_id: ctx.orgId,
-          patient_id: parsed.data.patient_id,
-          reported_by_name: parsed.data.reported_by_name,
-          relation: parsed.data.relation ?? null,
-          category: parsed.data.category,
-          subject: parsed.data.subject,
-          content: parsed.data.content,
-          requested_callback: parsed.data.requested_callback,
-          preferred_contact_time: parsed.data.preferred_contact_time ?? null,
-          triaged_by: ctx.userId,
-          triaged_at: new Date(),
-          status: 'triaged',
-        },
-        select: patientSelfReportResponseSelect,
-      });
-
-      await createAuditLogEntry(tx, ctx, {
-        action: 'patient_self_report_created',
-        targetType: 'patient_self_report',
-        targetId: report.id,
-        changes: {
-          patient_id: report.patient_id,
-          status_after: report.status,
-          requested_callback: parsed.data.requested_callback,
-          relation_provided: parsed.data.relation !== undefined,
-          preferred_contact_time_provided: parsed.data.preferred_contact_time !== undefined,
-        },
-      });
-
-      return report;
-    });
-
-    const privacy = getPatientPrivacyFlags(ctx.role);
+  const parsed = createSelfReportSchema.safeParse(payload);
+  if (!parsed.success) {
     return withSensitiveNoStore(
-      success({ data: serializePatientSelfReport(created, privacy) }, 201),
+      validationError('入力値が不正です', parsed.error.flatten().fieldErrors),
     );
+  }
+
+  const patient = await prisma.patient.findFirst({
+    where: applyPatientAssignmentWhere(
+      {
+        id: parsed.data.patient_id,
+        org_id: ctx.orgId,
+      },
+      ctx,
+    ),
+    select: { id: true },
   });
+  if (!patient) {
+    return withSensitiveNoStore(
+      validationError('入力値が不正です', {
+        patient_id: ['指定された患者を確認できません'],
+      }),
+    );
+  }
+
+  const created = await withOrgContext(ctx.orgId, async (tx) => {
+    const report = await tx.patientSelfReport.create({
+      data: {
+        org_id: ctx.orgId,
+        patient_id: parsed.data.patient_id,
+        reported_by_name: parsed.data.reported_by_name,
+        relation: parsed.data.relation ?? null,
+        category: parsed.data.category,
+        subject: parsed.data.subject,
+        content: parsed.data.content,
+        requested_callback: parsed.data.requested_callback,
+        preferred_contact_time: parsed.data.preferred_contact_time ?? null,
+        triaged_by: ctx.userId,
+        triaged_at: new Date(),
+        status: 'triaged',
+      },
+      select: patientSelfReportResponseSelect,
+    });
+
+    await createAuditLogEntry(tx, ctx, {
+      action: 'patient_self_report_created',
+      targetType: 'patient_self_report',
+      targetId: report.id,
+      changes: {
+        patient_id: report.patient_id,
+        status_after: report.status,
+        requested_callback: parsed.data.requested_callback,
+        relation_provided: parsed.data.relation !== undefined,
+        preferred_contact_time_provided: parsed.data.preferred_contact_time !== undefined,
+      },
+    });
+
+    return report;
+  });
+
+  const privacy = getPatientPrivacyFlags(ctx.role);
+  return withSensitiveNoStore(success({ data: serializePatientSelfReport(created, privacy) }, 201));
 }
 
-export async function POST(req: NextRequest, routeContext?: unknown) {
-  void routeContext;
-  return withRoutePerformance(req, async () => {
-    try {
-      return withSensitiveNoStore(await authenticatedPOST(req));
-    } catch (err) {
-      unstable_rethrow(err);
-      logger.error(
-        {
-          event: 'patient_self_reports_post_unhandled_error',
-          route: ROUTE,
-          method: req.method,
-          status: 500,
-        },
-        err,
-      );
-      return withSensitiveNoStore(internalError());
-    }
-  });
-}
+export const POST = withAuthContext(authenticatedPOST, {
+  permission: 'canReport',
+  message: '患者自己申告の登録権限がありません',
+});

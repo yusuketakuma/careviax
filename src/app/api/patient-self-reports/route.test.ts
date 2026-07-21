@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { unstable_rethrow } from 'next/navigation';
 import { NextRequest } from 'next/server';
 import { expectSensitiveNoStore } from '@/test/api-response-assertions';
 
@@ -35,25 +36,50 @@ function buildAuthContext() {
     role: authRoleMock(),
     ipAddress: '127.0.0.1',
     userAgent: 'vitest',
+    requestId: 'request_1',
+    correlationId: 'correlation_1',
   };
 }
 
 vi.mock('@/lib/auth/context', () => ({
-  requireAuthContext: requireAuthContextMock,
-}));
-
-vi.mock('@/lib/auth/request-context', () => ({
-  runWithRequestAuthContext: runWithRequestAuthContextMock,
-}));
-
-vi.mock('@/lib/utils/logger', () => ({
-  logger: {
-    error: loggerErrorMock,
-  },
-}));
-
-vi.mock('@/lib/utils/performance', () => ({
-  withRoutePerformance: withRoutePerformanceMock,
+  withAuthContext:
+    (
+      handler: (req: NextRequest, ctx: Record<string, unknown>) => Promise<Response>,
+      options?: unknown,
+    ) =>
+    async (req: NextRequest) =>
+      withRoutePerformanceMock(req, async () => {
+        const noStore = (response: Response) => {
+          response.headers.set('Cache-Control', 'private, no-store, max-age=0');
+          response.headers.set('Pragma', 'no-cache');
+          return response;
+        };
+        const authResult = await requireAuthContextMock(req, options);
+        if ('response' in authResult) return noStore(authResult.response);
+        return runWithRequestAuthContextMock(authResult.ctx, async () => {
+          try {
+            return noStore(await handler(req, authResult.ctx));
+          } catch (error) {
+            unstable_rethrow(error);
+            loggerErrorMock(
+              {
+                event: 'route_handler_unhandled_error',
+                route: req.nextUrl.pathname,
+                method: req.method,
+                requestId: authResult.ctx.requestId,
+                correlationId: authResult.ctx.correlationId,
+              },
+              error,
+            );
+            return noStore(
+              Response.json(
+                { code: 'INTERNAL_ERROR', message: 'サーバー内部でエラーが発生しました' },
+                { status: 500 },
+              ),
+            );
+          }
+        });
+      }),
 }));
 
 vi.mock('@/lib/db/client', () => ({
@@ -333,10 +359,11 @@ describe('/api/patient-self-reports', () => {
     expect(bodyText).not.toContain('raw self report secret');
     expect(loggerErrorMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        event: 'patient_self_reports_get_unhandled_error',
+        event: 'route_handler_unhandled_error',
         route: '/api/patient-self-reports',
         method: 'GET',
-        status: 500,
+        requestId: 'request_1',
+        correlationId: 'correlation_1',
       }),
       err,
     );
@@ -459,6 +486,10 @@ describe('/api/patient-self-reports', () => {
           requested_callback: false,
           relation_provided: false,
           preferred_contact_time_provided: false,
+          request_trace: {
+            request_id: 'request_1',
+            correlation_id: 'correlation_1',
+          },
         },
         ip_address: '127.0.0.1',
         user_agent: 'vitest',
@@ -650,10 +681,11 @@ describe('/api/patient-self-reports', () => {
     expect(bodyText).not.toContain('raw self report create secret');
     expect(loggerErrorMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        event: 'patient_self_reports_post_unhandled_error',
+        event: 'route_handler_unhandled_error',
         route: '/api/patient-self-reports',
         method: 'POST',
-        status: 500,
+        requestId: 'request_1',
+        correlationId: 'correlation_1',
       }),
       err,
     );
