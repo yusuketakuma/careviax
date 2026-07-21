@@ -903,7 +903,7 @@
       },
       {
         "path": "ops/refactor/STATE.md",
-        "sha256": "ef2c4969df72224b881b7a920b36236347a1440b73f5315888d911c3f980e56a"
+        "sha256": "aef2ff9f6a93073d9d90e81b868a35d5f4a7fab23ba5313c1c0cef464eb43c00"
       },
       {
         "path": "ops/refactor/archive/PERF_FINDINGS.md",
@@ -30806,7 +30806,7 @@
       "path": "src/app/api/communication-requests/[id]/resolve-followup/route.test.ts",
       "classes": ["test"],
       "detectors": ["mapping_precedence", "permission_capability", "raw_role_semantics"],
-      "sha256": "8f4a6d55619b6c291d1f87fc9657a147c94d8e79a613bd7326403e9a2be2f6cd"
+      "sha256": "2fa7c9f05f01ca850696afb8cc196b5ef82f06617c6a127bf066d315ebd61c1e"
     },
     {
       "path": "src/app/api/communication-requests/[id]/responses/route.test.ts",

@@ -403,11 +403,6 @@
       "task_id": "MAINT-FILE-SIZE-1000-001"
     },
     {
-      "path": "src/app/api/communication-requests/[id]/resolve-followup/route.test.ts",
-      "max_lines": 1004,
-      "task_id": "MAINT-FILE-SIZE-1000-001"
-    },
-    {
       "path": "src/app/api/communication-requests/[id]/responses/route.test.ts",
       "max_lines": 1216,
       "task_id": "MAINT-FILE-SIZE-1000-001"

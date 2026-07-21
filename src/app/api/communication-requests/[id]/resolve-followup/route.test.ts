@@ -1,5 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest, NextResponse } from 'next/server';
+import {
+  createResolveFollowupRequest as createRequest,
+  CURRENT_UPDATED_AT,
+  CURRENT_UPDATED_AT_DATE,
+  HOSTILE_TRACING_REPORT_ID,
+  HOSTILE_TRACING_REPORT_PDF_URL,
+} from './route.test-fixtures';
 
 const {
   authContext,
@@ -154,24 +161,6 @@ vi.mock('@/lib/db/rls', () => ({
 }));
 
 import { POST } from './route';
-
-const CURRENT_UPDATED_AT = '2026-06-18T00:00:00.000Z';
-const CURRENT_UPDATED_AT_DATE = new Date(CURRENT_UPDATED_AT);
-const HOSTILE_TRACING_REPORT_ID = 'tracing/with space%2F?x=#';
-const HOSTILE_TRACING_REPORT_PDF_URL =
-  '/api/tracing-reports/tracing%2Fwith%20space%252F%3Fx%3D%23/pdf';
-
-function createRequest(body: unknown) {
-  return new NextRequest('http://localhost/api/communication-requests/request_1/resolve-followup', {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      'x-request-id': 'untrusted_request_id',
-      'x-correlation-id': 'correlation_1',
-    },
-    body: JSON.stringify(body),
-  });
-}
 
 function expectSensitiveNoStore(response: Response) {
   expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
