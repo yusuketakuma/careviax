@@ -735,7 +735,7 @@
       },
       {
         "path": "Plans.md",
-        "sha256": "5b9c8bb6bfb32a3c3d3bd1c68848368fd594958a73f9ae0320f2b232385bf85f"
+        "sha256": "5fbb7b6ac3d8bed9169901f3d6cfa854a458eedf60438bc2cc65457b734439d7"
       },
       {
         "path": "README.md",
@@ -903,7 +903,7 @@
       },
       {
         "path": "ops/refactor/STATE.md",
-        "sha256": "4e075796733f8f54b4a171ff2c540b7b47813ea096b345b06581998fb9b0c6a9"
+        "sha256": "ea6707eab022a4193f0108cd05028764507c39a5905e5bcfde173bd57aaf5a21"
       },
       {
         "path": "ops/refactor/archive/PERF_FINDINGS.md",
@@ -32602,7 +32602,7 @@
       "path": "src/app/api/visit-records/[id]/handoff/route.test.ts",
       "classes": ["test"],
       "detectors": ["mapping_precedence", "raw_role_semantics", "tenant_role"],
-      "sha256": "003948d0921880347deecf1d369a23d6a316fdce3a8c8ce09ad6e89a9129cb0a"
+      "sha256": "9b2cf8813008ee20c821c4228aa0446b7ae2fcfa4fd551a10dafb4e548b77106"
     },
     {
       "path": "src/app/api/visit-records/[id]/handoff/supervision-confirm/route.test.ts",

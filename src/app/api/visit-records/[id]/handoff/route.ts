@@ -1,7 +1,6 @@
-import { unstable_rethrow } from 'next/navigation';
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
-import { requireAuthContext } from '@/lib/auth/context';
+import { withAuthContext, type AuthContext, type AuthRouteContext } from '@/lib/auth/context';
 import {
   buildVisitHandoffConfirmationWhere,
   canAccessVisitScheduleAssignment,
@@ -17,7 +16,6 @@ import {
   notFound,
   registeredError,
   forbiddenResponse,
-  internalError,
 } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
@@ -73,14 +71,11 @@ const visitRecordHandoffSelect = {
   },
 } as const;
 
-async function authenticatedPUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canVisit',
-    message: '訪問記録の更新権限がありません',
-  });
-  if ('response' in authResult) return withSensitiveNoStore(authResult.response);
-  const ctx = authResult.ctx;
-
+async function authenticatedPUT(
+  req: NextRequest,
+  ctx: AuthContext,
+  { params }: AuthRouteContext<{ id: string }>,
+) {
   const { id: rawId } = await params;
   const id = normalizeRequiredRouteParam(rawId);
   if (!id) return withSensitiveNoStore(validationError('訪問記録IDが不正です'));
@@ -172,23 +167,16 @@ async function authenticatedPUT(req: NextRequest, { params }: { params: Promise<
   }
 }
 
-export async function PUT(req: NextRequest, routeContext: { params: Promise<{ id: string }> }) {
-  try {
-    return withSensitiveNoStore(await authenticatedPUT(req, routeContext));
-  } catch (err) {
-    unstable_rethrow(err);
-    return withSensitiveNoStore(internalError());
-  }
-}
+export const PUT = withAuthContext(authenticatedPUT, {
+  permission: 'canVisit',
+  message: '訪問記録の更新権限がありません',
+});
 
-async function authenticatedGET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canVisit',
-    message: '訪問記録の閲覧権限がありません',
-  });
-  if ('response' in authResult) return withSensitiveNoStore(authResult.response);
-  const ctx = authResult.ctx;
-
+async function authenticatedGET(
+  _req: NextRequest,
+  ctx: AuthContext,
+  { params }: AuthRouteContext<{ id: string }>,
+) {
   const { id: rawId } = await params;
   const id = normalizeRequiredRouteParam(rawId);
   if (!id) return withSensitiveNoStore(validationError('訪問記録IDが不正です'));
@@ -306,11 +294,7 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
   );
 }
 
-export async function GET(req: NextRequest, routeContext: { params: Promise<{ id: string }> }) {
-  try {
-    return withSensitiveNoStore(await authenticatedGET(req, routeContext));
-  } catch (err) {
-    unstable_rethrow(err);
-    return withSensitiveNoStore(internalError());
-  }
-}
+export const GET = withAuthContext(authenticatedGET, {
+  permission: 'canVisit',
+  message: '訪問記録の閲覧権限がありません',
+});
