@@ -15,7 +15,6 @@ const {
   withOrgContextMock,
   createPrescriptionIntakeInTxMock,
   runPostCreateHooksMock,
-  notifyWebhookEventForOrgMock,
   qrScanDraftClaimMock,
   qrScanDraftUpdateMock,
   jahisSupplementalRecordUpdateManyMock,
@@ -44,7 +43,6 @@ const {
   withOrgContextMock: vi.fn(),
   createPrescriptionIntakeInTxMock: vi.fn(),
   runPostCreateHooksMock: vi.fn(),
-  notifyWebhookEventForOrgMock: vi.fn(),
   qrScanDraftClaimMock: vi.fn(),
   qrScanDraftUpdateMock: vi.fn(),
   jahisSupplementalRecordUpdateManyMock: vi.fn(),
@@ -87,10 +85,6 @@ vi.mock('@/server/services/prescription-intake-service', () => ({
     }
   },
   runPrescriptionIntakePostCreateHooks: runPostCreateHooksMock,
-}));
-
-vi.mock('@/server/services/outbound-webhook', () => ({
-  notifyWebhookEventForOrg: notifyWebhookEventForOrgMock,
 }));
 
 vi.mock('@/server/adapters/realtime', () => ({
@@ -208,7 +202,6 @@ describe('/api/qr-scan-drafts/[id]/confirm POST', () => {
       medicationChanges: [],
       profileSyncResult: null,
     });
-    notifyWebhookEventForOrgMock.mockResolvedValue([]);
     qrScanDraftClaimMock.mockResolvedValue({ count: 1 });
     qrScanDraftUpdateMock.mockResolvedValue({ id: 'draft_1', status: 'confirmed' });
     jahisSupplementalRecordUpdateManyMock.mockResolvedValue({ count: 1 });
@@ -964,17 +957,6 @@ describe('/api/qr-scan-drafts/[id]/confirm POST', () => {
         sourceType: 'qr_scan',
       }),
     );
-    expect(notifyWebhookEventForOrgMock).toHaveBeenCalledWith(
-      'org_1',
-      'prescription.created',
-      expect.objectContaining({
-        intakeId: 'intake_1',
-        cycleId: 'cycle_1',
-        patientId: 'patient_1',
-        sourceType: 'qr_scan',
-        lineCount: 1,
-      }),
-    );
     expect(broadcastStatusUpdateMock).toHaveBeenCalledWith('org:org_1', {
       type: 'qr_draft_confirmed',
     });
@@ -1326,7 +1308,6 @@ describe('/api/qr-scan-drafts/[id]/confirm POST', () => {
     expect(createPrescriptionIntakeInTxMock).not.toHaveBeenCalled();
     expect(qrScanDraftUpdateMock).not.toHaveBeenCalled();
     expect(runPostCreateHooksMock).not.toHaveBeenCalled();
-    expect(notifyWebhookEventForOrgMock).not.toHaveBeenCalled();
   });
 
   it('returns injectable outpatient eligibility details from intake rollback', async () => {
@@ -1422,7 +1403,6 @@ describe('/api/qr-scan-drafts/[id]/confirm POST', () => {
     });
     expect(qrScanDraftUpdateMock).not.toHaveBeenCalled();
     expect(runPostCreateHooksMock).not.toHaveBeenCalled();
-    expect(notifyWebhookEventForOrgMock).not.toHaveBeenCalled();
     expect(broadcastStatusUpdateMock).not.toHaveBeenCalled();
   });
 
@@ -1802,7 +1782,6 @@ describe('/api/qr-scan-drafts/[id]/confirm POST', () => {
     expect(jahisSupplementalRecordUpdateManyMock).not.toHaveBeenCalled();
     expect(qrScanDraftUpdateMock).not.toHaveBeenCalled();
     expect(runPostCreateHooksMock).not.toHaveBeenCalled();
-    expect(notifyWebhookEventForOrgMock).not.toHaveBeenCalled();
     expect(broadcastStatusUpdateMock).not.toHaveBeenCalled();
   });
 

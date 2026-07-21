@@ -26,7 +26,6 @@ import {
   readQrPatientIdentityFromDraftParsedData,
 } from '@/lib/pharmacy/qr-patient-match';
 import { broadcastOrgRealtimeEvent } from '@/server/services/org-realtime';
-import { notifyWebhookEventForOrg } from '@/server/services/outbound-webhook';
 import { z } from 'zod';
 import { validatePrescriptionDateWindow } from '@/lib/prescription/prescription-date-window';
 import { dateKeySchema } from '@/lib/validations/date-key';
@@ -512,18 +511,6 @@ export const POST = withAuthContext(
       prescriberName: prescriber_name ?? null,
       sourceType: 'qr_scan',
     });
-
-    try {
-      await notifyWebhookEventForOrg(ctx.orgId, 'prescription.created', {
-        intakeId: result.intake.id,
-        cycleId: result.cycle.id,
-        patientId: result.cycle.patient_id,
-        sourceType: 'qr_scan',
-        lineCount: result.intake.lines.length,
-      });
-    } catch {
-      // Webhook delivery is best-effort and must not fail a committed intake.
-    }
 
     // Cross-user confirmation audit log (best-effort)
     if (result.draft.scanned_by && result.draft.scanned_by !== ctx.userId) {

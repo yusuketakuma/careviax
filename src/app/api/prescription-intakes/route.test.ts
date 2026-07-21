@@ -32,7 +32,6 @@ const {
   patientFindFirstMock,
   broadcastOrgRealtimeEventMock,
   notifyWorkflowMutationMock,
-  notifyWebhookEventForOrgMock,
   enforceFeatureRateLimitMock,
   canAccessPrescriptionPatientMock,
   applyPrescriptionSupplyForIntakeMock,
@@ -69,7 +68,6 @@ const {
   patientFindFirstMock: vi.fn(),
   broadcastOrgRealtimeEventMock: vi.fn().mockResolvedValue(undefined),
   notifyWorkflowMutationMock: vi.fn().mockResolvedValue(undefined),
-  notifyWebhookEventForOrgMock: vi.fn().mockResolvedValue(undefined),
   enforceFeatureRateLimitMock: vi.fn().mockResolvedValue(null),
   canAccessPrescriptionPatientMock: vi.fn().mockResolvedValue(true),
   applyPrescriptionSupplyForIntakeMock: vi.fn(),
@@ -108,8 +106,8 @@ vi.mock('@/server/services/workflow-dashboard-cache', () => ({
   notifyWorkflowMutation: notifyWorkflowMutationMock,
 }));
 
-vi.mock('@/server/services/outbound-webhook', () => ({
-  notifyWebhookEventForOrg: notifyWebhookEventForOrgMock,
+vi.mock('@/server/services/outbound-webhook-queue', () => ({
+  enqueuePrescriptionCreatedWebhook: vi.fn().mockResolvedValue(0),
 }));
 
 vi.mock('@/server/services/prescription-access', async (importOriginal) => ({
@@ -347,7 +345,6 @@ describe('/api/prescription-intakes POST', () => {
       birth_date: new Date('1950-03-15T00:00:00.000Z'),
       gender: 'male',
     });
-    notifyWebhookEventForOrgMock.mockResolvedValue(undefined);
     applyPrescriptionSupplyForIntakeMock.mockResolvedValue({
       intake_id: 'intake_1',
       applied_count: 0,
@@ -1565,16 +1562,6 @@ describe('/api/prescription-intakes POST', () => {
       orgId: 'org_1',
       payload: { source: 'prescription_intakes_create' },
     });
-    expect(notifyWebhookEventForOrgMock).toHaveBeenCalledWith(
-      'org_1',
-      'prescription.created',
-      expect.objectContaining({
-        intakeId: 'intake_qr',
-        cycleId: 'cycle_qr',
-        patientId: 'patient_qr',
-        sourceType: 'qr_scan',
-      }),
-    );
   });
 
   it('rejects QR draft fallback lines with contradictory packaging metadata before claiming the draft', async () => {
@@ -1647,7 +1634,6 @@ describe('/api/prescription-intakes POST', () => {
     expect(intakeCreateMock).not.toHaveBeenCalled();
     expect(broadcastOrgRealtimeEventMock).not.toHaveBeenCalled();
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
-    expect(notifyWebhookEventForOrgMock).not.toHaveBeenCalled();
   });
 
   it('rejects QR draft imports when drug code resolution still requires review', async () => {
@@ -1722,7 +1708,6 @@ describe('/api/prescription-intakes POST', () => {
     expect(intakeCreateMock).not.toHaveBeenCalled();
     expect(broadcastOrgRealtimeEventMock).not.toHaveBeenCalled();
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
-    expect(notifyWebhookEventForOrgMock).not.toHaveBeenCalled();
   });
 
   it('allows QR draft imports to confirm review-required lines with a DrugMaster ID', async () => {
@@ -1923,7 +1908,6 @@ describe('/api/prescription-intakes POST', () => {
     expect(qrDraftUpdateMock).not.toHaveBeenCalled();
     expect(broadcastOrgRealtimeEventMock).not.toHaveBeenCalled();
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
-    expect(notifyWebhookEventForOrgMock).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -1988,7 +1972,6 @@ describe('/api/prescription-intakes POST', () => {
       expect(intakeCreateMock).not.toHaveBeenCalled();
       expect(broadcastOrgRealtimeEventMock).not.toHaveBeenCalled();
       expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
-      expect(notifyWebhookEventForOrgMock).not.toHaveBeenCalled();
     },
   );
 
@@ -2062,7 +2045,6 @@ describe('/api/prescription-intakes POST', () => {
     expect(intakeCreateMock).not.toHaveBeenCalled();
     expect(broadcastOrgRealtimeEventMock).not.toHaveBeenCalled();
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
-    expect(notifyWebhookEventForOrgMock).not.toHaveBeenCalled();
   });
 
   it('uses canonical QR parsed line metadata for intake creation and medication profile hooks', async () => {
@@ -2281,7 +2263,6 @@ describe('/api/prescription-intakes POST', () => {
     expect(supplementalUpdateManyMock).not.toHaveBeenCalled();
     expect(broadcastOrgRealtimeEventMock).not.toHaveBeenCalled();
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
-    expect(notifyWebhookEventForOrgMock).not.toHaveBeenCalled();
   });
 
   it('rejects QR draft imports when submitted optional line values are absent from the draft', async () => {
@@ -2378,7 +2359,6 @@ describe('/api/prescription-intakes POST', () => {
     expect(supplementalUpdateManyMock).not.toHaveBeenCalled();
     expect(broadcastOrgRealtimeEventMock).not.toHaveBeenCalled();
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
-    expect(notifyWebhookEventForOrgMock).not.toHaveBeenCalled();
   });
 
   it('rejects qr_draft_id imports unless source_type is qr_scan', async () => {
@@ -2412,7 +2392,6 @@ describe('/api/prescription-intakes POST', () => {
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
     expect(broadcastOrgRealtimeEventMock).not.toHaveBeenCalled();
-    expect(notifyWebhookEventForOrgMock).not.toHaveBeenCalled();
   });
 
   it('rejects QR draft imports when parsed_data cannot prove patient identity', async () => {

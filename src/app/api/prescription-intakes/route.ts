@@ -26,7 +26,6 @@ import {
   PrescriptionIntakeTransactionRollback,
   runPrescriptionIntakePostCreateHooks,
 } from '@/server/services/prescription-intake-service';
-import { notifyWebhookEventForOrg } from '@/server/services/outbound-webhook';
 import { PrescriberInstitutionReferenceValidationError } from '@/lib/prescriptions/prescriber-institutions';
 import {
   buildQrDraftAssignmentWhere,
@@ -1038,18 +1037,6 @@ export const POST = withAuthContext(
         prescriberName: intakeInput.prescriber_name ?? null,
         sourceType: source_type,
       });
-
-      try {
-        await notifyWebhookEventForOrg(ctx.orgId, 'prescription.created', {
-          intakeId: qrResult.intake.id,
-          cycleId: qrResult.cycle.id,
-          patientId: qrResult.cycle.patient_id,
-          sourceType: source_type,
-          lineCount: qrResult.intake.lines.length,
-        });
-      } catch {
-        // Webhook delivery is best-effort and must not fail a committed intake.
-      }
 
       await broadcastOrgRealtimeEvent({
         orgId: ctx.orgId,
