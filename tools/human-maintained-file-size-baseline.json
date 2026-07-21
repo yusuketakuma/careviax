@@ -438,11 +438,6 @@
       "task_id": "MAINT-FILE-SIZE-1000-001"
     },
     {
-      "path": "src/app/api/files/presigned-upload/route.test.ts",
-      "max_lines": 1153,
-      "task_id": "MAINT-FILE-SIZE-1000-001"
-    },
-    {
       "path": "src/app/api/inquiry-records/[id]/route.test.ts",
       "max_lines": 1324,
       "task_id": "MAINT-FILE-SIZE-1000-001"

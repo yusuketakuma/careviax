@@ -2,6 +2,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 import { PHOS_DISABLE_LEGACY_FILE_API_ENV } from '@/lib/api/legacy-file-api-boundary';
 import { expectSensitiveNoStore } from '@/test/api-response-assertions';
+import {
+  createMalformedJsonRequest,
+  createRequest,
+  defaultCareReport,
+  defaultPresignedUpload,
+  defaultVisitRecord,
+  PRESCRIPTION_SHA256,
+  validPrescriptionUploadBody,
+  validReportUploadBody,
+} from './route.test-fixtures';
 
 const {
   requireAuthContextMock,
@@ -79,38 +89,6 @@ vi.mock('@/server/services/file-storage', () => ({
 import { POST } from './route';
 
 const originalDisableLegacyFileApi = process.env[PHOS_DISABLE_LEGACY_FILE_API_ENV];
-const PRESCRIPTION_SHA256 = 'ab'.repeat(32);
-
-function createRequest(body: unknown) {
-  const normalizedBody =
-    body &&
-    typeof body === 'object' &&
-    !Array.isArray(body) &&
-    'purpose' in body &&
-    body.purpose !== 'prescription' &&
-    !('sha256' in body)
-      ? { ...body, sha256: PRESCRIPTION_SHA256 }
-      : body;
-  return new NextRequest('http://localhost/api/files/presigned-upload', {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      'x-org-id': 'org_1',
-    },
-    body: JSON.stringify(normalizedBody),
-  });
-}
-
-function createMalformedJsonRequest() {
-  return new NextRequest('http://localhost/api/files/presigned-upload', {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      'x-org-id': 'org_1',
-    },
-    body: '{',
-  });
-}
 
 describe('/api/files/presigned-upload POST', () => {
   beforeEach(() => {
@@ -126,37 +104,9 @@ describe('/api/files/presigned-upload POST', () => {
     visitScheduleFindFirstMock.mockResolvedValue({ id: 'schedule_1' });
     careCaseFindFirstMock.mockResolvedValue(null);
     assertFileUploadConstraintsMock.mockImplementation(() => undefined);
-    visitRecordFindFirstMock.mockResolvedValue({
-      id: 'visit_1',
-      patient_id: 'patient_1',
-      schedule: {
-        pharmacist_id: 'user_1',
-        case_: {
-          primary_pharmacist_id: null,
-          backup_pharmacist_id: null,
-        },
-      },
-    });
-    careReportFindFirstMock.mockResolvedValue({
-      id: 'report_1',
-      patient_id: 'patient_1',
-      case_id: null,
-      visit_record_id: null,
-    });
-    createPresignedUploadMock.mockResolvedValue({
-      id: 'file_1',
-      uploadUrl: 'https://example.com/upload',
-      objectKey: 'reports/org_1/report_1/file_1-report.pdf',
-      storageKey: 'reports/org_1/report_1/file_1-report.pdf',
-      expiresIn: 300,
-      headers: { 'Content-Type': 'application/pdf' },
-      orgId: 'org_1',
-      patientId: 'patient_1',
-      visitRecordId: 'visit_1',
-      reportId: 'report_1',
-      uploadedBy: 'user_1',
-      etag: 'etag-1',
-    });
+    visitRecordFindFirstMock.mockResolvedValue(defaultVisitRecord);
+    careReportFindFirstMock.mockResolvedValue(defaultCareReport);
+    createPresignedUploadMock.mockResolvedValue(defaultPresignedUpload);
   });
 
   afterEach(() => {
@@ -170,15 +120,7 @@ describe('/api/files/presigned-upload POST', () => {
   it('disables the legacy route in PH-OS production before auth, lookup, or presign', async () => {
     process.env[PHOS_DISABLE_LEGACY_FILE_API_ENV] = '1';
 
-    const response = await POST(
-      createRequest({
-        purpose: 'report',
-        file_name: 'report.pdf',
-        mime_type: 'application/pdf',
-        size_bytes: 1024,
-        report_id: 'report_1',
-      }),
-    );
+    const response = await POST(createRequest(validReportUploadBody));
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(410);
@@ -204,15 +146,7 @@ describe('/api/files/presigned-upload POST', () => {
       ),
     });
 
-    const response = await POST(
-      createRequest({
-        purpose: 'report',
-        file_name: 'report.pdf',
-        mime_type: 'application/pdf',
-        size_bytes: 1024,
-        report_id: 'report_1',
-      }),
-    );
+    const response = await POST(createRequest(validReportUploadBody));
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(401);
@@ -462,15 +396,7 @@ describe('/api/files/presigned-upload POST', () => {
       archived_at: new Date('2026-06-01T00:00:00.000Z'),
     });
 
-    const response = await POST(
-      createRequest({
-        purpose: 'report',
-        file_name: 'report.pdf',
-        mime_type: 'application/pdf',
-        size_bytes: 1024,
-        report_id: 'report_1',
-      }),
-    );
+    const response = await POST(createRequest(validReportUploadBody));
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(409);
@@ -516,15 +442,7 @@ describe('/api/files/presigned-upload POST', () => {
       );
     });
 
-    const response = await POST(
-      createRequest({
-        purpose: 'report',
-        file_name: 'report.pdf',
-        mime_type: 'application/pdf',
-        size_bytes: 1024,
-        report_id: 'report_1',
-      }),
-    );
+    const response = await POST(createRequest(validReportUploadBody));
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(500);
@@ -549,15 +467,7 @@ describe('/api/files/presigned-upload POST', () => {
       new FileStorageErrorMock('FILE_STORAGE_UNAVAILABLE', 'ストレージを利用できません', 503),
     );
 
-    const response = await POST(
-      createRequest({
-        purpose: 'report',
-        file_name: 'report.pdf',
-        mime_type: 'application/pdf',
-        size_bytes: 1024,
-        report_id: 'report_1',
-      }),
-    );
+    const response = await POST(createRequest(validReportUploadBody));
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(503);
@@ -577,15 +487,7 @@ describe('/api/files/presigned-upload POST', () => {
       ),
     );
 
-    const response = await POST(
-      createRequest({
-        purpose: 'report',
-        file_name: 'report.pdf',
-        mime_type: 'application/pdf',
-        size_bytes: 1024,
-        report_id: 'report_1',
-      }),
-    );
+    const response = await POST(createRequest(validReportUploadBody));
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(502);
@@ -635,16 +537,7 @@ describe('/api/files/presigned-upload POST', () => {
       },
     });
 
-    const response = await POST(
-      createRequest({
-        purpose: 'prescription',
-        file_name: 'prescription.pdf',
-        mime_type: 'application/pdf',
-        size_bytes: 1024,
-        patient_id: 'patient_1',
-        sha256: PRESCRIPTION_SHA256,
-      }),
-    );
+    const response = await POST(createRequest(validPrescriptionUploadBody));
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(403);
@@ -723,15 +616,7 @@ describe('/api/files/presigned-upload POST', () => {
   });
 
   it('minimizes successful presigned upload responses without exposing storage keys or entity ids', async () => {
-    const response = await POST(
-      createRequest({
-        purpose: 'report',
-        file_name: 'report.pdf',
-        mime_type: 'application/pdf',
-        size_bytes: 1024,
-        report_id: 'report_1',
-      }),
-    );
+    const response = await POST(createRequest(validReportUploadBody));
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(201);
@@ -888,16 +773,7 @@ describe('/api/files/presigned-upload POST', () => {
       archived_at: new Date('2026-06-01T00:00:00.000Z'),
     });
 
-    const response = await POST(
-      createRequest({
-        purpose: 'prescription',
-        file_name: 'prescription.pdf',
-        mime_type: 'application/pdf',
-        size_bytes: 1024,
-        patient_id: 'patient_1',
-        sha256: PRESCRIPTION_SHA256,
-      }),
-    );
+    const response = await POST(createRequest(validPrescriptionUploadBody));
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(409);
@@ -962,16 +838,7 @@ describe('/api/files/presigned-upload POST', () => {
     visitScheduleFindFirstMock.mockResolvedValue(null);
     careCaseFindFirstMock.mockResolvedValue(null);
 
-    const response = await POST(
-      createRequest({
-        purpose: 'prescription',
-        file_name: 'prescription.pdf',
-        mime_type: 'application/pdf',
-        size_bytes: 1024,
-        patient_id: 'patient_1',
-        sha256: PRESCRIPTION_SHA256,
-      }),
-    );
+    const response = await POST(createRequest(validPrescriptionUploadBody));
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(201);
@@ -997,16 +864,7 @@ describe('/api/files/presigned-upload POST', () => {
     visitScheduleFindFirstMock.mockResolvedValue(null);
     careCaseFindFirstMock.mockResolvedValue({ id: 'case_1' });
 
-    const response = await POST(
-      createRequest({
-        purpose: 'prescription',
-        file_name: 'prescription.pdf',
-        mime_type: 'application/pdf',
-        size_bytes: 1024,
-        patient_id: 'patient_1',
-        sha256: PRESCRIPTION_SHA256,
-      }),
-    );
+    const response = await POST(createRequest(validPrescriptionUploadBody));
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(201);
@@ -1021,16 +879,7 @@ describe('/api/files/presigned-upload POST', () => {
   });
 
   it('allows admin prescription upload without patient assignment checks', async () => {
-    const response = await POST(
-      createRequest({
-        purpose: 'prescription',
-        file_name: 'prescription.pdf',
-        mime_type: 'application/pdf',
-        size_bytes: 1024,
-        patient_id: 'patient_1',
-        sha256: PRESCRIPTION_SHA256,
-      }),
-    );
+    const response = await POST(createRequest(validPrescriptionUploadBody));
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(201);
@@ -1039,15 +888,7 @@ describe('/api/files/presigned-upload POST', () => {
   });
 
   it('returns a presigned upload url when references are valid', async () => {
-    const response = await POST(
-      createRequest({
-        purpose: 'report',
-        file_name: 'report.pdf',
-        mime_type: 'application/pdf',
-        size_bytes: 1024,
-        report_id: 'report_1',
-      }),
-    );
+    const response = await POST(createRequest(validReportUploadBody));
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(201);
@@ -1083,15 +924,7 @@ describe('/api/files/presigned-upload POST', () => {
       backup_pharmacist_id: null,
     });
 
-    const response = await POST(
-      createRequest({
-        purpose: 'report',
-        file_name: 'report.pdf',
-        mime_type: 'application/pdf',
-        size_bytes: 1024,
-        report_id: 'report_1',
-      }),
-    );
+    const response = await POST(createRequest(validReportUploadBody));
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(201);
@@ -1124,15 +957,7 @@ describe('/api/files/presigned-upload POST', () => {
       backup_pharmacist_id: 'user_1',
     });
 
-    const response = await POST(
-      createRequest({
-        purpose: 'report',
-        file_name: 'report.pdf',
-        mime_type: 'application/pdf',
-        size_bytes: 1024,
-        report_id: 'report_1',
-      }),
-    );
+    const response = await POST(createRequest(validReportUploadBody));
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(201);
