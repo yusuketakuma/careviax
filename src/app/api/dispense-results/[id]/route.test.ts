@@ -1,5 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { NextRequest } from 'next/server';
+import {
+  createDispenseTransactionClient,
+  createExistingDispenseResult,
+  createMalformedJsonPatchRequest,
+  createRequest,
+  defaultDispenseResultList,
+  defaultMedicationCycle,
+  expectedResultAssignmentWhere,
+} from './route.test-fixtures';
 
 const {
   authMock,
@@ -81,68 +89,6 @@ vi.mock('@/lib/utils/logger', () => ({
 
 import { GET, PATCH } from './route';
 
-function createRequest(url: string, body?: unknown) {
-  return new NextRequest(url, {
-    method: body === undefined ? 'GET' : 'PATCH',
-    headers: {
-      ...(body === undefined ? {} : { 'content-type': 'application/json' }),
-      'x-org-id': 'org_1',
-    },
-    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-  });
-}
-
-function createMalformedJsonPatchRequest(id = 'result_1') {
-  return new NextRequest(`http://localhost/api/dispense-results/${id}`, {
-    method: 'PATCH',
-    headers: {
-      'content-type': 'application/json',
-      'x-org-id': 'org_1',
-    },
-    body: '{"actual_drug_name":',
-  });
-}
-
-// 新ポリシー: pharmacist は組織内フルアクセス(担当割当スコープ撤廃)のため
-// org-only の WHERE になる。担当割当の OR 句は付与されない。
-const expectedResultAssignmentWhere = {};
-
-function createExistingDispenseResult(
-  overrides: Partial<{
-    actual_drug_name: string;
-    actual_drug_code: string | null;
-    actual_quantity: number;
-    actual_unit: string | null;
-    discrepancy_reason: string | null;
-    carry_type: string;
-    prescribed_drug_name: string;
-    prescribed_drug_code: string | null;
-    prescribed_quantity: number | null;
-    prescribed_unit: string | null;
-  }> = {},
-) {
-  return {
-    id: 'result_1',
-    org_id: 'org_1',
-    task_id: 'task_1',
-    line_id: 'line_1',
-    actual_drug_name: overrides.actual_drug_name ?? 'Drug B',
-    actual_drug_code: overrides.actual_drug_code ?? 'drug-b',
-    actual_quantity: overrides.actual_quantity ?? 14,
-    actual_unit: overrides.actual_unit ?? '錠',
-    discrepancy_reason: overrides.discrepancy_reason ?? null,
-    carry_type: overrides.carry_type ?? 'carry',
-    version: 1,
-    line: {
-      id: 'line_1',
-      drug_name: overrides.prescribed_drug_name ?? 'Drug B',
-      drug_code: overrides.prescribed_drug_code ?? 'drug-b',
-      quantity: overrides.prescribed_quantity ?? 14,
-      unit: overrides.prescribed_unit ?? '錠',
-    },
-  };
-}
-
 describe('/api/dispense-results/[id]', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -151,21 +97,7 @@ describe('/api/dispense-results/[id]', () => {
     runWithRequestAuthContextMock.mockImplementation((_ctx, callback) => callback());
     unstableRethrowMock.mockImplementation(() => undefined);
     dispenseResultFindFirstMock.mockResolvedValue(createExistingDispenseResult());
-    dispenseResultFindManyMock.mockResolvedValue([
-      {
-        line_id: 'line_1',
-        actual_drug_name: 'Drug B',
-        actual_drug_code: 'drug-b',
-        actual_quantity: 14,
-        actual_unit: '錠',
-        carry_type: 'carry',
-        special_notes: '再調剤',
-        line: {
-          drug_name: 'Drug B',
-          drug_code: 'drug-b',
-        },
-      },
-    ]);
+    dispenseResultFindManyMock.mockResolvedValue(defaultDispenseResultList);
     dispenseAuditFindFirstMock.mockResolvedValue({ id: 'audit_1', result: 'rejected' });
     dispenseResultUpdateMock.mockResolvedValue({ id: 'result_1' });
     dispenseResultUpdateManyMock.mockResolvedValue({ count: 1 });
@@ -173,45 +105,29 @@ describe('/api/dispense-results/[id]', () => {
     visitScheduleFindManyMock.mockResolvedValue([]);
     visitScheduleUpdateMock.mockResolvedValue({});
     visitPreparationUpdateManyMock.mockResolvedValue({ count: 0 });
-    medicationCycleFindFirstMock.mockResolvedValue({
-      id: 'cycle_1',
-      overall_status: 'dispensing',
-      version: 1,
-    });
+    medicationCycleFindFirstMock.mockResolvedValue(defaultMedicationCycle);
     medicationCycleUpdateManyMock.mockResolvedValue({ count: 1 });
     cycleTransitionLogCreateMock.mockResolvedValue({});
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
-      callback({
-        dispenseResult: {
-          findFirst: dispenseResultFindFirstMock,
-          findMany: dispenseResultFindManyMock,
-          update: dispenseResultUpdateMock,
-          updateMany: dispenseResultUpdateManyMock,
-        },
-        dispenseAudit: {
-          findFirst: dispenseAuditFindFirstMock,
-        },
-        dispenseTask: {
-          update: dispenseTaskUpdateMock,
-        },
-        visitSchedule: {
-          findMany: visitScheduleFindManyMock,
-          update: visitScheduleUpdateMock,
-        },
-        visitPreparation: {
-          updateMany: visitPreparationUpdateManyMock,
-        },
-        medicationCycle: {
-          findFirst: medicationCycleFindFirstMock,
-          findFirstOrThrow: vi
+      callback(
+        createDispenseTransactionClient({
+          dispenseResultFindFirst: dispenseResultFindFirstMock,
+          dispenseResultFindMany: dispenseResultFindManyMock,
+          dispenseResultUpdate: dispenseResultUpdateMock,
+          dispenseResultUpdateMany: dispenseResultUpdateManyMock,
+          dispenseAuditFindFirst: dispenseAuditFindFirstMock,
+          dispenseTaskUpdate: dispenseTaskUpdateMock,
+          visitScheduleFindMany: visitScheduleFindManyMock,
+          visitScheduleUpdate: visitScheduleUpdateMock,
+          visitPreparationUpdateMany: visitPreparationUpdateManyMock,
+          medicationCycleFindFirst: medicationCycleFindFirstMock,
+          medicationCycleFindFirstOrThrow: vi
             .fn()
             .mockResolvedValue({ id: 'cycle_1', overall_status: 'audit_pending' }),
-          updateMany: medicationCycleUpdateManyMock,
-        },
-        cycleTransitionLog: {
-          create: cycleTransitionLogCreateMock,
-        },
-      }),
+          medicationCycleUpdateMany: medicationCycleUpdateManyMock,
+          cycleTransitionLogCreate: cycleTransitionLogCreateMock,
+        }),
+      ),
     );
   });
 
