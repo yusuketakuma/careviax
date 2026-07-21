@@ -738,11 +738,6 @@
       "task_id": "MAINT-FILE-SIZE-1000-001"
     },
     {
-      "path": "src/server/services/home-care-ops.ts",
-      "max_lines": 1587,
-      "task_id": "MAINT-FILE-SIZE-1000-001"
-    },
-    {
       "path": "src/server/services/notifications.test.ts",
       "max_lines": 1448,
       "task_id": "MAINT-FILE-SIZE-1000-001"
