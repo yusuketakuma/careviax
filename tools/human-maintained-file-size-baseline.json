@@ -473,11 +473,6 @@
       "task_id": "MAINT-FILE-SIZE-1000-001"
     },
     {
-      "path": "src/app/api/prescription-intakes/route.ts",
-      "max_lines": 1135,
-      "task_id": "MAINT-FILE-SIZE-1000-001"
-    },
-    {
       "path": "src/app/api/qr-scan-drafts/[id]/confirm/route.test.ts",
       "max_lines": 1883,
       "task_id": "MAINT-FILE-SIZE-1000-001"
