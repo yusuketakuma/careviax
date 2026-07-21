@@ -735,7 +735,7 @@
       },
       {
         "path": "Plans.md",
-        "sha256": "bb34392c30fc021ef045255701f625fa2cac5b2da766b73834693115dfa8373f"
+        "sha256": "fe9e7e082933f710f30426ccbc312d979716676433b938dca72827a63a61c712"
       },
       {
         "path": "README.md",
@@ -903,7 +903,7 @@
       },
       {
         "path": "ops/refactor/STATE.md",
-        "sha256": "b1a2ff2b579702903bc3e62caeb8bdbb47d4ed3c71295feed1e01b2f5d76d3b3"
+        "sha256": "8c127aaf38b3d5ee1d87088fa16e6c5c9d62b5540a96b1fd63d5cdfdf4b37001"
       },
       {
         "path": "ops/refactor/archive/PERF_FINDINGS.md",
@@ -1991,7 +1991,7 @@
       },
       {
         "path": "src/server/services/outbound-webhook.ts",
-        "sha256": "eb05ca357d854022ece7a2f0d6b9b3fe0ae326ea6adaabf8c297db96a2ab1719"
+        "sha256": "d9cb1bf7d72b8d2da41dad5ce7188e21c99aa0886586c616ca5e6612594f0a51"
       },
       {
         "path": "src/server/services/pdf-documents.test.tsx",
@@ -31027,7 +31027,7 @@
       "path": "src/app/api/billing-candidates/close/route.test.ts",
       "classes": ["test"],
       "detectors": ["permission_capability", "raw_role_semantics"],
-      "sha256": "1adb19d9026987512eb74115cd1f416e4e2ffc431b195fd40b817698aebed54c"
+      "sha256": "8ce7bfb678ec90269926ee424edca3a06577bf9933c786a9e23bb04b6c306e0c"
     },
     {
       "path": "src/app/api/billing-candidates/export/route.test.ts",

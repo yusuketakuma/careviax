@@ -8,7 +8,6 @@
 import { createHmac } from 'node:crypto';
 import { lookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
-import type { Prisma } from '@prisma/client';
 import { readJsonObject } from '@/lib/db/json';
 import { mapWithConcurrency, normalizeConcurrencyLimit } from '@/lib/utils/concurrency';
 import { logger } from '@/lib/utils/logger';
@@ -68,12 +67,10 @@ const WEBHOOK_REFERENCE_DATA_KEYS: Record<WebhookEventType, ReadonlySet<string>>
   ]),
 };
 
-type WebhookEnqueueTx = {
-  webhookRegistration: Pick<Prisma.TransactionClient['webhookRegistration'], 'findMany'>;
-  webhookDelivery: Pick<Prisma.TransactionClient['webhookDelivery'], 'createMany'>;
-};
-
-function assertReferenceOnlyWebhookData(event: WebhookEventType, data: Record<string, unknown>) {
+export function assertReferenceOnlyWebhookData(
+  event: WebhookEventType,
+  data: Record<string, unknown>,
+) {
   const allowedKeys = WEBHOOK_REFERENCE_DATA_KEYS[event];
   for (const [key, value] of Object.entries(data)) {
     if (!allowedKeys.has(key)) throw new Error('webhook_reference_data_key_not_allowed');
@@ -89,66 +86,6 @@ function assertReferenceOnlyWebhookData(event: WebhookEventType, data: Record<st
       throw new Error('webhook_reference_data_value_too_long');
     }
   }
-}
-
-export async function enqueueWebhookEvent(
-  tx: WebhookEnqueueTx,
-  input: {
-    orgId: string;
-    event: WebhookEventType;
-    data: Record<string, unknown>;
-    eventId?: string;
-    occurredAt?: Date;
-  },
-) {
-  assertReferenceOnlyWebhookData(input.event, input.data);
-  const registrations = await tx.webhookRegistration.findMany({
-    where: { org_id: input.orgId, is_active: true, events: { has: input.event } },
-    orderBy: { id: 'asc' },
-    select: { id: true, url: true },
-  });
-  if (registrations.length === 0) return 0;
-
-  const eventId = input.eventId ?? crypto.randomUUID();
-  const occurredAt = (input.occurredAt ?? new Date()).toISOString();
-  const payload: WebhookPayload = {
-    id: eventId,
-    event: input.event,
-    orgId: input.orgId,
-    occurredAt,
-    data: input.data,
-  };
-  const queued = await tx.webhookDelivery.createMany({
-    data: registrations.map((registration) => ({
-      org_id: input.orgId,
-      webhook_registration_id: registration.id,
-      delivery_id: eventId,
-      event: input.event,
-      payload,
-      url: redactWebhookUrlForDisplay(registration.url),
-      status: 'pending',
-      next_attempt_at: input.occurredAt ?? new Date(occurredAt),
-    })),
-    skipDuplicates: true,
-  });
-  return queued.count;
-}
-
-export function enqueuePatientCreatedWebhook(
-  tx: WebhookEnqueueTx,
-  orgId: string,
-  patient: { id: string; created_at?: Date | null },
-) {
-  return enqueueWebhookEvent(tx, {
-    orgId,
-    event: 'patient.created',
-    data: {
-      patientId: patient.id,
-      ...(patient.created_at instanceof Date
-        ? { createdAt: patient.created_at.toISOString() }
-        : {}),
-    },
-  });
 }
 
 export type WebhookDeliveryResult = {

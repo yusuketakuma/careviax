@@ -25,7 +25,7 @@ import type { Prisma, PrescriptionSourceType } from '@prisma/client';
 import { InvalidTransitionError, VersionConflictError } from '@/lib/db/cycle-transition';
 import { buildCareCaseAssignmentWhere } from '@/lib/auth/visit-schedule-access';
 import { createDispenseDraft } from '@/server/services/dispense-draft-service';
-import { notifyWebhookEventForOrg } from '@/server/services/outbound-webhook';
+import { enqueuePrescriptionCreatedWebhook } from '@/server/services/outbound-webhook-queue';
 import { upsertOperationalTask } from '@/server/services/operational-tasks';
 import {
   buildMedicationCycleAssignmentWhere,
@@ -175,6 +175,8 @@ type Tx = {
   prescriptionLine: Pick<Prisma.TransactionClient['prescriptionLine'], 'findMany'>;
   task: Pick<Prisma.TransactionClient['task'], 'create' | 'updateMany' | 'upsert'>;
   workflowException: Pick<Prisma.TransactionClient['workflowException'], 'create' | 'findFirst'>;
+  webhookRegistration: Pick<Prisma.TransactionClient['webhookRegistration'], 'findMany'>;
+  webhookDelivery: Pick<Prisma.TransactionClient['webhookDelivery'], 'createMany'>;
 };
 
 // Discriminated union for results returned from within the transaction
@@ -1299,6 +1301,15 @@ export async function createPrescriptionIntakeInTx(
     throw err;
   }
 
+  await enqueuePrescriptionCreatedWebhook(tx, {
+    orgId,
+    intakeId: intake.id,
+    cycleId: cycle.id,
+    patientId: cycle.patient_id,
+    sourceType: source_type,
+    lineCount: resolvedLines.length,
+  });
+
   return {
     kind: 'intake',
     intake: {
@@ -1444,18 +1455,6 @@ export async function createPrescriptionIntake(
       prescriberName: input.prescriber_name ?? null,
       sourceType: input.source_type,
     });
-
-  try {
-    await notifyWebhookEventForOrg(orgId, 'prescription.created', {
-      intakeId: intake.id,
-      cycleId: cycle.id,
-      patientId: cycle.patient_id,
-      sourceType: input.source_type,
-      lineCount: intake.lines.length,
-    });
-  } catch {
-    // Webhook delivery is best-effort and must not fail a committed intake.
-  }
 
   return {
     ok: true,

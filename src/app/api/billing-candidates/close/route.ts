@@ -4,7 +4,7 @@ import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { withOrgContext } from '@/lib/db/rls';
 import { error, success, validationError } from '@/lib/api/response';
 import { closeBillingCandidatesForMonth } from '@/server/services/billing-evidence';
-import { enqueueWebhookEvent } from '@/server/services/outbound-webhook';
+import { enqueueWebhookEvent } from '@/server/services/outbound-webhook-queue';
 import { BILLING_DOMAIN_ERROR_MESSAGE, parseBillingDomainOrDefault } from '../billing-domain';
 import { BILLING_MONTH_FORMAT_MESSAGE, parseStrictBillingMonth } from '../billing-month';
 

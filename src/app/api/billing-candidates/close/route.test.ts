@@ -32,7 +32,7 @@ vi.mock('@/server/services/billing-evidence', () => ({
   closeBillingCandidatesForMonth: closeBillingCandidatesForMonthMock,
 }));
 
-vi.mock('@/server/services/outbound-webhook', () => ({
+vi.mock('@/server/services/outbound-webhook-queue', () => ({
   enqueueWebhookEvent: enqueueWebhookEventMock,
 }));
 

@@ -994,12 +994,12 @@
     },
     {
       "path": "src/server/services/prescription-intake-service.test.ts",
-      "max_lines": 2488,
+      "max_lines": 2472,
       "task_id": "MAINT-FILE-SIZE-1000-001"
     },
     {
       "path": "src/server/services/prescription-intake-service.ts",
-      "max_lines": 1816,
+      "max_lines": 1815,
       "task_id": "MAINT-FILE-SIZE-1000-001"
     },
     {

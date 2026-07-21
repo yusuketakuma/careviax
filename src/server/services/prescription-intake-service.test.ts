@@ -1,11 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { addDays } from 'date-fns';
 import { japanDateKey } from '@/lib/utils/date-boundary';
+import {
+  postCreateHookArgs,
+  validPrescriptionIntakeLine,
+} from './prescription-intake-service.test-helpers';
 
 const {
   withOrgContextMock,
   acquireAdvisoryTxLockMock,
-  notifyWebhookEventForOrgMock,
+  enqueuePrescriptionCreatedWebhookMock,
   loggerErrorMock,
   upsertOperationalTaskMock,
   createDispenseDraftMock,
@@ -13,7 +17,7 @@ const {
 } = vi.hoisted(() => ({
   withOrgContextMock: vi.fn(),
   acquireAdvisoryTxLockMock: vi.fn(),
-  notifyWebhookEventForOrgMock: vi.fn(),
+  enqueuePrescriptionCreatedWebhookMock: vi.fn(),
   loggerErrorMock: vi.fn(),
   upsertOperationalTaskMock: vi.fn(),
   createDispenseDraftMock: vi.fn(),
@@ -46,8 +50,8 @@ vi.mock('@/lib/db/client', () => ({
   prisma: prismaMock,
 }));
 
-vi.mock('@/server/services/outbound-webhook', () => ({
-  notifyWebhookEventForOrg: notifyWebhookEventForOrgMock,
+vi.mock('@/server/services/outbound-webhook-queue', () => ({
+  enqueuePrescriptionCreatedWebhook: enqueuePrescriptionCreatedWebhookMock,
 }));
 
 vi.mock('@/lib/utils/logger', () => ({
@@ -120,40 +124,12 @@ function createMockTx() {
       updateMany: vi.fn(),
       upsert: vi.fn(),
     },
+    webhookRegistration: { findMany: vi.fn() },
+    webhookDelivery: { createMany: vi.fn() },
   };
 }
 
-function validLine() {
-  return {
-    line_number: 1,
-    drug_name: 'アムロジピン錠5mg',
-    drug_code: '2149001',
-    dose: '1錠',
-    frequency: '1日1回朝食後',
-    days: 14,
-  };
-}
-
-function postCreateHookArgs() {
-  return {
-    cycleId: 'cycle_1',
-    intakeId: 'intake_1',
-    patientId: 'patient_1',
-    orgId: 'org_1',
-    userId: 'user_1',
-    lines: [
-      {
-        drug_name: 'アムロジピン錠5mg',
-        drug_code: '2149001',
-        dose: '1錠',
-        frequency: '1日1回朝食後',
-        days: 14,
-      },
-    ],
-    prescriberName: '処方医A',
-    sourceType: 'qr_scan' as const,
-  };
-}
+const validLine = validPrescriptionIntakeLine;
 
 describe('createPrescriptionIntake', () => {
   beforeEach(() => {
@@ -167,7 +143,7 @@ describe('createPrescriptionIntake', () => {
     prismaMock.medicationProfile.update.mockResolvedValue({});
     prismaMock.medicationProfile.updateMany.mockResolvedValue({ count: 0 });
     prismaMock.drugMaster.findMany.mockResolvedValue([]);
-    notifyWebhookEventForOrgMock.mockResolvedValue(undefined);
+    enqueuePrescriptionCreatedWebhookMock.mockResolvedValue(0);
     upsertOperationalTaskMock.mockResolvedValue({ id: 'task_1' });
     createDispenseDraftMock.mockResolvedValue({
       id: 'cycle_1',
@@ -209,7 +185,7 @@ describe('createPrescriptionIntake', () => {
     expect(tx.medicationCycle.create).not.toHaveBeenCalled();
     expect(tx.prescriptionIntake.create).not.toHaveBeenCalled();
     expect(tx.dispenseTask.create).not.toHaveBeenCalled();
-    expect(notifyWebhookEventForOrgMock).not.toHaveBeenCalled();
+    expect(enqueuePrescriptionCreatedWebhookMock).not.toHaveBeenCalled();
     expect(prismaMock.prescriptionIntake.findFirst).not.toHaveBeenCalled();
     expect(prismaMock.medicationProfile.findMany).not.toHaveBeenCalled();
   });
@@ -375,6 +351,14 @@ describe('createPrescriptionIntake', () => {
         cycleId: 'cycle_new',
       }),
     );
+    expect(enqueuePrescriptionCreatedWebhookMock).toHaveBeenCalledWith(tx, {
+      orgId: 'org_1',
+      intakeId: 'intake_1',
+      cycleId: 'cycle_new',
+      patientId: 'patient_1',
+      sourceType: 'paper',
+      lineCount: 1,
+    });
   });
 
   it('dual-writes resolved receipt codes as canonical PrescriptionLine YJ identity', async () => {
@@ -796,7 +780,7 @@ describe('createPrescriptionIntake', () => {
     });
     expect(tx.prescriptionIntake.create).not.toHaveBeenCalled();
     expect(tx.dispenseTask.create).not.toHaveBeenCalled();
-    expect(notifyWebhookEventForOrgMock).not.toHaveBeenCalled();
+    expect(enqueuePrescriptionCreatedWebhookMock).not.toHaveBeenCalled();
     expect(prismaMock.prescriptionIntake.findFirst).not.toHaveBeenCalled();
     expect(prismaMock.medicationProfile.findMany).not.toHaveBeenCalled();
   });

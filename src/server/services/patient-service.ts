@@ -23,7 +23,7 @@ import { parseCaseStatusList } from '@/lib/patient/case-status';
 import { createPatientSchema } from '@/lib/validations/patient';
 import { formatDateKey, formatUtcDateKey } from '@/lib/date-key';
 import { japanDayInstantRangeFromDateKey } from '@/lib/utils/date-boundary';
-import { enqueuePatientCreatedWebhook } from '@/server/services/outbound-webhook';
+import { enqueuePatientCreatedWebhook } from '@/server/services/outbound-webhook-queue';
 import type { z } from 'zod';
 import {
   applyPatientAssignmentWhere,

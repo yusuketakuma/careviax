@@ -14,7 +14,7 @@ vi.mock('@/lib/utils/name-resolver', () => ({
   batchResolveNames: vi.fn(),
 }));
 
-vi.mock('@/server/services/outbound-webhook', () => ({
+vi.mock('@/server/services/outbound-webhook-queue', () => ({
   enqueuePatientCreatedWebhook: enqueuePatientCreatedWebhookMock,
 }));
 
