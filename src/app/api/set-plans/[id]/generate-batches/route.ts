@@ -1,13 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { unstable_rethrow } from 'next/navigation';
 import { Prisma } from '@prisma/client';
-import { requireAuthContext } from '@/lib/auth/context';
-import type { AuthContext, AuthRouteContext } from '@/lib/auth/context';
+import { withAuthContext, type AuthContext, type AuthRouteContext } from '@/lib/auth/context';
 import { runWithRequestAuthContext } from '@/lib/auth/request-context';
 import { withOrgContext } from '@/lib/db/rls';
 import { readOptionalJsonObjectRequestBody } from '@/lib/api/request-body';
 import { success, validationError, notFound, conflict, internalError } from '@/lib/api/response';
-import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import {
   buildSetBatchHistorySnapshot,
   collectChangedLineIds,
@@ -29,7 +27,6 @@ import { parseFrequencyToSlots } from '@/lib/dispensing/packaging-group';
 import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cache';
 import { buildSetPlanAssignmentWhere } from '@/server/services/prescription-access';
 import { logger } from '@/lib/utils/logger';
-import { withRoutePerformance } from '@/lib/utils/performance';
 import { z } from 'zod';
 
 const ROUTE = '/api/set-plans/[id]/generate-batches';
@@ -225,15 +222,11 @@ function staleSetBatchReuseResult() {
   };
 }
 
-async function authenticatedPOST(
+async function handlePOST(
   req: NextRequest,
+  ctx: AuthContext,
   routeContext: AuthRouteContext<{ id: string }>,
 ): Promise<NextResponse> {
-  const auth = await requireAuthContext(req, { permission: 'canSet' });
-  if ('response' in auth) return auth.response;
-
-  const { ctx } = auth;
-
   return runWithRequestAuthContext(ctx, async () => {
     const { id } = await routeContext.params;
 
@@ -677,10 +670,10 @@ async function authenticatedPOST(
   });
 }
 
-export async function POST(req: NextRequest, routeContext: AuthRouteContext<{ id: string }>) {
-  return withRoutePerformance(req, async () => {
+export const POST = withAuthContext(
+  async (req, ctx, routeContext) => {
     try {
-      return withSensitiveNoStore(await authenticatedPOST(req, routeContext));
+      return await handlePOST(req, ctx, routeContext);
     } catch (err) {
       unstable_rethrow(err);
       logger.error(
@@ -692,7 +685,8 @@ export async function POST(req: NextRequest, routeContext: AuthRouteContext<{ id
         },
         err,
       );
-      return withSensitiveNoStore(internalError());
+      return internalError();
     }
-  });
-}
+  },
+  { permission: 'canSet' },
+);
