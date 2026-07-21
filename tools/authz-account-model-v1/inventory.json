@@ -735,7 +735,7 @@
       },
       {
         "path": "Plans.md",
-        "sha256": "6ff21ca15b941062d50be9955736e9c951082095fa6a0f3070496ce9d8fa884c"
+        "sha256": "8a2398a7e2410d460098006527c4f1191c1eda2aa064adc3920bed637e65fc84"
       },
       {
         "path": "README.md",
@@ -903,7 +903,7 @@
       },
       {
         "path": "ops/refactor/STATE.md",
-        "sha256": "6de114c2114f91ed9447e1a999bdbdd1214d3222332831a1f9ddcd5e75704c50"
+        "sha256": "bacc88b663de4edcf5e7c6794ad7102b80d141f506fba7055c30e78d25ddd193"
       },
       {
         "path": "ops/refactor/archive/PERF_FINDINGS.md",
@@ -32275,7 +32275,7 @@
       "path": "src/app/api/patients/[id]/visit-brief/route.test.ts",
       "classes": ["test"],
       "detectors": ["permission_capability", "raw_role_semantics"],
-      "sha256": "47d6b5328c215a3d9b1fe44793fb2dc7c70b5a161675ca5ae33ca4d1c846042f"
+      "sha256": "6098d6761cebd06e71310a7acf957887158892331f5eb4027c07e8525d9c8827"
     },
     {
       "path": "src/app/api/patients/[id]/visit-constraints/route.test.ts",

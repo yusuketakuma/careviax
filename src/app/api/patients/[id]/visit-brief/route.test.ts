@@ -17,7 +17,40 @@ const {
 }));
 
 vi.mock('@/lib/auth/context', () => ({
-  requireAuthContext: requireAuthContextMock,
+  withAuthContext:
+    (
+      handler: (
+        req: NextRequest,
+        ctx: {
+          orgId: string;
+          userId: string;
+          role: string;
+          requestId: string;
+          correlationId: string;
+        },
+        routeContext: { params: Promise<{ id: string }> },
+      ) => Promise<Response>,
+      options?: unknown,
+    ) =>
+    async (req: NextRequest, routeContext: { params: Promise<{ id: string }> }) => {
+      const noStore = (response: Response) => {
+        response.headers.set('Cache-Control', 'private, no-store, max-age=0');
+        response.headers.set('Pragma', 'no-cache');
+        return response;
+      };
+      try {
+        const authResult = await requireAuthContextMock(req, options);
+        if ('response' in authResult) return noStore(authResult.response);
+        return noStore(await handler(req, authResult.ctx, routeContext));
+      } catch {
+        return noStore(
+          Response.json(
+            { code: 'INTERNAL_ERROR', message: 'サーバー内部でエラーが発生しました' },
+            { status: 500 },
+          ),
+        );
+      }
+    },
 }));
 
 vi.mock('@/lib/db/client', () => ({
@@ -55,6 +88,8 @@ describe('/api/patients/[id]/visit-brief', () => {
         orgId: 'org_1',
         userId: 'user_1',
         role: 'pharmacist',
+        requestId: 'req_patient_visit_brief_1',
+        correlationId: 'corr_patient_visit_brief_1',
       },
     });
     patientFindFirstMock.mockResolvedValue({ id: 'patient_1' });
