@@ -773,11 +773,6 @@
       "task_id": "MAINT-FILE-SIZE-1000-001"
     },
     {
-      "path": "src/server/services/prescription-intake-service.ts",
-      "max_lines": 1815,
-      "task_id": "MAINT-FILE-SIZE-1000-001"
-    },
-    {
       "path": "src/server/services/report-generator.test.ts",
       "max_lines": 1364,
       "task_id": "MAINT-FILE-SIZE-1000-001"
