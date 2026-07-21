@@ -735,7 +735,7 @@
       },
       {
         "path": "Plans.md",
-        "sha256": "28c235eaf004d90a8837ac1b225ea20dbb01bdc2b624c392efc03bf779863ddb"
+        "sha256": "c140d3b44f83014a20025437057bf4387ea0709ee0431b6632364bf462b8a3a6"
       },
       {
         "path": "README.md",
@@ -903,7 +903,7 @@
       },
       {
         "path": "ops/refactor/STATE.md",
-        "sha256": "59120d0d40bce1e0ed26eb6b644af6fe665bc1d0709468d3776a536754f92bf8"
+        "sha256": "ead058cb02314e033c812eab2546bb46fd837a247cd647704e2dd8e9c6a0c048"
       },
       {
         "path": "ops/refactor/archive/PERF_FINDINGS.md",
@@ -32715,7 +32715,7 @@
       "path": "src/app/api/visit-schedules/[id]/conflict-reconfirmation/route.test.ts",
       "classes": ["test"],
       "detectors": ["raw_role_semantics"],
-      "sha256": "b87df8f2f23e08233941b46cb581740356dbef96bfeb8e6603f45673cab482d8"
+      "sha256": "e42884ca130b504913b73ea6756faffc5791f8165331c609beb3d908e21e8e8f"
     },
     {
       "path": "src/app/api/visit-schedules/[id]/reopen/route.test.ts",
