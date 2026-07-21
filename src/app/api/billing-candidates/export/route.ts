@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { withAuthContext } from '@/lib/auth/context';
 import { conflict, registeredError, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
+import { claimsExportUnavailableDetails } from '@/lib/billing/claims-export-boundary';
 import { readJsonObject, readJsonObjectString } from '@/lib/db/json';
 import { withOrgContext } from '@/lib/db/rls';
 import { recordDataExportAudit } from '@/server/services/export-audit';
@@ -263,10 +264,7 @@ const authenticatedGET = withAuthContext(
         registeredError(
           'CLAIMS_EXPORT_NOT_IMPLEMENTED',
           'CLAIMS-XML はPH-OSから出力できません。批准済みのyrese請求連携を利用してください。',
-          {
-            responsibility: 'yrese_claim_accounting_domain',
-            redirect_url: null,
-          },
+          claimsExportUnavailableDetails(),
         ),
       );
     }

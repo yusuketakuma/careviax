@@ -774,7 +774,7 @@ export const routeCatalog: RouteCatalogEntry[] = [
     path: '/api/billing-candidates/export',
     methods: ['GET'],
     permission: 'canManageBilling',
-    description: '請求候補 CSV エクスポート（CLAIMS-XMLはyrese請求Domainへ移管）',
+    description: '請求候補 CSV エクスポート（CLAIMS-XMLは批准済みyrese契約が存在するまで利用不可）',
     area: 'billing',
   },
   {

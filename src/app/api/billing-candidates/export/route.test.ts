@@ -232,6 +232,9 @@ describe('/api/billing-candidates/export GET', () => {
           'CLAIMS-XML はPH-OSから出力できません。批准済みのyrese請求連携を利用してください。',
         details: {
           responsibility: 'yrese_claim_accounting_domain',
+          capability_status: 'blocked_external_contract',
+          blocked_reason: 'official_contract_unapproved',
+          handoff_available: false,
           redirect_url: null,
         },
       });
