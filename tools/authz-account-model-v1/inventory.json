@@ -735,7 +735,7 @@
       },
       {
         "path": "Plans.md",
-        "sha256": "1e92f6d61c7017e4227c487e789d41c7ea56ada11161096a7955eff157f3eb3d"
+        "sha256": "2e953059146a2f04dcecaa1a1d69fb7db1f387f8f14cb00172353c6c6fd5127f"
       },
       {
         "path": "README.md",
@@ -903,7 +903,7 @@
       },
       {
         "path": "ops/refactor/STATE.md",
-        "sha256": "2a59e17ab4a0b4f91dd65fc9b1a5271c0b12dd3e3cbe360bbc2855eabe34947f"
+        "sha256": "210a73c1c4a73455f9e495bc4bc927db35cc834cd2114f8a4a4e6e02dc5fe433"
       },
       {
         "path": "ops/refactor/archive/PERF_FINDINGS.md",
@@ -6270,30 +6270,6 @@
       "test_refs": ["src/app/api/pca-pumps/[id]/route.test.ts"],
       "reprojection_or_removal": "owner_review_required_before_cutover:src/app/api/pca-pumps/[id]/route.ts",
       "binding_profile": "p_307456c242ed",
-      "capability_profile": "p_a325f45c9b2a"
-    },
-    {
-      "id": "mapping_precedence:src/app/api/pca-pumps/route.ts",
-      "detector": "mapping_precedence",
-      "path": "src/app/api/pca-pumps/route.ts",
-      "evidence_sha256": "e5601167ff531ae7aa8373110aa5e1810d9c776060429b6f31b7f03f36df8f7d",
-      "principal": "human",
-      "lifecycles": ["request"],
-      "surfaces": ["rls", "writer"],
-      "exact_values_or_scopes": [
-        "not_applicable:mapping_precedence:no-enumerated-value:src/app/api/pca-pumps/route.ts"
-      ],
-      "route_method_purpose": "GET,POST /api/pca-pumps purpose=legacy_unspecified_pending_review",
-      "precedence_selection": "legacy_observed_requires_human_review",
-      "synthetic_derived_mapping": "not_applicable:no-synthetic-mapping-observed:src/app/api/pca-pumps/route.ts",
-      "persistence_contract": "not_applicable:no-persistence-observed:src/app/api/pca-pumps/route.ts",
-      "ttl_contract": "not_applicable:no-ttl-observed:src/app/api/pca-pumps/route.ts",
-      "mapping_disposition": "candidate_requires_human",
-      "owner": "Identity / Authz",
-      "approval_status": "pending_owner_review",
-      "test_refs": ["src/app/api/pca-pumps/route.test.ts"],
-      "reprojection_or_removal": "owner_review_required_before_cutover:src/app/api/pca-pumps/route.ts",
-      "binding_profile": "p_5a1a5e55993d",
       "capability_profile": "p_a325f45c9b2a"
     },
     {
@@ -32166,7 +32142,7 @@
       "path": "src/app/api/pca-pumps/route.test.ts",
       "classes": ["test"],
       "detectors": ["mapping_precedence", "raw_role_semantics"],
-      "sha256": "2e591a90d218bf8f95c4677dc074076c011b3cf83996b3028325dadecad4a133"
+      "sha256": "6deccbaae166180ac910ea3d0015ec8129c1b1848d2a211c2710e6b0a6ef4ae5"
     },
     {
       "path": "src/app/api/pharmacist-shift-templates/[id]/route.test.ts",

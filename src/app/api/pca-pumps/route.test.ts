@@ -56,8 +56,8 @@ vi.mock('@/lib/utils/logger', () => ({
 import { GET as rawGET, POST as rawPOST } from './route';
 import { expectNoStore } from '@/test/api-response-assertions';
 
-const GET = (req: NextRequest) => rawGET(req);
-const POST = (req: NextRequest) => rawPOST(req);
+const GET = (req: NextRequest) => rawGET(req, { params: Promise.resolve({}) });
+const POST = (req: NextRequest) => rawPOST(req, { params: Promise.resolve({}) });
 
 function createRequest(url: string) {
   return new NextRequest(url, { headers: { 'x-org-id': 'org_1' } });
@@ -286,6 +286,19 @@ describe('/api/pca-pumps GET', () => {
 
     expect(response.status).toBe(400);
     expectNoStore(response);
+    expect(pcaPumpFindManyMock).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['query', 'q=PCA&q=CADD'],
+    ['limit', 'q=PCA&limit=10&limit=20'],
+    ['status', 'status=available&status=rented'],
+  ])('rejects duplicate %s filters before querying pumps', async (_label, query) => {
+    const response = await GET(createRequest(`http://localhost/api/pca-pumps?${query}`));
+
+    expect(response.status).toBe(400);
+    expectNoStore(response);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(pcaPumpFindManyMock).not.toHaveBeenCalled();
   });
 
