@@ -10,6 +10,17 @@ import { buildPatientHref } from '@/lib/patient/navigation';
 import { buildAdminFacilityUnitsApiPath } from '@/lib/facilities/api-paths';
 import { buildOrgMembersApiPath } from '@/lib/org-members/api-paths';
 import { PatientForm } from './patient-form';
+import {
+  captureQueryConfig,
+  careTeamFailureQueryResult,
+  careTeamQueryResult,
+  duplicatePatientResponse,
+  fillRequiredPatientFields,
+  lookupFetchResponse,
+  lookupFailureQueryResult,
+  type QueryConfig,
+  validPatientDefaults,
+} from './patient-form.test-fixtures';
 
 setupDomTestEnv();
 
@@ -103,13 +114,6 @@ describe('PatientForm', () => {
     vi.mocked(buildOrgMembersApiPath).mockClear();
   });
 
-  function fillRequiredPatientFields() {
-    fireEvent.change(screen.getByLabelText('氏名 *'), { target: { value: '山田 太郎' } });
-    fireEvent.change(screen.getByLabelText('フリガナ *'), { target: { value: 'ヤマダ タロウ' } });
-    fireEvent.change(screen.getByLabelText('生年月日 *'), { target: { value: '1950-01-01' } });
-    fireEvent.change(screen.getByLabelText('性別 *'), { target: { value: 'male' } });
-  }
-
   it('shows a label-only summary while keeping field-level error messages after an empty submit', async () => {
     useOrgIdMock.mockReturnValue('org_1');
     useQueryMock.mockReturnValue({ data: [], isLoading: false });
@@ -200,22 +204,7 @@ describe('PatientForm', () => {
 
   it('renders the patient-level care team selects in edit mode and pre-populates current assignments', () => {
     useOrgIdMock.mockReturnValue('org_1');
-    useQueryMock.mockImplementation((options: { queryKey: unknown[] }) => {
-      const key = options.queryKey[1];
-      if (key === 'care-team-pharmacists') {
-        return {
-          data: [
-            { id: 'ph1', name: '薬剤 太郎' },
-            { id: 'ph2', name: '薬剤 次郎' },
-          ],
-          isLoading: false,
-        };
-      }
-      if (key === 'care-team-staff') {
-        return { data: [{ id: 'st1', name: '事務 花子' }], isLoading: false };
-      }
-      return { data: [], isLoading: false };
-    });
+    useQueryMock.mockImplementation((options) => careTeamQueryResult(options, true));
 
     render(
       <PatientForm
@@ -246,16 +235,7 @@ describe('PatientForm', () => {
 
   it('renders the care team selects in create mode so a team can be assigned at registration', () => {
     useOrgIdMock.mockReturnValue('org_1');
-    useQueryMock.mockImplementation((options: { queryKey: unknown[] }) => {
-      const key = options.queryKey[1];
-      if (key === 'care-team-pharmacists') {
-        return { data: [{ id: 'ph1', name: '薬剤 太郎' }], isLoading: false };
-      }
-      if (key === 'care-team-staff') {
-        return { data: [{ id: 'st1', name: '事務 花子' }], isLoading: false };
-      }
-      return { data: [], isLoading: false };
-    });
+    useQueryMock.mockImplementation((options) => careTeamQueryResult(options));
 
     render(<PatientForm />);
 
@@ -272,28 +252,9 @@ describe('PatientForm', () => {
     useOrgIdMock.mockReturnValue('org_1');
     const pharmacistsRefetch = vi.fn();
     const staffRefetch = vi.fn();
-    useQueryMock.mockImplementation((options: { queryKey: unknown[] }) => {
-      const key = options.queryKey[1];
-      if (key === 'care-team-pharmacists') {
-        return {
-          data: undefined,
-          isLoading: false,
-          isError: true,
-          error: new Error('薬剤師一覧の取得に失敗しました'),
-          refetch: pharmacistsRefetch,
-        };
-      }
-      if (key === 'care-team-staff') {
-        return {
-          data: undefined,
-          isLoading: false,
-          isError: true,
-          error: new Error('スタッフ一覧の取得に失敗しました'),
-          refetch: staffRefetch,
-        };
-      }
-      return { data: [], isLoading: false, isError: false, refetch: vi.fn() };
-    });
+    useQueryMock.mockImplementation((options) =>
+      careTeamFailureQueryResult(options, pharmacistsRefetch, staffRefetch, vi.fn()),
+    );
 
     render(<PatientForm />);
 
@@ -317,34 +278,12 @@ describe('PatientForm', () => {
 
   it('delegates patient-form lookup query paths and tenant headers to shared helpers', async () => {
     useOrgIdMock.mockReturnValue('org_1');
-    const queryConfigs: Array<{ queryKey: unknown[]; queryFn?: () => Promise<unknown> }> = [];
-    useQueryMock.mockImplementation(
-      (options: { queryKey: unknown[]; queryFn?: () => Promise<unknown> }) => {
-        queryConfigs.push(options);
-        return { data: [], isLoading: false, isError: false, refetch: vi.fn() };
-      },
+    const queryConfigs: QueryConfig[] = [];
+    useQueryMock.mockImplementation((options) =>
+      captureQueryConfig(queryConfigs, options, vi.fn()),
     );
     const fetchMock = vi.mocked(fetch);
-    fetchMock.mockImplementation(async (input) => {
-      const url = String(input);
-      if (url.includes('/org/members')) return jsonResponse({ data: [] });
-      return jsonResponse({
-        data: [],
-        meta: {
-          total_count: 0,
-          visible_count: 0,
-          hidden_count: 0,
-          truncated: false,
-          count_basis: url.includes('/service-areas')
-            ? 'service_areas'
-            : url.includes('/pharmacists')
-              ? 'memberships'
-              : 'facilities',
-          filters_applied: {},
-          limit: 100,
-        },
-      });
-    });
+    fetchMock.mockImplementation(lookupFetchResponse);
 
     render(<PatientForm />);
 
@@ -373,29 +312,16 @@ describe('PatientForm', () => {
 
   it('keeps API messages from failed patient-form lookup fetches', async () => {
     useOrgIdMock.mockReturnValue('org_1');
-    const queryConfigs: Array<{ queryKey: unknown[]; queryFn?: () => Promise<unknown> }> = [];
-    useQueryMock.mockImplementation(
-      (options: { queryKey: unknown[]; queryFn?: () => Promise<unknown> }) => {
-        queryConfigs.push(options);
-        return { data: [], isLoading: false, isError: false, refetch: vi.fn() };
-      },
+    const queryConfigs: QueryConfig[] = [];
+    useQueryMock.mockImplementation((options) =>
+      captureQueryConfig(queryConfigs, options, vi.fn()),
     );
     const fetchMock = vi.mocked(fetch);
     fetchMock.mockImplementation(async () =>
       jsonResponse({ message: '患者フォーム候補を表示できません' }, 403),
     );
 
-    render(
-      <PatientForm
-        defaultValues={{
-          name: '山田 太郎',
-          name_kana: 'ヤマダ タロウ',
-          birth_date: '1950-01-01',
-          gender: 'male',
-          facility_id: 'facility_1',
-        }}
-      />,
-    );
+    render(<PatientForm defaultValues={{ ...validPatientDefaults, facility_id: 'facility_1' }} />);
 
     for (const key of [
       'facilities',
@@ -550,12 +476,7 @@ describe('PatientForm', () => {
     render(
       <PatientForm
         patientId={hostilePatientId}
-        defaultValues={{
-          name: '山田 太郎',
-          name_kana: 'ヤマダ タロウ',
-          birth_date: '1950-01-01',
-          gender: 'male',
-        }}
+        defaultValues={validPatientDefaults}
         expectedUpdatedAt="2026-03-30T09:00:00.000Z"
       />,
     );
@@ -601,12 +522,7 @@ describe('PatientForm', () => {
     render(
       <PatientForm
         patientId="patient_1"
-        defaultValues={{
-          name: '山田 太郎',
-          name_kana: 'ヤマダ タロウ',
-          birth_date: '1950-01-01',
-          gender: 'male',
-        }}
+        defaultValues={validPatientDefaults}
         expectedUpdatedAt="2026-03-30T09:00:00.000Z"
       />,
     );
@@ -652,13 +568,7 @@ describe('PatientForm', () => {
     render(
       <PatientForm
         patientId={hostilePatientId}
-        defaultValues={{
-          name: '山田 太郎',
-          name_kana: 'ヤマダ タロウ',
-          birth_date: '1950-01-01',
-          gender: 'male',
-          medical_insurance_number: '12345678',
-        }}
+        defaultValues={{ ...validPatientDefaults, medical_insurance_number: '12345678' }}
       />,
     );
 
@@ -702,17 +612,7 @@ describe('PatientForm', () => {
       }),
     );
 
-    render(
-      <PatientForm
-        patientId="patient_1"
-        defaultValues={{
-          name: '山田 太郎',
-          name_kana: 'ヤマダ タロウ',
-          birth_date: '1950-01-01',
-          gender: 'male',
-        }}
-      />,
-    );
+    render(<PatientForm patientId="patient_1" defaultValues={validPatientDefaults} />);
 
     fireEvent.click(screen.getByRole('tab', { name: '住所・保険' }));
     fireEvent.click(screen.getByRole('button', { name: '資格確認' }));
@@ -731,17 +631,7 @@ describe('PatientForm', () => {
     const rawErrorMessage = 'オンライン資格確認はまだ有効化されていません';
     fetchMock.mockResolvedValueOnce(jsonResponse({ message: rawErrorMessage }, 501));
 
-    render(
-      <PatientForm
-        patientId="patient_1"
-        defaultValues={{
-          name: '山田 太郎',
-          name_kana: 'ヤマダ タロウ',
-          birth_date: '1950-01-01',
-          gender: 'male',
-        }}
-      />,
-    );
+    render(<PatientForm patientId="patient_1" defaultValues={validPatientDefaults} />);
 
     fireEvent.click(screen.getByRole('tab', { name: '住所・保険' }));
     fireEvent.click(screen.getByRole('button', { name: '資格確認' }));
@@ -758,17 +648,7 @@ describe('PatientForm', () => {
     const fetchMock = vi.mocked(fetch);
     fetchMock.mockRejectedValueOnce(new Error(''));
 
-    render(
-      <PatientForm
-        patientId="patient_1"
-        defaultValues={{
-          name: '山田 太郎',
-          name_kana: 'ヤマダ タロウ',
-          birth_date: '1950-01-01',
-          gender: 'male',
-        }}
-      />,
-    );
+    render(<PatientForm patientId="patient_1" defaultValues={validPatientDefaults} />);
 
     fireEvent.click(screen.getByRole('tab', { name: '住所・保険' }));
     fireEvent.click(screen.getByRole('button', { name: '資格確認' }));
@@ -782,26 +662,15 @@ describe('PatientForm', () => {
   it('encodes the selected facility id for the unit query before fetching', async () => {
     const hostileFacilityId = 'fac/1?x=y#z';
     useOrgIdMock.mockReturnValue('org_1');
-    const queryConfigs: Array<{ queryKey: unknown[]; queryFn?: () => Promise<unknown> }> = [];
-    useQueryMock.mockImplementation(
-      (options: { queryKey: unknown[]; queryFn?: () => Promise<unknown> }) => {
-        queryConfigs.push(options);
-        return { data: [], isLoading: false, isError: false, refetch: vi.fn() };
-      },
+    const queryConfigs: QueryConfig[] = [];
+    useQueryMock.mockImplementation((options) =>
+      captureQueryConfig(queryConfigs, options, vi.fn()),
     );
     const fetchMock = vi.mocked(fetch);
     fetchMock.mockResolvedValueOnce(jsonResponse({ data: [] }));
 
     render(
-      <PatientForm
-        defaultValues={{
-          name: '山田 太郎',
-          name_kana: 'ヤマダ タロウ',
-          birth_date: '1950-01-01',
-          gender: 'male',
-          facility_id: hostileFacilityId,
-        }}
-      />,
+      <PatientForm defaultValues={{ ...validPatientDefaults, facility_id: hostileFacilityId }} />,
     );
 
     const facilityUnitsQuery = queryConfigs.find(
@@ -828,26 +697,13 @@ describe('PatientForm', () => {
     'fails closed without fetching facility units for exact dot-segment facility id %p',
     async (facilityId) => {
       useOrgIdMock.mockReturnValue('org_1');
-      const queryConfigs: Array<{ queryKey: unknown[]; queryFn?: () => Promise<unknown> }> = [];
-      useQueryMock.mockImplementation(
-        (options: { queryKey: unknown[]; queryFn?: () => Promise<unknown> }) => {
-          queryConfigs.push(options);
-          return { data: [], isLoading: false, isError: false, refetch: vi.fn() };
-        },
+      const queryConfigs: QueryConfig[] = [];
+      useQueryMock.mockImplementation((options) =>
+        captureQueryConfig(queryConfigs, options, vi.fn()),
       );
       const fetchMock = vi.mocked(fetch);
 
-      render(
-        <PatientForm
-          defaultValues={{
-            name: '山田 太郎',
-            name_kana: 'ヤマダ タロウ',
-            birth_date: '1950-01-01',
-            gender: 'male',
-            facility_id: facilityId,
-          }}
-        />,
-      );
+      render(<PatientForm defaultValues={{ ...validPatientDefaults, facility_id: facilityId }} />);
 
       const facilityUnitsQuery = queryConfigs.find(
         (config) => config.queryKey[1] === 'facility-units',
@@ -861,30 +717,17 @@ describe('PatientForm', () => {
   it('surfaces facility unit fetch failures instead of showing an empty unit list', () => {
     useOrgIdMock.mockReturnValue('org_1');
     const refetch = vi.fn();
-    useQueryMock.mockImplementation((options: { queryKey: unknown[] }) => {
-      if (options.queryKey[1] === 'facility-units') {
-        return {
-          data: undefined,
-          isLoading: false,
-          isError: true,
-          error: new Error('ユニット一覧の取得に失敗しました'),
-          refetch,
-        };
-      }
-      return { data: [], isLoading: false, isError: false, refetch: vi.fn() };
-    });
-
-    render(
-      <PatientForm
-        defaultValues={{
-          name: '山田 太郎',
-          name_kana: 'ヤマダ タロウ',
-          birth_date: '1950-01-01',
-          gender: 'male',
-          facility_id: 'fac_1',
-        }}
-      />,
+    useQueryMock.mockImplementation((options) =>
+      lookupFailureQueryResult(
+        options,
+        'facility-units',
+        'ユニット一覧の取得に失敗しました',
+        refetch,
+        vi.fn(),
+      ),
     );
+
+    render(<PatientForm defaultValues={{ ...validPatientDefaults, facility_id: 'fac_1' }} />);
 
     fireEvent.click(screen.getByRole('tab', { name: '住所・保険' }));
 
@@ -897,30 +740,17 @@ describe('PatientForm', () => {
   it('surfaces service area fetch failures instead of hiding visit coverage checks', () => {
     useOrgIdMock.mockReturnValue('org_1');
     const refetch = vi.fn();
-    useQueryMock.mockImplementation((options: { queryKey: unknown[] }) => {
-      if (options.queryKey[1] === 'service-areas') {
-        return {
-          data: undefined,
-          isLoading: false,
-          isError: true,
-          error: new Error('訪問エリア設定の取得に失敗しました'),
-          refetch,
-        };
-      }
-      return { data: [], isLoading: false, isError: false, refetch: vi.fn() };
-    });
-
-    render(
-      <PatientForm
-        defaultValues={{
-          name: '山田 太郎',
-          name_kana: 'ヤマダ タロウ',
-          birth_date: '1950-01-01',
-          gender: 'male',
-          address: '東京都新宿区',
-        }}
-      />,
+    useQueryMock.mockImplementation((options) =>
+      lookupFailureQueryResult(
+        options,
+        'service-areas',
+        '訪問エリア設定の取得に失敗しました',
+        refetch,
+        vi.fn(),
+      ),
     );
+
+    render(<PatientForm defaultValues={{ ...validPatientDefaults, address: '東京都新宿区' }} />);
 
     fireEvent.click(screen.getByRole('tab', { name: '住所・保険' }));
 
@@ -977,25 +807,7 @@ describe('PatientForm', () => {
     vi.mocked(buildPatientHref).mockImplementation((id: string) => `/patients/__sentinel_${id}__`);
     try {
       const fetchMock = vi.mocked(fetch);
-      fetchMock.mockResolvedValueOnce({
-        ok: false,
-        status: 409,
-        json: async () => ({
-          message: '重複',
-          details: {
-            duplicate_type: 'patient_identity',
-            duplicates: [
-              {
-                id: 'patient_existing',
-                name: '山田 太郎',
-                name_kana: 'ヤマダ タロウ',
-                birth_date: '1950-01-01T00:00:00.000Z',
-                gender: 'male',
-              },
-            ],
-          },
-        }),
-      } as Response);
+      fetchMock.mockResolvedValueOnce(duplicatePatientResponse);
 
       render(<PatientForm />);
       fillRequiredPatientFields();

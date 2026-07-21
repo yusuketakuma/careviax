@@ -623,11 +623,6 @@
       "task_id": "MAINT-FILE-SIZE-1000-001"
     },
     {
-      "path": "src/components/features/patients/patient-form.test.tsx",
-      "max_lines": 1138,
-      "task_id": "MAINT-FILE-SIZE-1000-001"
-    },
-    {
       "path": "src/components/features/patients/patient-form.tsx",
       "max_lines": 2817,
       "task_id": "MAINT-FILE-SIZE-1000-001"
