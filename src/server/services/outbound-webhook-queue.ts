@@ -11,12 +11,14 @@ type WebhookEnqueueTx = {
   webhookDelivery: Pick<Prisma.TransactionClient['webhookDelivery'], 'createMany'>;
 };
 
+type WebhookReferenceData = Record<string, string | number | boolean | null>;
+
 export async function enqueueWebhookEvent(
   tx: WebhookEnqueueTx,
   input: {
     orgId: string;
     event: WebhookEventType;
-    data: Record<string, unknown>;
+    data: WebhookReferenceData;
     eventId?: string;
     occurredAt?: Date;
   },
@@ -31,7 +33,7 @@ export async function enqueueWebhookEvent(
 
   const eventId = input.eventId ?? crypto.randomUUID();
   const occurredAt = (input.occurredAt ?? new Date()).toISOString();
-  const payload: WebhookPayload = {
+  const payload: WebhookPayload<WebhookReferenceData> = {
     id: eventId,
     event: input.event,
     orgId: input.orgId,
