@@ -793,11 +793,6 @@
       "task_id": "MAINT-FILE-SIZE-1000-001"
     },
     {
-      "path": "tools/tests/helpers/design-screen-map.ts",
-      "max_lines": 1083,
-      "task_id": "MAINT-FILE-SIZE-1000-001"
-    },
-    {
       "path": "tools/tests/ui-major-screens.spec.ts",
       "max_lines": 3187,
       "task_id": "MAINT-FILE-SIZE-1000-001"

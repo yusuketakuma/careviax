@@ -735,7 +735,7 @@
       },
       {
         "path": "Plans.md",
-        "sha256": "08dc6dc570019e78c2cf47f887dcf726a509be2edb71620d919def9f59c0410a"
+        "sha256": "742f8cbc7e9ad5df8d9bc881ade6f1b0f78bde3c1e2870af4429463569b6e1d3"
       },
       {
         "path": "README.md",
@@ -903,7 +903,7 @@
       },
       {
         "path": "ops/refactor/STATE.md",
-        "sha256": "674025ac122bf38ea276e59a9a596cabf41c99c43549b7bb0ec5e6dbd7157e8f"
+        "sha256": "e05e261a64495d2120b854986e0bd37bb25d4986c32622236362af2032f0766c"
       },
       {
         "path": "ops/refactor/archive/PERF_FINDINGS.md",
@@ -2326,8 +2326,16 @@
         "sha256": "7a9f620be7abe67d6914af78802aedc9e8c21a5ea7f645a835b1bf7bc6e8defb"
       },
       {
+        "path": "tools/tests/helpers/design-screen-map-contract.ts",
+        "sha256": "c1390f1f00eab46e2abfbaddf43517395871d52e3c8080b88cb15bae7e49502b"
+      },
+      {
+        "path": "tools/tests/helpers/design-screen-map-new.ts",
+        "sha256": "5ecf519764512f404ede3322a41e4b16c247bd4e13aa2445facea2065f92b208"
+      },
+      {
         "path": "tools/tests/helpers/design-screen-map.ts",
-        "sha256": "346ef4aa5cfc1c1209381311c9db0be87bfae3cb7da44eb73ef9653fc8bd2546"
+        "sha256": "1f06d786c9949fc45ab9c00bd8c073633b40d53b86bec22b02793e8d786ca17e"
       },
       {
         "path": "tools/tests/helpers/e2e-database-target.test.ts",
