@@ -1,12 +1,11 @@
 import { NextRequest } from 'next/server';
 import { unstable_rethrow } from 'next/navigation';
 import { Prisma } from '@prisma/client';
-import { requireAuthContext } from '@/lib/auth/context';
+import { withAuthContext, type AuthContext } from '@/lib/auth/context';
 import { runWithRequestAuthContext } from '@/lib/auth/request-context';
 import { withOrgContext } from '@/lib/db/rls';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { success, validationError, conflict, internalError } from '@/lib/api/response';
-import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { buildSetPlanPackagingSummary } from '@/lib/dispensing/set-plan-packaging';
 import {
   transitionCycleStatus,
@@ -21,7 +20,6 @@ import {
 import { dateKeySchema } from '@/lib/validations/date-key';
 import { MAX_SET_PLAN_DAY_COUNT, isSetPlanPeriodWithinLimit } from '@/lib/set-plan-period';
 import { logger } from '@/lib/utils/logger';
-import { withRoutePerformance } from '@/lib/utils/performance';
 import { z } from 'zod';
 
 const ROUTE = '/api/set-plans';
@@ -113,15 +111,7 @@ function isUniqueConstraintError(error: unknown) {
   return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
 }
 
-async function authenticatedGET(req: NextRequest) {
-  const auth = await requireAuthContext(req, {
-    permission: 'canSet',
-    message: 'セット計画の閲覧権限がありません',
-  });
-  if ('response' in auth) return auth.response;
-
-  const { ctx } = auth;
-
+async function handleGET(req: NextRequest, ctx: AuthContext) {
   return runWithRequestAuthContext(ctx, async () => {
     const { searchParams } = new URL(req.url);
     const query = parseSetPlanListQuery(searchParams);
@@ -193,10 +183,10 @@ async function authenticatedGET(req: NextRequest) {
   });
 }
 
-export async function GET(req: NextRequest) {
-  return withRoutePerformance(req, async () => {
+export const GET = withAuthContext(
+  async (req, ctx) => {
     try {
-      return withSensitiveNoStore(await authenticatedGET(req));
+      return await handleGET(req, ctx);
     } catch (err) {
       unstable_rethrow(err);
       logger.error(
@@ -208,20 +198,13 @@ export async function GET(req: NextRequest) {
         },
         err,
       );
-      return withSensitiveNoStore(internalError());
+      return internalError();
     }
-  });
-}
+  },
+  { permission: 'canSet', message: 'セット計画の閲覧権限がありません' },
+);
 
-async function authenticatedPOST(req: NextRequest) {
-  const auth = await requireAuthContext(req, {
-    permission: 'canSet',
-    message: 'セット計画の作成権限がありません',
-  });
-  if ('response' in auth) return auth.response;
-
-  const { ctx } = auth;
-
+async function handlePOST(req: NextRequest, ctx: AuthContext) {
   return runWithRequestAuthContext(ctx, async () => {
     const payload = await readJsonObjectRequestBody(req);
     if (!payload) return validationError('リクエストボディが不正です');
@@ -420,10 +403,10 @@ async function authenticatedPOST(req: NextRequest) {
   });
 }
 
-export async function POST(req: NextRequest) {
-  return withRoutePerformance(req, async () => {
+export const POST = withAuthContext(
+  async (req, ctx) => {
     try {
-      return withSensitiveNoStore(await authenticatedPOST(req));
+      return await handlePOST(req, ctx);
     } catch (err) {
       unstable_rethrow(err);
       logger.error(
@@ -435,7 +418,8 @@ export async function POST(req: NextRequest) {
         },
         err,
       );
-      return withSensitiveNoStore(internalError());
+      return internalError();
     }
-  });
-}
+  },
+  { permission: 'canSet', message: 'セット計画の作成権限がありません' },
+);
