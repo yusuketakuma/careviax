@@ -248,11 +248,6 @@
       "task_id": "MAINT-FILE-SIZE-1000-001"
     },
     {
-      "path": "src/app/(dashboard)/schedules/emergency-route/emergency-route-content.tsx",
-      "max_lines": 1048,
-      "task_id": "MAINT-FILE-SIZE-1000-001"
-    },
-    {
       "path": "src/app/(dashboard)/schedules/proposals/schedule-proposals-content.test.tsx",
       "max_lines": 2761,
       "task_id": "MAINT-FILE-SIZE-1000-001"

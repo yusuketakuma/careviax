@@ -29,6 +29,7 @@ import {
 } from '../visit-route-client';
 import { ScheduleDateNavigator } from '../schedule-date-navigator';
 import { emergencyRouteResponseSchema } from './emergency-route-response-schema';
+import { EmergencyRouteOrderChart } from './emergency-route-order-chart';
 
 /**
  * p0_20「緊急処方の割込・ルート再計算」:
@@ -38,84 +39,6 @@ import { emergencyRouteResponseSchema } from './emergency-route-response-schema'
  * 2 案は visit-routes API の再計算結果(totalDurationSeconds)で移動増を比較する。
  * 採用案は既存の route_order 更新 API に反映する(緊急訪問を先頭側へ寄せた順序)。
  */
-
-const CHART_WIDTH = 520;
-const CHART_HEIGHT = 320;
-
-/** 折れ線+番号ノードの模式チャート(地図ではなく訪問順 1→n の進行を示す) */
-function RouteOrderChart({
-  scheduleIds,
-  emergencyScheduleId,
-  lockedScheduleIds,
-}: {
-  scheduleIds: string[];
-  emergencyScheduleId: string | null;
-  lockedScheduleIds: Set<string>;
-}) {
-  const count = scheduleIds.length;
-  const coords = useMemo(() => {
-    if (count === 0) return [] as Array<{ x: number; y: number }>;
-    if (count === 1) return [{ x: CHART_WIDTH / 2, y: CHART_HEIGHT / 2 }];
-    // 横方向に等間隔、縦はジグザグで「ルートの起伏」を模式表現する(地図ではない)
-    const marginX = CHART_WIDTH * 0.08;
-    const usableX = CHART_WIDTH - marginX * 2;
-    const top = CHART_HEIGHT * 0.18;
-    const bottom = CHART_HEIGHT * 0.82;
-    return scheduleIds.map((_, index) => ({
-      x: marginX + (usableX * index) / (count - 1),
-      y: index % 2 === 0 ? bottom - (index % 3) * 28 : top + (index % 3) * 28,
-    }));
-  }, [scheduleIds, count]);
-
-  // 訪問順ノードは状態を意味する: 緊急=blocked(赤) / 確定固定=waiting(紫=他者確認待ち) / その他=info(青)。
-  function nodeColor(scheduleId: string) {
-    if (scheduleId === emergencyScheduleId) return 'var(--state-blocked)';
-    if (lockedScheduleIds.has(scheduleId)) return 'var(--state-waiting)';
-    return 'var(--tag-info)';
-  }
-
-  return (
-    <div className="rounded-lg bg-tag-info/5 p-3">
-      <svg
-        viewBox={`0 0 ${CHART_WIDTH} ${CHART_HEIGHT}`}
-        className="h-auto w-full"
-        role="img"
-        aria-label={`再計算後の訪問順(${count}件)`}
-      >
-        {coords.length > 1 ? (
-          <polyline
-            points={coords.map((coord) => `${coord.x},${coord.y}`).join(' ')}
-            fill="none"
-            stroke="var(--tag-info)"
-            strokeWidth={3.5}
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        ) : null}
-        {coords.map((coord, index) => {
-          const scheduleId = scheduleIds[index];
-          return (
-            <g key={scheduleId}>
-              <title>{`訪問 ${index + 1}`}</title>
-              <circle cx={coord.x} cy={coord.y} r={15} fill={nodeColor(scheduleId)} />
-              <text
-                x={coord.x}
-                y={coord.y}
-                dy="0.35em"
-                textAnchor="middle"
-                fill="#ffffff"
-                fontSize={13}
-                fontWeight={600}
-              >
-                {index + 1}
-              </text>
-            </g>
-          );
-        })}
-      </svg>
-    </div>
-  );
-}
 
 type ScenarioResult = {
   plan: VisitRoutePlan;
@@ -896,7 +819,7 @@ export function EmergencyRouteContent({ initialDate }: { initialDate?: string })
           <h2 className="text-[15px] font-bold text-foreground">再計算後のルート</h2>
 
           {recalc ? (
-            <RouteOrderChart
+            <EmergencyRouteOrderChart
               scheduleIds={selectedScenario?.plan.orderedScheduleIds ?? []}
               emergencyScheduleId={recalc.emergencyScheduleId}
               lockedScheduleIds={selectedScenarioLockedSet}
