@@ -735,7 +735,7 @@
       },
       {
         "path": "Plans.md",
-        "sha256": "81e5a1daff3c02bc689f4237e3dfe0ef09be42076d7be398e3e4c0ec252be8af"
+        "sha256": "55ce40aeb58e9d8b5a029028e00867ad228ced12f9980663291bbe8b4691fbd4"
       },
       {
         "path": "README.md",
@@ -903,7 +903,7 @@
       },
       {
         "path": "ops/refactor/STATE.md",
-        "sha256": "263c1900b749c079e883be8aeca494ecb9dbc9b846b5883f51282f1941101c01"
+        "sha256": "aae9896f9d08d6ea78c23d01abbdbcf728741aa40cc2efd91757ea3c87b56702"
       },
       {
         "path": "ops/refactor/archive/PERF_FINDINGS.md",
@@ -1335,11 +1335,11 @@
       },
       {
         "path": "src/app/api/patients/medications/bulk-export/route.test.ts",
-        "sha256": "1cdc418cee10d452cccc9195d50083ab2edc2b119ccc8f0e7e9287808ae1fb4c"
+        "sha256": "5f1f406ffeca1f8b29524d61aa98951c02ec24e99b7163c43ddc90976cac44c6"
       },
       {
         "path": "src/app/api/patients/medications/bulk-export/route.ts",
-        "sha256": "2d20d6d373f7e2429efef9fe5c13a0e7f675cb0b1550a028833125ab2d2f6b62"
+        "sha256": "7ed673a8eb7d18b0944b2026f2905a20d8782bda01a9acaf63a87044887772ac"
       },
       {
         "path": "src/app/api/prescription-intakes/route.ts",
@@ -32323,7 +32323,7 @@
       "path": "src/app/api/patients/medications/bulk-export/route.test.ts",
       "classes": ["test"],
       "detectors": ["raw_role_semantics"],
-      "sha256": "1cdc418cee10d452cccc9195d50083ab2edc2b119ccc8f0e7e9287808ae1fb4c"
+      "sha256": "5f1f406ffeca1f8b29524d61aa98951c02ec24e99b7163c43ddc90976cac44c6"
     },
     {
       "path": "src/app/api/patients/route.test.ts",

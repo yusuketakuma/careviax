@@ -15,7 +15,33 @@ const {
 }));
 
 vi.mock('@/lib/auth/context', () => ({
-  requireAuthContext: requireAuthContextMock,
+  withAuthContext:
+    (
+      handler: (req: NextRequest, ctx: Record<string, unknown>) => Promise<Response>,
+      options?: unknown,
+    ) =>
+    async (req: NextRequest) => {
+      const noStore = (response: Response) => {
+        response.headers.set('Cache-Control', 'private, no-store, max-age=0');
+        response.headers.set('Pragma', 'no-cache');
+        return response;
+      };
+      try {
+        const authResult = await requireAuthContextMock(req, options);
+        if ('response' in authResult) return noStore(authResult.response);
+        const response = noStore(await handler(req, authResult.ctx));
+        response.headers.set('x-request-id', authResult.ctx.requestId);
+        response.headers.set('x-correlation-id', authResult.ctx.correlationId);
+        return response;
+      } catch {
+        return noStore(
+          Response.json(
+            { code: 'INTERNAL_ERROR', message: 'サーバー内部でエラーが発生しました' },
+            { status: 500 },
+          ),
+        );
+      }
+    },
 }));
 
 vi.mock('@/lib/db/client', () => ({
@@ -47,6 +73,12 @@ vi.mock('@/lib/utils/logger', () => ({
 }));
 
 import { POST } from './route';
+
+const emptyRouteContext = { params: Promise.resolve({}) };
+
+function callPOST(request: NextRequest) {
+  return POST(request, emptyRouteContext);
+}
 
 function createRequest(body: unknown) {
   return new NextRequest('http://localhost/api/patients/medications/bulk-export', {
@@ -106,7 +138,7 @@ describe('/api/patients/medications/bulk-export POST', () => {
   });
 
   it('queues a bulk export and returns 202', async () => {
-    const response = await POST(
+    const response = await callPOST(
       createRequest({
         patient_ids: [' patient_1 ', 'patient_2', 'patient_1'],
       }),
@@ -148,7 +180,7 @@ describe('/api/patients/medications/bulk-export POST', () => {
       startedImmediately: false,
     });
 
-    const response = await POST(
+    const response = await callPOST(
       createRequest({
         patient_ids: ['patient_1', 'patient_2'],
       }),
@@ -165,7 +197,7 @@ describe('/api/patients/medications/bulk-export POST', () => {
     const rawError = '患者A medication-history raw export token=secret drain failed';
     drainMedicationHistoryBulkExportQueueMock.mockRejectedValueOnce(new Error(rawError));
 
-    const response = await POST(createRequest({ patient_ids: ['patient_1'] }));
+    const response = await callPOST(createRequest({ patient_ids: ['patient_1'] }));
     await Promise.resolve();
 
     if (!response) {
@@ -191,7 +223,7 @@ describe('/api/patients/medications/bulk-export POST', () => {
   });
 
   it('returns 400 for invalid payloads', async () => {
-    const response = await POST(createRequest({ patient_ids: [] }));
+    const response = await callPOST(createRequest({ patient_ids: [] }));
 
     if (!response) {
       throw new Error('Expected a response from invalid bulk export POST');
@@ -208,7 +240,7 @@ describe('/api/patients/medications/bulk-export POST', () => {
       new MedicationHistoryBulkExportError('WORKFLOW_CONFLICT', 'queue full', 409),
     );
 
-    const response = await POST(createRequest({ patient_ids: ['patient_1'] }));
+    const response = await callPOST(createRequest({ patient_ids: ['patient_1'] }));
 
     if (!response) {
       throw new Error('Expected a response from conflicted bulk export POST');
@@ -219,7 +251,7 @@ describe('/api/patients/medications/bulk-export POST', () => {
   });
 
   it('rejects blank patient ids before queueing work', async () => {
-    const response = await POST(createRequest({ patient_ids: ['patient_1', '   '] }));
+    const response = await callPOST(createRequest({ patient_ids: ['patient_1', '   '] }));
 
     if (!response) {
       throw new Error('Expected a response from blank patient id bulk export POST');
@@ -230,7 +262,7 @@ describe('/api/patients/medications/bulk-export POST', () => {
   });
 
   it('rejects non-object export payloads before queueing work', async () => {
-    const response = await POST(createRequest([]));
+    const response = await callPOST(createRequest([]));
 
     if (!response) {
       throw new Error('Expected a response from non-object bulk export POST');
@@ -241,7 +273,7 @@ describe('/api/patients/medications/bulk-export POST', () => {
   });
 
   it('rejects malformed JSON export payloads before queueing work', async () => {
-    const response = await POST(createMalformedJsonRequest());
+    const response = await callPOST(createMalformedJsonRequest());
 
     if (!response) {
       throw new Error('Expected a response from malformed JSON bulk export POST');
@@ -259,7 +291,7 @@ describe('/api/patients/medications/bulk-export POST', () => {
     const rawError = '患者A medication-history raw export token=secret failed';
     queueMedicationHistoryBulkExportMock.mockRejectedValueOnce(new Error(rawError));
 
-    const response = await POST(createRequest({ patient_ids: ['patient_1'] }));
+    const response = await callPOST(createRequest({ patient_ids: ['patient_1'] }));
 
     if (!response) {
       throw new Error('Expected a response from failed bulk export POST');
@@ -287,7 +319,7 @@ describe('/api/patients/medications/bulk-export POST', () => {
       }),
     });
 
-    const response = await POST(createRequest({ patient_ids: ['patient_1'] }));
+    const response = await callPOST(createRequest({ patient_ids: ['patient_1'] }));
 
     if (!response) {
       throw new Error('Expected a response from unauthorized bulk export POST');
