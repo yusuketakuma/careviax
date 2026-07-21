@@ -583,11 +583,6 @@
       "task_id": "MAINT-FILE-SIZE-1000-001"
     },
     {
-      "path": "src/app/api/visit-schedules/reorder/route.ts",
-      "max_lines": 1081,
-      "task_id": "MAINT-FILE-SIZE-1000-001"
-    },
-    {
       "path": "src/app/api/visit-schedules/route.test.ts",
       "max_lines": 1713,
       "task_id": "MAINT-FILE-SIZE-1000-001"
