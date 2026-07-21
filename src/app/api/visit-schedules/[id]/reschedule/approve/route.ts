@@ -1,14 +1,12 @@
 import { NextRequest } from 'next/server';
-import { unstable_rethrow } from 'next/navigation';
 import { z } from 'zod';
-import { requireAuthContext } from '@/lib/auth/context';
+import { withAuthContext, type AuthContext, type AuthRouteContext } from '@/lib/auth/context';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { readOptionalJsonObjectRequestBody } from '@/lib/api/request-body';
 import { prisma } from '@/lib/db/client';
 import { withOrgContext } from '@/lib/db/rls';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
-import { success, notFound, validationError, conflict, internalError } from '@/lib/api/response';
-import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
+import { success, notFound, validationError, conflict } from '@/lib/api/response';
 import { dispatchNotificationEvent } from '@/server/services/notifications';
 import { resolveOperationalTasks } from '@/server/services/operational-tasks';
 import { fetchEmergencyContacts } from '@/lib/patient/emergency-contacts';
@@ -28,15 +26,9 @@ const approveRescheduleSchema = z.object({
 
 async function authenticatedPOST(
   req: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
+  ctx: AuthContext,
+  { params }: AuthRouteContext<{ id: string }>,
 ) {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canAdmin',
-    message: 'リスケ承認の権限がありません',
-  });
-  if ('response' in authResult) return authResult.response;
-  const { ctx } = authResult;
-
   const { id: rawId } = await params;
   const id = normalizeRequiredRouteParam(rawId);
   if (!id) return validationError('訪問予定IDが不正です');
@@ -243,11 +235,7 @@ async function authenticatedPOST(
   });
 }
 
-export async function POST(req: NextRequest, routeContext: { params: Promise<{ id: string }> }) {
-  try {
-    return withSensitiveNoStore(await authenticatedPOST(req, routeContext));
-  } catch (err) {
-    unstable_rethrow(err);
-    return withSensitiveNoStore(internalError());
-  }
-}
+export const POST = withAuthContext(authenticatedPOST, {
+  permission: 'canAdmin',
+  message: 'リスケ承認の権限がありません',
+});

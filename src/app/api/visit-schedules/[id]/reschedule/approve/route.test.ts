@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 
 const {
   requireAuthContextMock,
@@ -29,6 +29,46 @@ const {
 
 vi.mock('@/lib/auth/context', () => ({
   requireAuthContext: requireAuthContextMock,
+  withAuthContext:
+    (
+      handler: (
+        req: NextRequest,
+        ctx: { orgId: string; userId: string; role: string },
+        routeContext: { params: Promise<{ id: string }> },
+      ) => Promise<Response>,
+      options: { permission: string; message: string },
+    ) =>
+    async (req: NextRequest, routeContext: { params: Promise<{ id: string }> }) => {
+      let authResult: Awaited<ReturnType<typeof requireAuthContextMock>>;
+      try {
+        authResult = await requireAuthContextMock(req, options);
+      } catch {
+        const response = NextResponse.json(
+          { code: 'INTERNAL_ERROR', message: 'サーバー内部でエラーが発生しました' },
+          { status: 500 },
+        );
+        response.headers.set('Cache-Control', 'private, no-store, max-age=0');
+        response.headers.set('Pragma', 'no-cache');
+        return response;
+      }
+      if ('response' in authResult) {
+        authResult.response.headers.set('Cache-Control', 'private, no-store, max-age=0');
+        authResult.response.headers.set('Pragma', 'no-cache');
+        return authResult.response;
+      }
+      let response: Response;
+      try {
+        response = await handler(req, authResult.ctx, routeContext);
+      } catch {
+        response = NextResponse.json(
+          { code: 'INTERNAL_ERROR', message: 'サーバー内部でエラーが発生しました' },
+          { status: 500 },
+        );
+      }
+      response.headers.set('Cache-Control', 'private, no-store, max-age=0');
+      response.headers.set('Pragma', 'no-cache');
+      return response;
+    },
 }));
 
 vi.mock('@/lib/db/client', () => ({

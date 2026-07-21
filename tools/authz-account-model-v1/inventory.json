@@ -735,7 +735,7 @@
       },
       {
         "path": "Plans.md",
-        "sha256": "967b24e7ded2ecc057acf70311aa9b09df67e109df439cbc84fbf2cdc70ac902"
+        "sha256": "77fa817b262b1698b10dd6b9eaf672d2679040669f929e78ef1cafcfb91b1d29"
       },
       {
         "path": "README.md",
@@ -903,7 +903,7 @@
       },
       {
         "path": "ops/refactor/STATE.md",
-        "sha256": "26dd94a4bd6da4368775ea6b5983055b6b3a993e5684e8d4a4094257a6931120"
+        "sha256": "256d8ab0e95f157b94e1aacc828d3759c96e6ce16046398add6f8113fa37507d"
       },
       {
         "path": "ops/refactor/archive/PERF_FINDINGS.md",
@@ -32727,7 +32727,7 @@
       "path": "src/app/api/visit-schedules/[id]/reschedule/approve/route.test.ts",
       "classes": ["test"],
       "detectors": ["raw_role_semantics"],
-      "sha256": "f4ebf6541c2ed954d20719f91e69c8fc0aed1557506b0819493c9b8e6138ff45"
+      "sha256": "8e781ee74ed89fd51e68999e42f01e52b27199f9e078283bef049b3e1041f5d8"
     },
     {
       "path": "src/app/api/visit-schedules/[id]/reschedule/route.test.ts",
