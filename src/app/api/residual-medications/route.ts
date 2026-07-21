@@ -1,23 +1,18 @@
-import { unstable_rethrow } from 'next/navigation';
 import { NextRequest } from 'next/server';
-import { requireAuthContext } from '@/lib/auth/context';
-import { runWithRequestAuthContext } from '@/lib/auth/request-context';
+import { withAuthContext, type AuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { optionalBoundedIntegerSearchParam, parseSearchParams } from '@/lib/api/validation';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
-import { internalError, success, validationError, notFound } from '@/lib/api/response';
+import { success, validationError, notFound } from '@/lib/api/response';
 import { readStrictOptionalSearchParam } from '@/lib/api/search-params';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { prisma } from '@/lib/db/client';
 import { allocateDisplayIdRange } from '@/lib/db/display-id';
 import { buildVisitRecordScheduleAssignmentWhere } from '@/lib/auth/visit-schedule-access';
-import { logger } from '@/lib/utils/logger';
-import { withRoutePerformance } from '@/lib/utils/performance';
 import { findMissingResidualMedicationDrugMasterIds } from '@/server/services/visit-record-derived-data';
 import { z } from 'zod';
 import type { Prisma } from '@prisma/client';
 
-const ROUTE = '/api/residual-medications';
 const MAX_RESIDUAL_MEDICATION_LIMIT = 200;
 
 function blankStringToUndefined(value: unknown) {
@@ -67,124 +62,99 @@ function parseResidualMedicationFilters(searchParams: URLSearchParams) {
   };
 }
 
-async function authenticatedGET(req: NextRequest) {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canVisit',
-    message: '残薬情報の閲覧権限がありません',
-  });
-  if ('response' in authResult) return authResult.response;
-  const { ctx } = authResult;
+async function authenticatedGET(req: NextRequest, ctx: AuthContext) {
+  const { searchParams } = new URL(req.url);
+  const filters = parseResidualMedicationFilters(searchParams);
+  if (!filters.ok) return filters.response;
 
-  return runWithRequestAuthContext(ctx, async () => {
-    const { searchParams } = new URL(req.url);
-    const filters = parseResidualMedicationFilters(searchParams);
-    if (!filters.ok) return filters.response;
+  const { visitRecordId, patientId } = filters;
+  const parsed = parseSearchParams(residualMedicationQuerySchema, searchParams);
+  if (!parsed.ok) {
+    return withSensitiveNoStore(
+      validationError('クエリパラメータが不正です', parsed.error.flatten().fieldErrors),
+    );
+  }
+  const take = parsed.data.limit;
 
-    const { visitRecordId, patientId } = filters;
-    const parsed = parseSearchParams(residualMedicationQuerySchema, searchParams);
-    if (!parsed.ok) {
-      return withSensitiveNoStore(
-        validationError('クエリパラメータが不正です', parsed.error.flatten().fieldErrors),
-      );
-    }
-    const take = parsed.data.limit;
+  const visitRecordAssignmentWhere = buildVisitRecordScheduleAssignmentWhere(ctx);
 
-    const visitRecordAssignmentWhere = buildVisitRecordScheduleAssignmentWhere(ctx);
-
-    let patientVisitRecordIds: string[] | null = null;
-    if (visitRecordId) {
-      const visitRecordWhere: Prisma.VisitRecordWhereInput = {
-        id: visitRecordId,
-        org_id: ctx.orgId,
-        ...(patientId ? { patient_id: patientId } : {}),
-        ...(visitRecordAssignmentWhere ? { AND: [visitRecordAssignmentWhere] } : {}),
-      };
-      const visitRecord = await prisma.visitRecord.findFirst({
-        where: visitRecordWhere,
-        select: { id: true },
-      });
-
-      if (!visitRecord) return withSensitiveNoStore(success({ data: [] }));
-      patientVisitRecordIds = [visitRecord.id];
-    }
-
-    // 有界（判断）: 以下2つの visitRecord.findMany は id のみを取得し、後続の residualMedication
-    // フィルタ(visit_record_id IN ...)を構築するための内部集合であり、レスポンスとして直接返る
-    // SSOT一覧ではない。ここに take を入れて打ち切ると、古い訪問記録に紐づく残薬データが
-    // フィルタ集合から欠落し、"無いように見える"サイレントな取りこぼしになる（残薬は服薬安全に
-    // 直結するため fail-close を優先し、打ち切らない）。実際の応答側の打ち切り可否は下の
-    // residualMedication.findMany の take 判断に委ねる。
-    if (!visitRecordId && patientId) {
-      const visitRecords = await prisma.visitRecord.findMany({
-        where: {
-          org_id: ctx.orgId,
-          patient_id: patientId,
-          ...(visitRecordAssignmentWhere ? { AND: [visitRecordAssignmentWhere] } : {}),
-        },
-        select: { id: true },
-      });
-
-      patientVisitRecordIds = visitRecords.map((record) => record.id);
-      if (patientVisitRecordIds.length === 0) {
-        return withSensitiveNoStore(success({ data: [] }));
-      }
-    } else if (!visitRecordId && visitRecordAssignmentWhere) {
-      const visitRecords = await prisma.visitRecord.findMany({
-        where: {
-          org_id: ctx.orgId,
-          AND: [visitRecordAssignmentWhere],
-        },
-        select: { id: true },
-      });
-
-      patientVisitRecordIds = visitRecords.map((record) => record.id);
-      if (patientVisitRecordIds.length === 0) {
-        return withSensitiveNoStore(success({ data: [] }));
-      }
-    }
-
-    // 有界（既存仕様・据え置き）: limit は 1〜MAX_RESIDUAL_MEDICATION_LIMIT(200) の範囲で任意指定でき、
-    // 省略時は take なし（無制限）。これは既存テスト
-    // 「preserves unbounded residual medication reads when limit is omitted」で明示的に固定された
-    // 意図的な挙動であり、残薬データを暗黙に打ち切らない fail-close 判断を継続する（今回の棚卸しでは
-    // 変更しない）。実運用の呼び出し元(medications-content.tsx等)は limit を明示指定している。
-    const records = await prisma.residualMedication.findMany({
-      where: {
-        org_id: ctx.orgId,
-        ...(visitRecordId
-          ? { visit_record_id: visitRecordId }
-          : patientVisitRecordIds
-            ? { visit_record_id: { in: patientVisitRecordIds } }
-            : {}),
-      },
-      orderBy: { created_at: 'asc' },
-      ...(take !== undefined ? { take } : {}),
+  let patientVisitRecordIds: string[] | null = null;
+  if (visitRecordId) {
+    const visitRecordWhere: Prisma.VisitRecordWhereInput = {
+      id: visitRecordId,
+      org_id: ctx.orgId,
+      ...(patientId ? { patient_id: patientId } : {}),
+      ...(visitRecordAssignmentWhere ? { AND: [visitRecordAssignmentWhere] } : {}),
+    };
+    const visitRecord = await prisma.visitRecord.findFirst({
+      where: visitRecordWhere,
+      select: { id: true },
     });
 
-    return withSensitiveNoStore(success({ data: records }));
+    if (!visitRecord) return withSensitiveNoStore(success({ data: [] }));
+    patientVisitRecordIds = [visitRecord.id];
+  }
+
+  // 有界（判断）: 以下2つの visitRecord.findMany は id のみを取得し、後続の residualMedication
+  // フィルタ(visit_record_id IN ...)を構築するための内部集合であり、レスポンスとして直接返る
+  // SSOT一覧ではない。ここに take を入れて打ち切ると、古い訪問記録に紐づく残薬データが
+  // フィルタ集合から欠落し、"無いように見える"サイレントな取りこぼしになる（残薬は服薬安全に
+  // 直結するため fail-close を優先し、打ち切らない）。実際の応答側の打ち切り可否は下の
+  // residualMedication.findMany の take 判断に委ねる。
+  if (!visitRecordId && patientId) {
+    const visitRecords = await prisma.visitRecord.findMany({
+      where: {
+        org_id: ctx.orgId,
+        patient_id: patientId,
+        ...(visitRecordAssignmentWhere ? { AND: [visitRecordAssignmentWhere] } : {}),
+      },
+      select: { id: true },
+    });
+
+    patientVisitRecordIds = visitRecords.map((record) => record.id);
+    if (patientVisitRecordIds.length === 0) {
+      return withSensitiveNoStore(success({ data: [] }));
+    }
+  } else if (!visitRecordId && visitRecordAssignmentWhere) {
+    const visitRecords = await prisma.visitRecord.findMany({
+      where: {
+        org_id: ctx.orgId,
+        AND: [visitRecordAssignmentWhere],
+      },
+      select: { id: true },
+    });
+
+    patientVisitRecordIds = visitRecords.map((record) => record.id);
+    if (patientVisitRecordIds.length === 0) {
+      return withSensitiveNoStore(success({ data: [] }));
+    }
+  }
+
+  // 有界（既存仕様・据え置き）: limit は 1〜MAX_RESIDUAL_MEDICATION_LIMIT(200) の範囲で任意指定でき、
+  // 省略時は take なし（無制限）。これは既存テスト
+  // 「preserves unbounded residual medication reads when limit is omitted」で明示的に固定された
+  // 意図的な挙動であり、残薬データを暗黙に打ち切らない fail-close 判断を継続する（今回の棚卸しでは
+  // 変更しない）。実運用の呼び出し元(medications-content.tsx等)は limit を明示指定している。
+  const records = await prisma.residualMedication.findMany({
+    where: {
+      org_id: ctx.orgId,
+      ...(visitRecordId
+        ? { visit_record_id: visitRecordId }
+        : patientVisitRecordIds
+          ? { visit_record_id: { in: patientVisitRecordIds } }
+          : {}),
+    },
+    orderBy: { created_at: 'asc' },
+    ...(take !== undefined ? { take } : {}),
   });
+
+  return withSensitiveNoStore(success({ data: records }));
 }
 
-export async function GET(req: NextRequest, routeContext?: unknown) {
-  void routeContext;
-  return withRoutePerformance(req, async () => {
-    try {
-      return withSensitiveNoStore(await authenticatedGET(req));
-    } catch (err) {
-      unstable_rethrow(err);
-      logger.error(
-        {
-          event: 'residual_medications_get_unhandled_error',
-          route: ROUTE,
-          method: req.method,
-          status: 500,
-        },
-        err,
-      );
-      return withSensitiveNoStore(internalError());
-    }
-  });
-}
+export const GET = withAuthContext(authenticatedGET, {
+  permission: 'canVisit',
+  message: '残薬情報の閲覧権限がありません',
+});
 
 const createResidualMedicationSchema = z.object({
   visit_record_id: z.string().min(1, '訪問記録IDは必須です'),
@@ -203,116 +173,87 @@ const createResidualMedicationSchema = z.object({
     .min(1, '薬剤情報は1件以上必要です'),
 });
 
-async function authenticatedPOST(req: NextRequest) {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canVisit',
-    message: '残薬情報の作成権限がありません',
+async function authenticatedPOST(req: NextRequest, ctx: AuthContext) {
+  const payload = await readJsonObjectRequestBody(req);
+  if (!payload) return validationError('リクエストボディが不正です');
+
+  const parsed = createResidualMedicationSchema.safeParse(payload);
+  if (!parsed.success) {
+    return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
+  }
+
+  const { visit_record_id, medications } = parsed.data;
+
+  const visitRecordAssignmentWhere = buildVisitRecordScheduleAssignmentWhere(ctx);
+  const visitRecord = await prisma.visitRecord.findFirst({
+    where: {
+      id: visit_record_id,
+      org_id: ctx.orgId,
+      ...(visitRecordAssignmentWhere ? { AND: [visitRecordAssignmentWhere] } : {}),
+    },
+    select: { id: true },
   });
-  if ('response' in authResult) return authResult.response;
-  const { ctx } = authResult;
+  if (!visitRecord) return notFound('指定された訪問記録が見つかりません');
 
-  return runWithRequestAuthContext(ctx, async () => {
-    const payload = await readJsonObjectRequestBody(req);
-    if (!payload) return validationError('リクエストボディが不正です');
-
-    const parsed = createResidualMedicationSchema.safeParse(payload);
-    if (!parsed.success) {
-      return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
+  const result = await withOrgContext(ctx.orgId, async (tx) => {
+    const missingDrugMasterIds = await findMissingResidualMedicationDrugMasterIds(tx, medications);
+    if (missingDrugMasterIds.length > 0) {
+      return {
+        error: 'invalid_drug_master_id' as const,
+      };
     }
 
-    const { visit_record_id, medications } = parsed.data;
+    const displayIds = await allocateDisplayIdRange(
+      tx,
+      'ResidualMedication',
+      ctx.orgId,
+      medications.length,
+    );
+    const created = await Promise.all(
+      medications.map((med, index) => {
+        const displayId = displayIds[index];
+        if (!displayId) throw new Error('ResidualMedication display_id allocation range is short');
+        // Calculate excess days: remaining_quantity / prescribed_daily_dose
+        let excess_days: number | undefined;
+        if (
+          med.prescribed_daily_dose &&
+          med.prescribed_daily_dose > 0 &&
+          med.remaining_quantity > 0
+        ) {
+          excess_days = Math.floor(med.remaining_quantity / med.prescribed_daily_dose);
+        }
 
-    const visitRecordAssignmentWhere = buildVisitRecordScheduleAssignmentWhere(ctx);
-    const visitRecord = await prisma.visitRecord.findFirst({
-      where: {
-        id: visit_record_id,
-        org_id: ctx.orgId,
-        ...(visitRecordAssignmentWhere ? { AND: [visitRecordAssignmentWhere] } : {}),
-      },
-      select: { id: true },
-    });
-    if (!visitRecord) return notFound('指定された訪問記録が見つかりません');
+        return tx.residualMedication.create({
+          data: {
+            display_id: displayId,
+            org_id: ctx.orgId,
+            visit_record_id,
+            drug_master_id: med.drug_master_id ?? null,
+            drug_name: med.drug_name,
+            drug_code: med.drug_code,
+            prescribed_quantity: med.prescribed_quantity,
+            remaining_quantity: med.remaining_quantity,
+            excess_days: excess_days ?? null,
+            is_reduction_target: excess_days !== undefined && excess_days > 7,
+            is_prohibited_reduction: med.is_prohibited_reduction,
+          },
+        });
+      }),
+    );
 
-    const result = await withOrgContext(ctx.orgId, async (tx) => {
-      const missingDrugMasterIds = await findMissingResidualMedicationDrugMasterIds(
-        tx,
-        medications,
-      );
-      if (missingDrugMasterIds.length > 0) {
-        return {
-          error: 'invalid_drug_master_id' as const,
-        };
-      }
-
-      const displayIds = await allocateDisplayIdRange(
-        tx,
-        'ResidualMedication',
-        ctx.orgId,
-        medications.length,
-      );
-      const created = await Promise.all(
-        medications.map((med, index) => {
-          const displayId = displayIds[index];
-          if (!displayId)
-            throw new Error('ResidualMedication display_id allocation range is short');
-          // Calculate excess days: remaining_quantity / prescribed_daily_dose
-          let excess_days: number | undefined;
-          if (
-            med.prescribed_daily_dose &&
-            med.prescribed_daily_dose > 0 &&
-            med.remaining_quantity > 0
-          ) {
-            excess_days = Math.floor(med.remaining_quantity / med.prescribed_daily_dose);
-          }
-
-          return tx.residualMedication.create({
-            data: {
-              display_id: displayId,
-              org_id: ctx.orgId,
-              visit_record_id,
-              drug_master_id: med.drug_master_id ?? null,
-              drug_name: med.drug_name,
-              drug_code: med.drug_code,
-              prescribed_quantity: med.prescribed_quantity,
-              remaining_quantity: med.remaining_quantity,
-              excess_days: excess_days ?? null,
-              is_reduction_target: excess_days !== undefined && excess_days > 7,
-              is_prohibited_reduction: med.is_prohibited_reduction,
-            },
-          });
-        }),
-      );
-
-      return created;
-    });
-
-    if ('error' in result && result.error === 'invalid_drug_master_id') {
-      return validationError('入力値が不正です', {
-        drug_master_id: ['存在する医薬品マスターを選択してください'],
-      });
-    }
-
-    return success({ data: result }, 201);
+    return created;
   });
+
+  if ('error' in result && result.error === 'invalid_drug_master_id') {
+    return validationError('入力値が不正です', {
+      drug_master_id: ['存在する医薬品マスターを選択してください'],
+    });
+  }
+
+  return success({ data: result }, 201);
 }
 
-export async function POST(req: NextRequest, routeContext?: unknown) {
-  void routeContext;
-  return withRoutePerformance(req, async () => {
-    try {
-      return withSensitiveNoStore(await authenticatedPOST(req));
-    } catch (err) {
-      unstable_rethrow(err);
-      logger.error(
-        {
-          event: 'residual_medications_post_unhandled_error',
-          route: ROUTE,
-          method: req.method,
-          status: 500,
-        },
-        err,
-      );
-      return withSensitiveNoStore(internalError());
-    }
-  });
-}
+export const POST = withAuthContext(authenticatedPOST, {
+  permission: 'canVisit',
+  message: '残薬情報の作成権限がありません',
+});

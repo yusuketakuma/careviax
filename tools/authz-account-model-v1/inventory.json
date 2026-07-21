@@ -735,7 +735,7 @@
       },
       {
         "path": "Plans.md",
-        "sha256": "b397dfd8fa0192094b0e21141a5cf3e78274183e97c06a51652ecaf90ba76b88"
+        "sha256": "1a068ead0d23b2400ce1533c88be5295c78e4ee4731ec5203d701573accb2948"
       },
       {
         "path": "README.md",
@@ -903,7 +903,7 @@
       },
       {
         "path": "ops/refactor/STATE.md",
-        "sha256": "30f5f6f3e519894a25d35b5bff711648891125a2194ed137f1991a8002cf8b7e"
+        "sha256": "9a131e5b9cfa7073ab8704eeaffc8cf34e585d8308b5ed4f3d6fd97eed050e24"
       },
       {
         "path": "ops/refactor/archive/PERF_FINDINGS.md",
@@ -6468,30 +6468,6 @@
       "reprojection_or_removal": "owner_review_required_before_cutover:src/app/api/prescription-intakes/facility-batch/route.ts",
       "binding_profile": "p_272bb648526f",
       "capability_profile": "p_e877ab5cedae"
-    },
-    {
-      "id": "mapping_precedence:src/app/api/residual-medications/route.ts",
-      "detector": "mapping_precedence",
-      "path": "src/app/api/residual-medications/route.ts",
-      "evidence_sha256": "e5601167ff531ae7aa8373110aa5e1810d9c776060429b6f31b7f03f36df8f7d",
-      "principal": "human",
-      "lifecycles": ["request"],
-      "surfaces": ["rls", "writer"],
-      "exact_values_or_scopes": [
-        "not_applicable:mapping_precedence:no-enumerated-value:src/app/api/residual-medications/route.ts"
-      ],
-      "route_method_purpose": "GET,POST /api/residual-medications purpose=legacy_unspecified_pending_review",
-      "precedence_selection": "legacy_observed_requires_human_review",
-      "synthetic_derived_mapping": "not_applicable:no-synthetic-mapping-observed:src/app/api/residual-medications/route.ts",
-      "persistence_contract": "not_applicable:no-persistence-observed:src/app/api/residual-medications/route.ts",
-      "ttl_contract": "not_applicable:no-ttl-observed:src/app/api/residual-medications/route.ts",
-      "mapping_disposition": "candidate_requires_human",
-      "owner": "Identity / Authz",
-      "approval_status": "pending_owner_review",
-      "test_refs": ["src/app/api/residual-medications/route.test.ts"],
-      "reprojection_or_removal": "owner_review_required_before_cutover:src/app/api/residual-medications/route.ts",
-      "binding_profile": "p_3c4ed93d9ed9",
-      "capability_profile": "p_2f5f321572a2"
     },
     {
       "id": "mapping_precedence:src/app/api/set-audits/route.ts",
@@ -32585,7 +32561,7 @@
       "path": "src/app/api/residual-medications/route.test.ts",
       "classes": ["test"],
       "detectors": ["mapping_precedence", "permission_capability", "raw_role_semantics"],
-      "sha256": "1cbb39b046ed209bcc4920417dd3efaec1d7a21c1c3133dbbdb43ec86a0bd1e7"
+      "sha256": "2b4399b2198bfc7b80665cd8cbe4ad5d64cec2072b440e2850b407f1a5e25305"
     },
     {
       "path": "src/app/api/saved-views/route.test.ts",
