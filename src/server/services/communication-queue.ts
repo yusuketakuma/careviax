@@ -1,7 +1,5 @@
 import { addDays } from 'date-fns';
 import { isoOrNull } from '@/lib/utils/date';
-import { Prisma } from '@prisma/client';
-import { prisma } from '@/lib/db/client';
 import { buildCommunicationRequestsHref } from '@/lib/communications/navigation';
 import { formatCommunicationRequestTypeLabel } from '@/lib/communications/request-labels';
 import { buildExternalHref } from '@/lib/dashboard/home-link-builders';
@@ -9,279 +7,32 @@ import { buildPatientHref } from '@/lib/patient/navigation';
 import { buildReportHref } from '@/lib/reports/navigation';
 import { buildScheduleFocusHref } from '@/lib/schedules/navigation';
 import { buildExternalAccessGrantVisibilityWhere } from './external-access';
+import {
+  normalizeCommunicationQueueLimit,
+  type CommunicationDraftSuggestion,
+  type CommunicationQueueDbClient,
+  type CommunicationQueueItem,
+  type CommunicationQueueOverview,
+  type CommunicationQueueReader,
+  type CommunicationQueueType,
+  type DbClient,
+  type ListCommunicationQueueArgs,
+  type QueuePriority,
+  type TimelineSeed,
+} from './communication-queue.contract';
+import {
+  buildInboundReviewStateByEventId,
+  buildInboundTaskStateByEventId,
+} from './communication-queue-inbound-state';
 
-export type CommunicationQueueDbClient = typeof prisma | Prisma.TransactionClient;
-export type CommunicationQueueReader = {
-  patientSelfReport?: {
-    findMany(args: unknown): Promise<
-      Array<{
-        id: string;
-        patient_id: string;
-        subject: string;
-        category?: string | null;
-        requested_callback: boolean;
-        preferred_contact_time: string | null;
-        reported_by_name: string | null;
-        status: string;
-        created_at: Date;
-      }>
-    >;
-  };
-  visitScheduleContactLog?: {
-    findMany(args: unknown): Promise<
-      Array<{
-        id: string;
-        patient_id: string;
-        schedule_id: string | null;
-        outcome: string;
-        contact_name: string | null;
-        contact_phone: string | null;
-        note: string | null;
-        callback_due_at: Date | null;
-        called_at: Date;
-      }>
-    >;
-  };
-  communicationRequest?: {
-    findMany(args: unknown): Promise<
-      Array<{
-        id: string;
-        patient_id: string | null;
-        request_type: string;
-        subject: string;
-        content?: string | null;
-        template_key?: string | null;
-        related_entity_type?: string | null;
-        related_entity_id?: string | null;
-        status: string;
-        due_date: Date | null;
-        requested_at: Date;
-      }>
-    >;
-  };
-  communicationEvent?: {
-    findMany(args: unknown): Promise<
-      Array<{
-        id: string;
-        patient_id: string | null;
-        channel: string;
-        occurred_at: Date;
-      }>
-    >;
-  };
-  inboundCommunicationEvent?: {
-    findMany(args: unknown): Promise<
-      Array<{
-        id: string;
-        patient_id: string | null;
-        source_channel: string;
-        received_at: Date;
-      }>
-    >;
-  };
-  inboundCommunicationSignal?: {
-    findMany(args: unknown): Promise<
-      Array<{
-        id: string;
-        inbound_event_id: string;
-        review_status: string;
-        action_status: string;
-      }>
-    >;
-  };
-  task?: {
-    findMany(args: unknown): Promise<
-      Array<{
-        id: string;
-        task_type: string;
-        status: string;
-        priority: string;
-        dedupe_key: string | null;
-      }>
-    >;
-  };
-  deliveryRecord?: {
-    findMany(args: unknown): Promise<
-      Array<{
-        id: string;
-        channel: string;
-        recipient_name: string | null;
-        status: string;
-        failure_reason: string | null;
-        sent_at: Date | null;
-        confirmed_at: Date | null;
-        updated_at: Date;
-        report: {
-          id: string;
-          patient_id: string | null;
-          report_type: string;
-        };
-      }>
-    >;
-  };
-  externalAccessGrant?: {
-    findMany(args: unknown): Promise<
-      Array<{
-        id: string;
-        patient_id: string;
-        granted_to_name: string;
-        expires_at: Date;
-        scope: string | null;
-      }>
-    >;
-  };
-  careReport?: {
-    findMany(args: unknown): Promise<
-      Array<{
-        id: string;
-        patient_id: string | null;
-        report_type: string;
-        status: string;
-        created_at: Date;
-        updated_at: Date | null;
-      }>
-    >;
-  };
-  tracingReport?: {
-    findMany(args: unknown): Promise<
-      Array<{
-        id: string;
-        patient_id: string;
-        status: string;
-        sent_to_physician: string | null;
-        sent_at: Date | null;
-        acknowledged_at: Date | null;
-        updated_at: Date;
-      }>
-    >;
-  };
-  patient?: {
-    findFirst?(args: unknown): Promise<{
-      id: string;
-      name: string;
-      contacts?: Array<{
-        name: string;
-        relation: string;
-        is_emergency_contact: boolean;
-      }>;
-      scheduling_preference?: {
-        visit_before_contact_required: boolean | null;
-      } | null;
-    } | null>;
-    findMany?(args: unknown): Promise<Array<{ id: string; name: string }>>;
-  };
-  medicationIssue?: {
-    findMany(args: unknown): Promise<Array<{ title: string }>>;
-  };
-};
-
-type DbClient = CommunicationQueueReader;
-type QueuePriority = 'urgent' | 'high' | 'normal';
-export type CommunicationQueueType =
-  | 'self_report'
-  | 'callback'
-  | 'request'
-  | 'delivery'
-  | 'external_share'
-  | 'inbound_communication';
-type ListCommunicationQueueArgs = {
-  orgId: string;
-  patientId?: string;
-  patientIds?: string[];
-  caseIds?: string[];
-  limit?: number;
-  queueTypes?: readonly CommunicationQueueType[];
-  sourceScope?: 'all' | 'requested';
-};
-const DEFAULT_COMMUNICATION_QUEUE_LIMIT = 8;
-
-function normalizeCommunicationQueueLimit(value: number | undefined) {
-  if (value === undefined) return DEFAULT_COMMUNICATION_QUEUE_LIMIT;
-  if (!Number.isFinite(value)) return DEFAULT_COMMUNICATION_QUEUE_LIMIT;
-
-  const normalized = Math.trunc(value);
-  if (!Number.isSafeInteger(normalized)) return DEFAULT_COMMUNICATION_QUEUE_LIMIT;
-
-  return Math.max(normalized, 1);
-}
-
-export type CommunicationQueueItem = {
-  id: string;
-  queue_type: CommunicationQueueType;
-  title: string;
-  summary: string;
-  channel: string;
-  status: string;
-  priority: QueuePriority;
-  patient_id: string | null;
-  patient_name: string | null;
-  due_at: string | null;
-  action_href: string;
-  action_label: string;
-};
-
-export type CommunicationTimelineItem = {
-  id: string;
-  source_type: 'care_report' | 'tracing_report' | 'communication_request' | 'delivery_record';
-  patient_id: string | null;
-  patient_name: string | null;
-  title: string;
-  summary: string;
-  status: string;
-  occurred_at: string | null;
-  action_href: string;
-  action_label: string;
-};
-
-export type CommunicationDraftSuggestion = {
-  id: string;
-  patient_id: string;
-  template_key:
-    | 'missing_emergency_contact'
-    | 'emergency_physician'
-    | 'emergency_nurse'
-    | 'emergency_family';
-  request_type: string;
-  target_name: string | null;
-  target_role: string;
-  title: string;
-  summary: string;
-  subject: string;
-  content: string;
-  action_href: string;
-  action_label: string;
-};
-
-export type CommunicationQueueOverview = {
-  summary: {
-    pending_count: number;
-    overdue_count: number;
-    self_reports: number;
-    callback_followups: number;
-    inbound_communications: number;
-    open_requests: number;
-    delivery_backlog: number;
-    expiring_external_shares: number;
-    unconfirmed_count: number;
-    reply_waiting_count: number;
-    failed_count: number;
-  };
-  items: CommunicationQueueItem[];
-  timeline: CommunicationTimelineItem[];
-  emergency_drafts: CommunicationDraftSuggestion[];
-};
-
-type TimelineSeed = {
-  source_type: CommunicationTimelineItem['source_type'];
-  id: string;
-  patient_id: string | null;
-  title: string;
-  summary: string;
-  status: string;
-  occurred_at: Date | null;
-  action_href: string;
-  action_label: string;
-};
+export type {
+  CommunicationDraftSuggestion,
+  CommunicationQueueDbClient,
+  CommunicationQueueItem,
+  CommunicationQueueOverview,
+  CommunicationQueueReader,
+  CommunicationQueueType,
+} from './communication-queue.contract';
 
 const INBOUND_COMMUNICATION_CHANNEL_LABELS: Record<string, string> = {
   phone: '電話',
@@ -302,132 +53,6 @@ const INBOUND_SIGNAL_TASK_TYPES = [
 
 function toPublicInboundCommunicationChannel(channel: string) {
   return channel === 'ph_os_share' ? 'mcs' : channel;
-}
-
-function toQueuePriority(value: string | null | undefined): QueuePriority {
-  if (value === 'urgent') return 'urgent';
-  if (value === 'high') return 'high';
-  return 'normal';
-}
-
-function parseInboundSignalTaskEventId(dedupeKey: string | null) {
-  if (!dedupeKey?.startsWith('inbound-signal-task:')) return null;
-  const match = dedupeKey.match(/^inbound-signal-task:([^:]+):\d+:/);
-  return match?.[1] ?? null;
-}
-
-function parseInboundSignalTaskSignalId(dedupeKey: string | null) {
-  if (!dedupeKey?.startsWith('inbound:')) return null;
-  const match = dedupeKey.match(/^inbound:([^:]+):/);
-  return match?.[1] ?? null;
-}
-
-function buildInboundTaskStateByEventId(
-  tasks: Array<{
-    task_type: string;
-    status: string;
-    priority: string;
-    dedupe_key: string | null;
-  }>,
-  signalEventIdBySignalId: Map<string, string> = new Map(),
-) {
-  const stateByEventId = new Map<
-    string,
-    {
-      status: 'task_created' | 'task_completed';
-      priority: QueuePriority;
-      taskType: string;
-    }
-  >();
-
-  for (const task of tasks) {
-    const signalId = parseInboundSignalTaskSignalId(task.dedupe_key);
-    const eventId =
-      parseInboundSignalTaskEventId(task.dedupe_key) ??
-      (signalId ? signalEventIdBySignalId.get(signalId) : null);
-    if (!eventId) continue;
-
-    const next = {
-      status: ['completed', 'cancelled'].includes(task.status)
-        ? ('task_completed' as const)
-        : ('task_created' as const),
-      priority: toQueuePriority(task.priority),
-      taskType: task.task_type,
-    };
-    const current = stateByEventId.get(eventId);
-    if (!current) {
-      stateByEventId.set(eventId, next);
-      continue;
-    }
-    if (current.status === 'task_completed' && next.status === 'task_created') {
-      stateByEventId.set(eventId, next);
-      continue;
-    }
-    if (priorityRank(next.priority) < priorityRank(current.priority)) {
-      stateByEventId.set(eventId, { ...current, priority: next.priority });
-    }
-  }
-
-  return stateByEventId;
-}
-
-function buildInboundReviewStateByEventId(
-  signals: Array<{
-    inbound_event_id: string;
-    review_status: string;
-    action_status: string;
-  }>,
-) {
-  const signalsByEventId = new Map<
-    string,
-    Array<{
-      review_status: string;
-      action_status: string;
-    }>
-  >();
-
-  for (const signal of signals) {
-    const current = signalsByEventId.get(signal.inbound_event_id) ?? [];
-    current.push(signal);
-    signalsByEventId.set(signal.inbound_event_id, current);
-  }
-
-  const stateByEventId = new Map<
-    string,
-    {
-      status: 'task_completed' | 'reviewed_pending_action';
-      priority: QueuePriority;
-    }
-  >();
-
-  for (const [eventId, eventSignals] of signalsByEventId.entries()) {
-    if (eventSignals.length === 0) continue;
-    const allResolved = eventSignals.every(
-      (signal) =>
-        ['record_only', 'rejected'].includes(signal.review_status) ||
-        ['ignored', 'linked_to_stock_event'].includes(signal.action_status),
-    );
-    if (allResolved) {
-      stateByEventId.set(eventId, {
-        status: 'task_completed',
-        priority: 'normal',
-      });
-      continue;
-    }
-
-    const hasReviewDonePendingAction = eventSignals.some(
-      (signal) =>
-        ['accepted', 'auto_accepted'].includes(signal.review_status) &&
-        signal.action_status === 'not_linked',
-    );
-    if (!hasReviewDonePendingAction) continue;
-    stateByEventId.set(eventId, {
-      status: 'reviewed_pending_action',
-      priority: 'high',
-    });
-  }
-
-  return stateByEventId;
 }
 
 function priorityRank(priority: QueuePriority) {
