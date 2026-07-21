@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 
-import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import ts from 'typescript';
+import { walkFiles } from './api-route-reachability/file-discovery.mjs';
 
 const REPO_ROOT = process.cwd();
 const ROUTE_ROOT = 'src/app/api';
@@ -29,31 +30,6 @@ const APPROVED_FETCH_SYMBOL_PATHS = new Map([
 ]);
 const DEFAULT_REVIEW_EXPIRY = '2026-10-15';
 const INVENTORY_OWNER = 'API-REACHABILITY-RATCHET-001';
-
-function toPosix(relativePath) {
-  return relativePath.split(path.sep).join('/');
-}
-
-function walkFiles(relativeRoot) {
-  const absoluteRoot = path.join(REPO_ROOT, relativeRoot);
-  if (!existsSync(absoluteRoot)) return [];
-
-  const files = [];
-  const stack = [absoluteRoot];
-  while (stack.length > 0) {
-    const current = stack.pop();
-    const stats = statSync(current);
-    if (stats.isDirectory()) {
-      for (const child of readdirSync(current).sort().reverse()) {
-        if (child === 'node_modules' || child === '.next') continue;
-        stack.push(path.join(current, child));
-      }
-      continue;
-    }
-    if (stats.isFile()) files.push(toPosix(path.relative(REPO_ROOT, current)));
-  }
-  return files.sort();
-}
 
 function hasExportModifier(node) {
   return Boolean(node.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword));
@@ -127,7 +103,9 @@ function collectRouteExports(filePath) {
 }
 
 function collectLiveRoutes() {
-  const routeFiles = walkFiles(ROUTE_ROOT).filter((filePath) => filePath.endsWith('/route.ts'));
+  const routeFiles = walkFiles(REPO_ROOT, ROUTE_ROOT).filter((filePath) =>
+    filePath.endsWith('/route.ts'),
+  );
   const entries = [];
   const errors = [];
 
@@ -585,7 +563,7 @@ function routeSpecificity(route) {
 
 function collectSourceEvidence(liveEntries) {
   const evidenceByKey = new Map(liveEntries.map((entry) => [entry.key, []]));
-  const sourceFiles = walkFiles(SOURCE_ROOT).filter(isEvidenceSource);
+  const sourceFiles = walkFiles(REPO_ROOT, SOURCE_ROOT).filter(isEvidenceSource);
   const globalBuildersByName = new Map();
 
   for (const filePath of sourceFiles) {

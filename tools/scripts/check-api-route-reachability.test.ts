@@ -6,6 +6,10 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const SCRIPT_PATH = path.join(process.cwd(), 'tools/scripts/check-api-route-reachability.mjs');
+const FILE_DISCOVERY_PATH = path.join(
+  process.cwd(),
+  'tools/scripts/api-route-reachability/file-discovery.mjs',
+);
 const FIXED_TODAY = '2026-07-15';
 
 type InventoryEntry = {
@@ -30,6 +34,11 @@ function createFixtureRepo(files: Record<string, string>) {
   const root = mkdtempSync(path.join(tmpdir(), 'phos-api-route-reachability-'));
   mkdirSync(path.join(root, 'tools/scripts'), { recursive: true });
   cpSync(SCRIPT_PATH, path.join(root, 'tools/scripts/check-api-route-reachability.mjs'));
+  mkdirSync(path.join(root, 'tools/scripts/api-route-reachability'), { recursive: true });
+  cpSync(
+    FILE_DISCOVERY_PATH,
+    path.join(root, 'tools/scripts/api-route-reachability/file-discovery.mjs'),
+  );
   symlinkSync(path.join(process.cwd(), 'node_modules'), path.join(root, 'node_modules'), 'dir');
 
   for (const [relativePath, source] of Object.entries(files)) {
