@@ -23,7 +23,7 @@ import { parseCaseStatusList } from '@/lib/patient/case-status';
 import { createPatientSchema } from '@/lib/validations/patient';
 import { formatDateKey, formatUtcDateKey } from '@/lib/date-key';
 import { japanDayInstantRangeFromDateKey } from '@/lib/utils/date-boundary';
-import { notifyWebhookEventForOrg } from '@/server/services/outbound-webhook';
+import { enqueuePatientCreatedWebhook } from '@/server/services/outbound-webhook';
 import type { z } from 'zod';
 import {
   applyPatientAssignmentWhere,
@@ -1282,12 +1282,9 @@ export async function createPatientWithIntake(orgId: string, data: CreatePatient
       }
     }
 
-    return newPatient;
-  });
+    await enqueuePatientCreatedWebhook(tx, orgId, newPatient);
 
-  await notifyWebhookEventForOrg(orgId, 'patient.created', {
-    patientId: patient.id,
-    ...(patient.created_at instanceof Date ? { createdAt: patient.created_at.toISOString() } : {}),
+    return newPatient;
   });
 
   return patient;

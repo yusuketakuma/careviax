@@ -8,6 +8,7 @@
 import { createHmac } from 'node:crypto';
 import { lookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
+import type { Prisma } from '@prisma/client';
 import { readJsonObject } from '@/lib/db/json';
 import { mapWithConcurrency, normalizeConcurrencyLimit } from '@/lib/utils/concurrency';
 import { logger } from '@/lib/utils/logger';
@@ -53,6 +54,102 @@ export type WebhookPayload<T = Record<string, unknown>> = {
   occurredAt: string;
   data: T;
 };
+
+const WEBHOOK_REFERENCE_DATA_KEYS: Record<WebhookEventType, ReadonlySet<string>> = {
+  'patient.created': new Set(['patientId', 'createdAt']),
+  'prescription.created': new Set(['intakeId', 'cycleId', 'patientId', 'sourceType', 'lineCount']),
+  'prescription.dispensed': new Set(['taskId', 'resultCount']),
+  'billing.exported': new Set(['billingMonth', 'billingDomain', 'exportedCount']),
+  'qualification.checked': new Set([
+    'patientId',
+    'checkedAt',
+    'insuranceNumberPresent',
+    'identityMatch',
+  ]),
+};
+
+type WebhookEnqueueTx = {
+  webhookRegistration: Pick<Prisma.TransactionClient['webhookRegistration'], 'findMany'>;
+  webhookDelivery: Pick<Prisma.TransactionClient['webhookDelivery'], 'createMany'>;
+};
+
+function assertReferenceOnlyWebhookData(event: WebhookEventType, data: Record<string, unknown>) {
+  const allowedKeys = WEBHOOK_REFERENCE_DATA_KEYS[event];
+  for (const [key, value] of Object.entries(data)) {
+    if (!allowedKeys.has(key)) throw new Error('webhook_reference_data_key_not_allowed');
+    if (
+      value !== null &&
+      typeof value !== 'string' &&
+      typeof value !== 'number' &&
+      typeof value !== 'boolean'
+    ) {
+      throw new Error('webhook_reference_data_value_not_allowed');
+    }
+    if (typeof value === 'string' && value.length > 200) {
+      throw new Error('webhook_reference_data_value_too_long');
+    }
+  }
+}
+
+export async function enqueueWebhookEvent(
+  tx: WebhookEnqueueTx,
+  input: {
+    orgId: string;
+    event: WebhookEventType;
+    data: Record<string, unknown>;
+    eventId?: string;
+    occurredAt?: Date;
+  },
+) {
+  assertReferenceOnlyWebhookData(input.event, input.data);
+  const registrations = await tx.webhookRegistration.findMany({
+    where: { org_id: input.orgId, is_active: true, events: { has: input.event } },
+    orderBy: { id: 'asc' },
+    select: { id: true, url: true },
+  });
+  if (registrations.length === 0) return 0;
+
+  const eventId = input.eventId ?? crypto.randomUUID();
+  const occurredAt = (input.occurredAt ?? new Date()).toISOString();
+  const payload: WebhookPayload = {
+    id: eventId,
+    event: input.event,
+    orgId: input.orgId,
+    occurredAt,
+    data: input.data,
+  };
+  const queued = await tx.webhookDelivery.createMany({
+    data: registrations.map((registration) => ({
+      org_id: input.orgId,
+      webhook_registration_id: registration.id,
+      delivery_id: eventId,
+      event: input.event,
+      payload,
+      url: redactWebhookUrlForDisplay(registration.url),
+      status: 'pending',
+      next_attempt_at: input.occurredAt ?? new Date(occurredAt),
+    })),
+    skipDuplicates: true,
+  });
+  return queued.count;
+}
+
+export function enqueuePatientCreatedWebhook(
+  tx: WebhookEnqueueTx,
+  orgId: string,
+  patient: { id: string; created_at?: Date | null },
+) {
+  return enqueueWebhookEvent(tx, {
+    orgId,
+    event: 'patient.created',
+    data: {
+      patientId: patient.id,
+      ...(patient.created_at instanceof Date
+        ? { createdAt: patient.created_at.toISOString() }
+        : {}),
+    },
+  });
+}
 
 export type WebhookDeliveryResult = {
   webhookId: string;
@@ -465,7 +562,7 @@ async function listDueWebhookDeliveries(args: {
 
   return db.webhookDelivery.findMany({
     where: {
-      status: 'failed',
+      status: { in: ['pending', 'failed', 'processing'] },
       attempt_count: { lt: WEBHOOK_MAX_DELIVERY_ATTEMPTS },
       next_attempt_at: { lte: args.now },
       ...(args.orgId ? { org_id: args.orgId } : {}),
@@ -509,15 +606,15 @@ async function claimDueWebhookDelivery(record: WebhookDeliveryRetryRecord, now: 
     where: {
       id: record.id,
       org_id: record.org_id,
-      status: 'failed',
+      status: { in: ['pending', 'failed', 'processing'] },
       attempt_count: record.attempt_count,
       next_attempt_at: { lte: now },
     },
     data: {
-      status: 'pending',
+      status: 'processing',
       status_code: null,
       error: null,
-      next_attempt_at: null,
+      next_attempt_at: new Date(now.getTime() + WEBHOOK_DELIVERY_TIMEOUT_MS * 2),
     },
   });
 
@@ -574,7 +671,7 @@ async function retryStoredWebhookDelivery(
     };
   }
 
-  const result = await dispatchToEndpoint(registration, payload);
+  const result = await dispatchToEndpoint(registration, payload, { persistPending: false });
   return {
     ...result,
     deliveryStatus: result.success
@@ -684,6 +781,7 @@ function buildSignatureHeader(secret: string, body: string): string {
 async function dispatchToEndpoint(
   registration: WebhookRegistration,
   payload: WebhookPayload,
+  options: { persistPending?: boolean } = {},
 ): Promise<WebhookDeliveryResult> {
   const body = JSON.stringify(payload);
   const base: WebhookDeliveryResult = {
@@ -695,7 +793,9 @@ async function dispatchToEndpoint(
   };
 
   try {
-    await recordWebhookDeliveryPending(registration, payload);
+    if (options.persistPending !== false) {
+      await recordWebhookDeliveryPending(registration, payload);
+    }
 
     const destination = await resolveAllowedWebhookDestination(registration.url);
     if (!destination) {
@@ -834,6 +934,7 @@ export async function dispatchWebhookEvent(
   orgId: string,
   data: Record<string, unknown>,
 ): Promise<WebhookDeliveryResult[]> {
+  assertReferenceOnlyWebhookData(event, data);
   const active = registrations.filter(
     (registration) => registration.isActive && registration.events.includes(event),
   );

@@ -1,6 +1,11 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PrismaClient } from '@prisma/client';
 
+const { enqueuePatientCreatedWebhookMock, withOrgContextMock } = vi.hoisted(() => ({
+  enqueuePatientCreatedWebhookMock: vi.fn(),
+  withOrgContextMock: vi.fn(),
+}));
+
 vi.mock('@/server/services/patient-risk', () => ({
   listPatientRiskSummaries: vi.fn(),
 }));
@@ -10,14 +15,14 @@ vi.mock('@/lib/utils/name-resolver', () => ({
 }));
 
 vi.mock('@/server/services/outbound-webhook', () => ({
-  notifyWebhookEventForOrg: vi.fn(),
+  enqueuePatientCreatedWebhook: enqueuePatientCreatedWebhookMock,
 }));
 
 vi.mock('@/lib/db/rls', () => ({
-  withOrgContext: vi.fn(),
+  withOrgContext: withOrgContextMock,
 }));
 
-import { deriveBirthDate, listPatients } from './patient-service';
+import { createPatientWithIntake, deriveBirthDate, listPatients } from './patient-service';
 import { listPatientRiskSummaries } from '@/server/services/patient-risk';
 import { batchResolveNames } from '@/lib/utils/name-resolver';
 
@@ -28,6 +33,49 @@ function makeDb() {
     },
   } as unknown as PrismaClient;
 }
+
+describe('createPatientWithIntake webhook durability', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('queues patient.created before the patient transaction commits', async () => {
+    const createdAt = new Date('2026-07-21T04:00:00.000Z');
+    const tx = {
+      patient: {
+        create: vi.fn().mockResolvedValue({ id: 'patient_1', created_at: createdAt }),
+      },
+    };
+    let transactionActive = false;
+    withOrgContextMock.mockImplementation(
+      async (_orgId: string, work: (scopedTx: typeof tx) => Promise<unknown>) => {
+        transactionActive = true;
+        try {
+          return await work(tx);
+        } finally {
+          transactionActive = false;
+        }
+      },
+    );
+    enqueuePatientCreatedWebhookMock.mockImplementation(async () => {
+      expect(transactionActive).toBe(true);
+      return 1;
+    });
+
+    await expect(
+      createPatientWithIntake('org_1', {
+        name: '患者太郎',
+        name_kana: 'カンジャタロウ',
+        birth_date: '1980-01-01',
+        gender: 'male',
+      }),
+    ).resolves.toMatchObject({ id: 'patient_1' });
+
+    expect(enqueuePatientCreatedWebhookMock).toHaveBeenCalledWith(tx, 'org_1', {
+      id: 'patient_1',
+      created_at: createdAt,
+    });
+    expect(transactionActive).toBe(false);
+  });
+});
 
 describe('listPatients', () => {
   beforeEach(() => {

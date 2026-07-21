@@ -735,7 +735,7 @@
       },
       {
         "path": "Plans.md",
-        "sha256": "991f5248ac23430a095fcbe26c4ef2848fbc491d4a52d3f5c480400307881918"
+        "sha256": "07be7988b8be9af546dc3047d199e4bb50199454be535b3e295bd5fcae494746"
       },
       {
         "path": "README.md",
@@ -903,7 +903,7 @@
       },
       {
         "path": "ops/refactor/STATE.md",
-        "sha256": "b14b3c01ca735a1fd40e1914506dd40e16efbf20f8b230611e962cc47802d6c4"
+        "sha256": "f5a344f831a85fbdbc6e9528a1b57d2a871f9542db54783fdcec354a8abe1a2e"
       },
       {
         "path": "ops/refactor/archive/PERF_FINDINGS.md",
@@ -1991,7 +1991,7 @@
       },
       {
         "path": "src/server/services/outbound-webhook.ts",
-        "sha256": "e6364ce59e26935cd8faa0cbba84a6629ec759976233f887b5ec108fd98f7fb1"
+        "sha256": "eb05ca357d854022ece7a2f0d6b9b3fe0ae326ea6adaabf8c297db96a2ab1719"
       },
       {
         "path": "src/server/services/pdf-documents.test.tsx",

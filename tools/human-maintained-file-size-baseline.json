@@ -974,7 +974,7 @@
     },
     {
       "path": "src/server/services/patient-service.ts",
-      "max_lines": 1296,
+      "max_lines": 1293,
       "task_id": "MAINT-FILE-SIZE-1000-001"
     },
     {
