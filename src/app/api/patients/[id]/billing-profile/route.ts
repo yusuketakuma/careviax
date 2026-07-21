@@ -1,12 +1,10 @@
 import { Prisma } from '@prisma/client';
-import { unstable_rethrow } from 'next/navigation';
 import { NextRequest } from 'next/server';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
-import { internalError, notFound, success, validationError } from '@/lib/api/response';
+import { notFound, success, validationError } from '@/lib/api/response';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
-import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
-import { requireAuthContext } from '@/lib/auth/context';
+import { withAuthContext, type AuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { billingPaymentProfileSchema } from '@/lib/validations/billing-collection';
 import { buildPatientDetailWhere } from '@/server/services/patient-detail-scope';
@@ -23,15 +21,9 @@ function normalizeNullableText(value: string | null | undefined) {
 
 async function authenticatedPATCH(
   req: NextRequest,
+  ctx: AuthContext,
   { params }: { params: Promise<{ id: string }> },
 ): Promise<Response> {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canManageBilling',
-    message: '支払設定の更新権限がありません',
-  });
-  if ('response' in authResult) return authResult.response;
-  const ctx = authResult.ctx;
-
   const { id: rawId } = await params;
   const patientId = normalizeRequiredRouteParam(rawId);
   if (!patientId) return validationError('患者IDが不正です');
@@ -107,14 +99,7 @@ async function authenticatedPATCH(
   return success({ data: { profile: result } });
 }
 
-export async function PATCH(
-  req: NextRequest,
-  routeContext: { params: Promise<{ id: string }> },
-): Promise<Response> {
-  try {
-    return withSensitiveNoStore(await authenticatedPATCH(req, routeContext));
-  } catch (err) {
-    unstable_rethrow(err);
-    return withSensitiveNoStore(internalError());
-  }
-}
+export const PATCH = withAuthContext(authenticatedPATCH, {
+  permission: 'canManageBilling',
+  message: '支払設定の更新権限がありません',
+});
