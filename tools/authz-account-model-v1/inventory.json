@@ -735,7 +735,7 @@
       },
       {
         "path": "Plans.md",
-        "sha256": "73e5f864fa52930a94884bd8f4ff59a8f9e13ab5fba09dec86dd77580b7412a7"
+        "sha256": "1add4c34e9910531fb255ca360d663126b1c40638b46a31b8e320fa38390c85c"
       },
       {
         "path": "README.md",
@@ -903,7 +903,7 @@
       },
       {
         "path": "ops/refactor/STATE.md",
-        "sha256": "18b0b0df76b7cd9c4b065c69904a4b61720363ec4e97300a48265431aa288031"
+        "sha256": "2cfc55b7329898304cb0b89b88b3ff2f05bea01177cae36f9d90a675ce363fae"
       },
       {
         "path": "ops/refactor/archive/PERF_FINDINGS.md",
@@ -1499,7 +1499,7 @@
       },
       {
         "path": "src/lib/api/response.ts",
-        "sha256": "14e69f5593f74bf8c67349d3a100f2099aee97b517cbf628bb05f6533bc65455"
+        "sha256": "b5ce58d8109645c9bae9dcf07e3bfd822588fe229e7b928a686f2ecf80acbe38"
       },
       {
         "path": "src/lib/auth/__tests__/secret.test.ts",

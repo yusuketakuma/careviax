@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { externalError, registeredError, validationError } from '@/lib/api/response';
+import { registeredError, registeredExternalError, validationError } from '@/lib/api/response';
 import { checkAuthRateLimit } from '@/lib/api/rate-limit';
 import { getClientIp } from '@/lib/api/request-ip';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
@@ -43,10 +43,9 @@ export async function POST(req: Request) {
       return successResponse();
     }
 
-    return externalError(
+    return registeredExternalError(
       'EXTERNAL_PASSWORD_RESET_REQUEST_FAILED',
       '確認コードの送信に失敗しました',
-      502,
     );
   }
 

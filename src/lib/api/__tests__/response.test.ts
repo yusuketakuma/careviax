@@ -17,6 +17,7 @@ import {
   notFound,
   rateLimited,
   registeredError,
+  registeredExternalError,
   success,
   successWithMeasuredJsonPayload,
   unauthorized,
@@ -45,8 +46,14 @@ void assertApiSuccessInputContract;
 
 function assertRegisteredErrorInputContract() {
   void registeredError('VALIDATION_ERROR', '入力値が不正です');
+  void registeredExternalError(
+    'EXTERNAL_PASSWORD_RESET_REQUEST_FAILED',
+    '確認コードの送信に失敗しました',
+  );
   // @ts-expect-error shared registered errors reject unknown codes at compile time.
   void registeredError('UNREGISTERED_ERROR', '処理に失敗しました');
+  // @ts-expect-error localized registered external errors reject unknown codes at compile time.
+  void registeredExternalError('UNREGISTERED_EXTERNAL_ERROR', '外部連携に失敗しました');
 }
 
 void assertRegisteredErrorInputContract;
@@ -193,6 +200,25 @@ describe('api response helpers', () => {
     await expect(response.json()).resolves.toMatchObject({
       code: 'AUTH_UNAUTHENTICATED',
       message: '認証が必要です（辞書）',
+    });
+  });
+
+  it('derives registered external status and label from the canonical definition', async () => {
+    getLabelDictionaryValueMock.mockResolvedValue('確認コードを送信できませんでした（辞書）');
+
+    const response = await registeredExternalError(
+      'EXTERNAL_PASSWORD_RESET_REQUEST_FAILED',
+      '確認コードの送信に失敗しました',
+    );
+
+    expect(getLabelDictionaryValueMock).toHaveBeenCalledWith(
+      'api.error.external.password_reset_request_failed',
+      '確認コードの送信に失敗しました',
+    );
+    expect(response.status).toBe(502);
+    await expect(response.json()).resolves.toEqual({
+      code: 'EXTERNAL_PASSWORD_RESET_REQUEST_FAILED',
+      message: '確認コードを送信できませんでした（辞書）',
     });
   });
 

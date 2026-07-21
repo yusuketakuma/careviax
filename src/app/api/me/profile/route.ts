@@ -4,7 +4,12 @@ import { z } from 'zod';
 import { prisma } from '@/lib/db/client';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { resolveLocalUserByIdentity } from '@/lib/auth/user-resolution';
-import { externalError, success, unauthorized, validationError } from '@/lib/api/response';
+import {
+  registeredExternalError,
+  success,
+  unauthorized,
+  validationError,
+} from '@/lib/api/response';
 import { updateCognitoUserProfile } from '@/server/services/cognito-admin';
 import { getUserMfaState } from '@/server/services/cognito-auth';
 import { optionalPhoneNumberSchema } from '@/lib/validations/phone';
@@ -152,10 +157,9 @@ export async function PATCH(req: NextRequest) {
     });
   } catch (error) {
     if ((error as Error).message !== 'COGNITO_NOT_CONFIGURED') {
-      return externalError(
+      return registeredExternalError(
         'EXTERNAL_COGNITO_UPDATE_FAILED',
         'プロフィールの同期に失敗しました',
-        502,
       );
     }
   }

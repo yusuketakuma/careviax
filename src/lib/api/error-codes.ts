@@ -229,6 +229,27 @@ export const API_ERROR_CODE_REGISTRY = Object.freeze({
     recoveryAction: 'retry',
     messageLabel: 'api.error.external_access.view_audit_failed',
   },
+  EXTERNAL_COGNITO_UPDATE_FAILED: {
+    httpStatus: 502,
+    logLevel: 'error',
+    retryable: true,
+    recoveryAction: 'retry',
+    messageLabel: 'api.error.external.cognito_update_failed',
+  },
+  EXTERNAL_GLOBAL_SIGNOUT_FAILED: {
+    httpStatus: 502,
+    logLevel: 'error',
+    retryable: true,
+    recoveryAction: 'retry',
+    messageLabel: 'api.error.external.global_signout_failed',
+  },
+  EXTERNAL_PASSWORD_RESET_REQUEST_FAILED: {
+    httpStatus: 502,
+    logLevel: 'error',
+    retryable: true,
+    recoveryAction: 'retry',
+    messageLabel: 'api.error.external.password_reset_request_failed',
+  },
   EXTERNAL_FILE_COMPLETE_FAILED: {
     httpStatus: 502,
     logLevel: 'error',

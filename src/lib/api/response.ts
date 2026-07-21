@@ -110,6 +110,14 @@ async function localizedRegisteredError(
   return error(code, localizedMessage, definition.httpStatus, details);
 }
 
+export async function registeredExternalError(
+  code: RegisteredApiErrorCode,
+  message: string,
+  details?: unknown,
+) {
+  return localizedRegisteredError(code, message, details);
+}
+
 export async function localizedError(
   code: string,
   message: string,

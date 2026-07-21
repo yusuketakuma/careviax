@@ -198,6 +198,13 @@ describe('API error code registry', () => {
           "recoveryAction": "retry",
           "retryable": true,
         },
+        "EXTERNAL_COGNITO_UPDATE_FAILED": {
+          "httpStatus": 502,
+          "logLevel": "error",
+          "messageLabel": "api.error.external.cognito_update_failed",
+          "recoveryAction": "retry",
+          "retryable": true,
+        },
         "EXTERNAL_FILE_COMPLETE_FAILED": {
           "httpStatus": 502,
           "logLevel": "error",
@@ -219,10 +226,24 @@ describe('API error code registry', () => {
           "recoveryAction": "retry",
           "retryable": true,
         },
+        "EXTERNAL_GLOBAL_SIGNOUT_FAILED": {
+          "httpStatus": 502,
+          "logLevel": "error",
+          "messageLabel": "api.error.external.global_signout_failed",
+          "recoveryAction": "retry",
+          "retryable": true,
+        },
         "EXTERNAL_JOB_FAILED": {
           "httpStatus": 500,
           "logLevel": "error",
           "messageLabel": "api.error.external.job_failed",
+          "recoveryAction": "retry",
+          "retryable": true,
+        },
+        "EXTERNAL_PASSWORD_RESET_REQUEST_FAILED": {
+          "httpStatus": 502,
+          "logLevel": "error",
+          "messageLabel": "api.error.external.password_reset_request_failed",
           "recoveryAction": "retry",
           "retryable": true,
         },

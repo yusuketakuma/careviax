@@ -110,16 +110,6 @@ const allowedExternalLiteralErrorUsages: RawLiteralErrorUsage[] = [
     httpStatus: null,
   },
   {
-    filePath: 'src/app/api/auth/password/reset/request/route.ts',
-    code: 'EXTERNAL_PASSWORD_RESET_REQUEST_FAILED',
-    httpStatus: 502,
-  },
-  {
-    filePath: 'src/app/api/me/logout-all/route.ts',
-    code: 'EXTERNAL_GLOBAL_SIGNOUT_FAILED',
-    httpStatus: 502,
-  },
-  {
     filePath: 'src/app/api/me/mfa/disable/route.ts',
     code: 'EXTERNAL_MFA_DISABLE_FAILED',
     httpStatus: 400,
@@ -143,11 +133,6 @@ const allowedExternalLiteralErrorUsages: RawLiteralErrorUsage[] = [
     filePath: 'src/app/api/me/password/route.ts',
     code: 'EXTERNAL_PASSWORD_CHANGE_FAILED',
     httpStatus: null,
-  },
-  {
-    filePath: 'src/app/api/me/profile/route.ts',
-    code: 'EXTERNAL_COGNITO_UPDATE_FAILED',
-    httpStatus: 502,
   },
 ];
 

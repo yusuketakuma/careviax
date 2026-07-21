@@ -2,7 +2,7 @@ import { auth, getAuthAccessToken } from '@/lib/auth/config';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { prisma } from '@/lib/db/client';
 import { withOrgContext } from '@/lib/db/rls';
-import { externalError, success, unauthorized } from '@/lib/api/response';
+import { registeredExternalError, success, unauthorized } from '@/lib/api/response';
 import { getClientIp } from '@/lib/api/request-ip';
 import { globalSignOutWithAccessToken } from '@/server/services/cognito-auth';
 import type { NextRequest } from 'next/server';
@@ -56,7 +56,10 @@ export async function POST(request: NextRequest) {
       }
     }
   } catch {
-    return externalError('EXTERNAL_GLOBAL_SIGNOUT_FAILED', '全端末ログアウトに失敗しました', 502);
+    return registeredExternalError(
+      'EXTERNAL_GLOBAL_SIGNOUT_FAILED',
+      '全端末ログアウトに失敗しました',
+    );
   }
 
   return success({ data: { ok: true } });
