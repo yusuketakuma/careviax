@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 
 const {
   requireAuthContextMock,
@@ -29,6 +29,35 @@ const {
 
 vi.mock('@/lib/auth/context', () => ({
   requireAuthContext: requireAuthContextMock,
+  withAuthContext:
+    (
+      handler: (
+        req: NextRequest,
+        ctx: typeof authCtx.ctx,
+        routeContext: { params: Promise<{ id: string }> },
+      ) => Promise<Response>,
+      options: { permission: string; message: string },
+    ) =>
+    async (req: NextRequest, routeContext: { params: Promise<{ id: string }> }) => {
+      const authResult = await requireAuthContextMock(req, options);
+      if ('response' in authResult) {
+        authResult.response.headers.set('Cache-Control', 'private, no-store, max-age=0');
+        authResult.response.headers.set('Pragma', 'no-cache');
+        return authResult.response;
+      }
+      let response: Response;
+      try {
+        response = await handler(req, authResult.ctx, routeContext);
+      } catch {
+        response = NextResponse.json(
+          { code: 'INTERNAL_ERROR', message: 'サーバーエラーが発生しました' },
+          { status: 500 },
+        );
+      }
+      response.headers.set('Cache-Control', 'private, no-store, max-age=0');
+      response.headers.set('Pragma', 'no-cache');
+      return response;
+    },
 }));
 
 vi.mock('@/lib/db/client', () => ({
@@ -141,6 +170,26 @@ describe('/api/visit-records/[id]/handoff/supervision-confirm', () => {
     membershipFindFirstMock.mockResolvedValue({ user_id: 'supervisor_1', role: 'pharmacist' });
     taskFindFirstMock.mockResolvedValue(validSupervisionTask());
     confirmHandoffMock.mockResolvedValue(handoffResult);
+  });
+
+  it('returns a sensitive no-store auth failure before supervision lookups', async () => {
+    requireAuthContextMock.mockResolvedValueOnce({
+      response: NextResponse.json({ code: 'AUTH_FORBIDDEN' }, { status: 403 }),
+    });
+
+    const req = createRequest(validBody());
+    const res = await POST(req, { params: Promise.resolve({ id: 'vr_1' }) });
+
+    expect(res.status).toBe(403);
+    expectSensitiveNoStore(res);
+    expect(requireAuthContextMock).toHaveBeenCalledWith(req, {
+      permission: 'canVisit',
+      message: '訪問記録の更新権限がありません',
+    });
+    expect(visitRecordFindFirstMock).not.toHaveBeenCalled();
+    expect(membershipFindFirstMock).not.toHaveBeenCalled();
+    expect(taskFindFirstMock).not.toHaveBeenCalled();
+    expect(confirmHandoffMock).not.toHaveBeenCalled();
   });
 
   it('confirms a handoff through the assigned supervision task without raw request-note metadata', async () => {
