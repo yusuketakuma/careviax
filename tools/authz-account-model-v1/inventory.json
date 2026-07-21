@@ -735,7 +735,7 @@
       },
       {
         "path": "Plans.md",
-        "sha256": "a1962fa4bccc099f07728d620dddc062e8063dd12565ed0245b0c9ea9f0c01bc"
+        "sha256": "f8527e883a0ade6fb7cc052a75f39125ebea548fa375cae57b2bc8cdc2b7f411"
       },
       {
         "path": "README.md",
@@ -903,7 +903,7 @@
       },
       {
         "path": "ops/refactor/STATE.md",
-        "sha256": "3645731621097a4d5010fc20a0cb2c04a70dfac9d26ac94d7b4f5af093ad5deb"
+        "sha256": "b9a8572c1a64324557e33930bb5ff9cb8c4ea7ad82498941945c9111d623b8d3"
       },
       {
         "path": "ops/refactor/archive/PERF_FINDINGS.md",
@@ -1347,7 +1347,7 @@
       },
       {
         "path": "src/app/api/visit-records/route.ts",
-        "sha256": "4d71c91d26567cfa2581981eb01f7bac65c081ca67509e34902f5b4e668be975"
+        "sha256": "02ff9bbb9fffb2672f674a536e5043f359829aa9e065749b83333bccb8b18a28"
       },
       {
         "path": "src/app/api/visit-schedules/route.ts",
@@ -6587,7 +6587,7 @@
       "id": "mapping_precedence:src/app/api/visit-records/route.ts",
       "detector": "mapping_precedence",
       "path": "src/app/api/visit-records/route.ts",
-      "evidence_sha256": "ef3510a21f41cd06f14812fa80cc1fc22907c520e7c520c4f13a01fac19dfc15",
+      "evidence_sha256": "c78efadb31697035b95ce57e771bba846956c209bd7fa51d6e869502fcc1417f",
       "principal": "human",
       "lifecycles": ["request"],
       "surfaces": ["rls", "writer"],

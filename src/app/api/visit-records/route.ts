@@ -1,7 +1,7 @@
 import { addDays, differenceInCalendarDays } from 'date-fns';
 import { NextRequest } from 'next/server';
 import { unstable_rethrow } from 'next/navigation';
-import { requireAuthContext, type AuthContext } from '@/lib/auth/context';
+import { withAuthContext, type AuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import {
   conflict,
@@ -25,7 +25,7 @@ import { prisma } from '@/lib/db/client';
 import { normalizeJsonInput, readJsonObject } from '@/lib/db/json';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { canFinalizeClinicalState } from '@/lib/auth/clinical-finalization';
-import { getRequestAuthContext, runWithRequestAuthContext } from '@/lib/auth/request-context';
+import { getRequestAuthContext } from '@/lib/auth/request-context';
 import {
   buildVisitRecordScheduleAssignmentWhere,
   canWriteVisitRecordForSchedule,
@@ -66,7 +66,6 @@ import {
 } from '@/server/services/first-visit-document-version';
 import { z } from 'zod';
 import { logger } from '@/lib/utils/logger';
-import { withRoutePerformance } from '@/lib/utils/performance';
 
 const ROUTE = '/api/visit-records';
 
@@ -849,148 +848,138 @@ async function buildVisitRecordPatientHistorySummaries(
   return summaries;
 }
 
-async function authenticatedGET(req: NextRequest) {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canVisit',
-    message: '訪問記録の閲覧権限がありません',
-  });
-  if ('response' in authResult) return authResult.response;
-  const { ctx } = authResult;
+async function authenticatedGET(req: NextRequest, ctx: AuthContext) {
+  const { searchParams } = new URL(req.url);
+  const { cursor, limit } = parsePaginationParams(searchParams);
+  const keysetCursor = decodeKeysetCursor(VISIT_RECORD_CURSOR_KEYS, cursor);
+  const keysetWhere = buildVisitRecordKeysetWhere(keysetCursor);
+  const parsedQuery = parseVisitRecordListQuery(searchParams);
+  if (!parsedQuery.ok) return parsedQuery.response;
 
-  return runWithRequestAuthContext(ctx, async () => {
-    const { searchParams } = new URL(req.url);
-    const { cursor, limit } = parsePaginationParams(searchParams);
-    const keysetCursor = decodeKeysetCursor(VISIT_RECORD_CURSOR_KEYS, cursor);
-    const keysetWhere = buildVisitRecordKeysetWhere(keysetCursor);
-    const parsedQuery = parseVisitRecordListQuery(searchParams);
-    if (!parsedQuery.ok) return parsedQuery.response;
+  const patientId = parsedQuery.data.patient_id;
+  const pharmacistId = parsedQuery.data.pharmacist_id;
+  const dateFrom = parsedQuery.data.date_from;
+  const dateTo = parsedQuery.data.date_to;
+  const includeHistorySummary = parsedQuery.data.include_history_summary ?? false;
+  const includeAttachments = parsedQuery.data.include_attachments ?? false;
+  const isEvidenceGalleryView = includeAttachments && parsedQuery.data.view === 'evidence_gallery';
+  const assignmentWhere = buildVisitRecordScheduleAssignmentWhere(ctx);
 
-    const patientId = parsedQuery.data.patient_id;
-    const pharmacistId = parsedQuery.data.pharmacist_id;
-    const dateFrom = parsedQuery.data.date_from;
-    const dateTo = parsedQuery.data.date_to;
-    const includeHistorySummary = parsedQuery.data.include_history_summary ?? false;
-    const includeAttachments = parsedQuery.data.include_attachments ?? false;
-    const isEvidenceGalleryView =
-      includeAttachments && parsedQuery.data.view === 'evidence_gallery';
-    const assignmentWhere = buildVisitRecordScheduleAssignmentWhere(ctx);
+  const where: Prisma.VisitRecordWhereInput = {
+    org_id: ctx.orgId,
+    ...(patientId ? { patient_id: patientId } : {}),
+    ...(pharmacistId ? { pharmacist_id: pharmacistId } : {}),
+    ...(keysetWhere ?? {}),
+    ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
+    ...(dateFrom || dateTo
+      ? {
+          visit_date: {
+            ...(dateFrom ? { gte: new Date(dateFrom) } : {}),
+            ...(dateTo ? { lte: new Date(dateTo + 'T23:59:59') } : {}),
+          },
+        }
+      : {}),
+  };
 
-    const where: Prisma.VisitRecordWhereInput = {
-      org_id: ctx.orgId,
-      ...(patientId ? { patient_id: patientId } : {}),
-      ...(pharmacistId ? { pharmacist_id: pharmacistId } : {}),
-      ...(keysetWhere ?? {}),
-      ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
-      ...(dateFrom || dateTo
-        ? {
-            visit_date: {
-              ...(dateFrom ? { gte: new Date(dateFrom) } : {}),
-              ...(dateTo ? { lte: new Date(dateTo + 'T23:59:59') } : {}),
-            },
-          }
-        : {}),
-    };
-
-    const select = isEvidenceGalleryView
-      ? ({
-          id: true,
-          visit_date: true,
-          created_at: true,
-          attachments: true,
-        } satisfies Prisma.VisitRecordSelect)
-      : ({
-          id: true,
-          schedule_id: true,
-          patient_id: true,
-          pharmacist_id: true,
-          visit_date: true,
-          outcome_status: true,
-          soap_subjective: true,
-          soap_objective: true,
-          soap_assessment: true,
-          soap_plan: true,
-          receipt_person_name: true,
-          receipt_person_relation: true,
-          receipt_at: true,
-          next_visit_suggestion_date: true,
-          version: true,
-          created_at: true,
-          updated_at: true,
-          ...(includeAttachments ? { attachments: true } : {}),
-          schedule: {
-            select: {
-              visit_type: true,
-              scheduled_date: true,
-              case_: {
-                select: {
-                  patient: {
-                    select: {
-                      id: true,
-                      name: true,
-                      name_kana: true,
-                    },
+  const select = isEvidenceGalleryView
+    ? ({
+        id: true,
+        visit_date: true,
+        created_at: true,
+        attachments: true,
+      } satisfies Prisma.VisitRecordSelect)
+    : ({
+        id: true,
+        schedule_id: true,
+        patient_id: true,
+        pharmacist_id: true,
+        visit_date: true,
+        outcome_status: true,
+        soap_subjective: true,
+        soap_objective: true,
+        soap_assessment: true,
+        soap_plan: true,
+        receipt_person_name: true,
+        receipt_person_relation: true,
+        receipt_at: true,
+        next_visit_suggestion_date: true,
+        version: true,
+        created_at: true,
+        updated_at: true,
+        ...(includeAttachments ? { attachments: true } : {}),
+        schedule: {
+          select: {
+            visit_type: true,
+            scheduled_date: true,
+            case_: {
+              select: {
+                patient: {
+                  select: {
+                    id: true,
+                    name: true,
+                    name_kana: true,
                   },
                 },
               },
             },
           },
-        } satisfies Prisma.VisitRecordSelect);
-
-    const records = await prisma.visitRecord.findMany({
-      where,
-      take: limit + 1,
-      orderBy: [{ visit_date: 'desc' }, { created_at: 'desc' }, { id: 'desc' }],
-      select,
-    });
-
-    const page = buildCursorPage(records, limit, (record) =>
-      encodeKeysetCursor(VISIT_RECORD_CURSOR_KEYS, record),
-    );
-    const pageRecords = page.data;
-    const patientHistorySummaries =
-      includeHistorySummary && !isEvidenceGalleryView
-        ? await buildVisitRecordPatientHistorySummaries(
-            ctx.orgId,
-            collectVisitRecordListItems(pageRecords),
-          )
-        : null;
-    const data = isEvidenceGalleryView
-      ? pageRecords.map((record) => ({
-          id: record.id,
-          visit_date: record.visit_date,
-          created_at: record.created_at,
-          attachments: parseStoredVisitRecordAttachmentSummaries(
-            'attachments' in record ? record.attachments : null,
-          ),
-        }))
-      : pageRecords.map((record) => ({
-          ...record,
-          ...(includeAttachments
-            ? {
-                attachments: parseStoredVisitRecordAttachmentSummaries(
-                  'attachments' in record ? record.attachments : null,
-                ),
-              }
-            : {}),
-          patient_history_summary: patientHistorySummaries?.get(record.id) ?? null,
-        }));
-
-    return withSensitiveNoStore(
-      success({
-        data,
-        meta: {
-          has_more: page.hasMore,
-          next_cursor: page.nextCursor ?? null,
         },
-      }),
-    );
+      } satisfies Prisma.VisitRecordSelect);
+
+  const records = await prisma.visitRecord.findMany({
+    where,
+    take: limit + 1,
+    orderBy: [{ visit_date: 'desc' }, { created_at: 'desc' }, { id: 'desc' }],
+    select,
   });
+
+  const page = buildCursorPage(records, limit, (record) =>
+    encodeKeysetCursor(VISIT_RECORD_CURSOR_KEYS, record),
+  );
+  const pageRecords = page.data;
+  const patientHistorySummaries =
+    includeHistorySummary && !isEvidenceGalleryView
+      ? await buildVisitRecordPatientHistorySummaries(
+          ctx.orgId,
+          collectVisitRecordListItems(pageRecords),
+        )
+      : null;
+  const data = isEvidenceGalleryView
+    ? pageRecords.map((record) => ({
+        id: record.id,
+        visit_date: record.visit_date,
+        created_at: record.created_at,
+        attachments: parseStoredVisitRecordAttachmentSummaries(
+          'attachments' in record ? record.attachments : null,
+        ),
+      }))
+    : pageRecords.map((record) => ({
+        ...record,
+        ...(includeAttachments
+          ? {
+              attachments: parseStoredVisitRecordAttachmentSummaries(
+                'attachments' in record ? record.attachments : null,
+              ),
+            }
+          : {}),
+        patient_history_summary: patientHistorySummaries?.get(record.id) ?? null,
+      }));
+
+  return withSensitiveNoStore(
+    success({
+      data,
+      meta: {
+        has_more: page.hasMore,
+        next_cursor: page.nextCursor ?? null,
+      },
+    }),
+  );
 }
 
-export async function GET(req: NextRequest) {
-  return withRoutePerformance(req, async () => {
+export const GET = withAuthContext(
+  async (req, ctx) => {
     try {
-      return withSensitiveNoStore(await authenticatedGET(req));
+      return withSensitiveNoStore(await authenticatedGET(req, ctx));
     } catch (err) {
       unstable_rethrow(err);
       logger.error({
@@ -1002,8 +991,12 @@ export async function GET(req: NextRequest) {
       });
       return withSensitiveNoStore(internalError());
     }
-  });
-}
+  },
+  {
+    permission: 'canVisit',
+    message: '訪問記録の閲覧権限がありません',
+  },
+);
 
 async function saveVisitRecord(ctx: AuthContext, input: CreateVisitRecordInput) {
   const {
@@ -1765,129 +1758,118 @@ async function saveVisitRecord(ctx: AuthContext, input: CreateVisitRecordInput) 
   });
 }
 
-async function authenticatedPOST(req: NextRequest) {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canVisit',
-    message: '訪問記録の作成権限がありません',
-  });
-  if ('response' in authResult) return authResult.response;
-  const { ctx } = authResult;
+async function authenticatedPOST(req: NextRequest, ctx: AuthContext) {
+  const payload = await readJsonObjectRequestBody(req);
+  if (!payload) return validationError('リクエストボディが不正です');
 
-  return runWithRequestAuthContext(ctx, async () => {
-    const payload = await readJsonObjectRequestBody(req);
-    if (!payload) return validationError('リクエストボディが不正です');
+  const parsed = createVisitRecordSchema.safeParse(payload);
+  if (!parsed.success) {
+    return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
+  }
 
-    const parsed = createVisitRecordSchema.safeParse(payload);
-    if (!parsed.success) {
-      return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
-    }
+  const result = await saveVisitRecord(ctx, parsed.data);
 
-    const result = await saveVisitRecord(ctx, parsed.data);
-
-    if ('error' in result) {
-      if (result.error === 'schedule_not_found') {
-        return validationError('指定されたスケジュールが見つかりません');
-      }
-      if (result.error === 'schedule_forbidden') {
-        return forbiddenResponse('この訪問予定の記録を作成する権限がありません');
-      }
-      if (result.error === 'visit_record_finalization_forbidden') {
-        return forbiddenResponse('訪問結果の確定には薬剤師の確認が必要です');
-      }
-      if (result.error === 'schedule_status_conflict') {
-        return conflict('訪問予定が同時に更新されました。再読み込みしてください', {
-          current_schedule_status: result.scheduleStatus ?? null,
-        });
-      }
-      if (result.error === 'case_not_found') {
-        return validationError('訪問予定に紐づくケースが見つかりません');
-      }
-      if (result.error === 'patient_mismatch') {
-        return validationError('訪問予定に紐づく患者と記録対象患者が一致しません');
-      }
-      if (result.error === 'invalid_residual_medication_drug_master_id') {
-        return validationError('入力値が不正です', {
-          drug_master_id: ['存在する医薬品マスターを選択してください'],
-        });
-      }
-      if (result.error === 'carry_items_blocked') {
-        return validationError(
-          '持参物が未確定のため訪問記録を作成できません。持参物を確定するか代替手配を記録してください',
-        );
-      }
-      if (result.error === 'carry_items_partial_acknowledgement_required') {
-        return validationError(
-          '持参物が一部未確定のため、代替手配または現地対応方針の確認が必要です',
-        );
-      }
-      if (result.error === 'blocked_carry_items_postpone_reason_required') {
-        return validationError('持参物未確定で延期する場合は延期理由を入力してください');
-      }
-      if (result.error === 'blocked_carry_items_cancellation_reason_required') {
-        return validationError(
-          '持参物未確定でキャンセルする場合はキャンセル理由を入力してください',
-        );
-      }
-      if (result.error === 'home_visit_2026_readiness_incomplete') {
-        return validationError('訪問完了には訪問薬剤管理の必須確認が必要です', {
-          home_visit_2026_readiness: result.missingItems.map((item) => item.label),
-        });
-      }
-      if (result.error === 'record_conflict') {
-        return conflict(
-          'この訪問予定には既に記録があります。サーバー版との差分を確認してください。',
-          {
-            existing_record: result.existingRecord,
-          },
-        );
-      }
-      if (result.error === 'first_visit_document_conflict') {
-        return conflict(
-          '初回文書が同時に更新されました。最新の患者文書を確認してから再度保存してください。',
-        );
-      }
-      if (result.error === 'previous_visit_source_conflict') {
-        return conflict(
-          '前回訪問データが他のユーザーによって更新されています。訪問準備を再読み込みしてください。',
-          {
-            reason: result.reason,
-            source: result.details,
-          },
-        );
-      }
+  if ('error' in result) {
+    if (result.error === 'schedule_not_found') {
       return validationError('指定されたスケジュールが見つかりません');
     }
-
-    const requestContext = getRequestAuthContext();
-    if (result.handoffExtraction) {
-      void processHandoffExtraction(prisma, {
-        orgId: ctx.orgId,
-        visitRecordId: result.record.id,
-        patientId: result.handoffExtraction.patientId,
-        patientName: result.handoffExtraction.patientName,
-        structuredSoap: result.handoffExtraction.structuredSoap,
-        soapAssessment: result.handoffExtraction.soapAssessment,
-        soapPlan: result.handoffExtraction.soapPlan,
-        expectedVersion: result.handoffExtraction.expectedVersion,
-        requestContext,
-      }).catch(() => {
-        logger.warn(safeHandoffExtractionWarningContext());
+    if (result.error === 'schedule_forbidden') {
+      return forbiddenResponse('この訪問予定の記録を作成する権限がありません');
+    }
+    if (result.error === 'visit_record_finalization_forbidden') {
+      return forbiddenResponse('訪問結果の確定には薬剤師の確認が必要です');
+    }
+    if (result.error === 'schedule_status_conflict') {
+      return conflict('訪問予定が同時に更新されました。再読み込みしてください', {
+        current_schedule_status: result.scheduleStatus ?? null,
       });
     }
+    if (result.error === 'case_not_found') {
+      return validationError('訪問予定に紐づくケースが見つかりません');
+    }
+    if (result.error === 'patient_mismatch') {
+      return validationError('訪問予定に紐づく患者と記録対象患者が一致しません');
+    }
+    if (result.error === 'invalid_residual_medication_drug_master_id') {
+      return validationError('入力値が不正です', {
+        drug_master_id: ['存在する医薬品マスターを選択してください'],
+      });
+    }
+    if (result.error === 'carry_items_blocked') {
+      return validationError(
+        '持参物が未確定のため訪問記録を作成できません。持参物を確定するか代替手配を記録してください',
+      );
+    }
+    if (result.error === 'carry_items_partial_acknowledgement_required') {
+      return validationError(
+        '持参物が一部未確定のため、代替手配または現地対応方針の確認が必要です',
+      );
+    }
+    if (result.error === 'blocked_carry_items_postpone_reason_required') {
+      return validationError('持参物未確定で延期する場合は延期理由を入力してください');
+    }
+    if (result.error === 'blocked_carry_items_cancellation_reason_required') {
+      return validationError('持参物未確定でキャンセルする場合はキャンセル理由を入力してください');
+    }
+    if (result.error === 'home_visit_2026_readiness_incomplete') {
+      return validationError('訪問完了には訪問薬剤管理の必須確認が必要です', {
+        home_visit_2026_readiness: result.missingItems.map((item) => item.label),
+      });
+    }
+    if (result.error === 'record_conflict') {
+      return conflict(
+        'この訪問予定には既に記録があります。サーバー版との差分を確認してください。',
+        {
+          existing_record: result.existingRecord,
+        },
+      );
+    }
+    if (result.error === 'first_visit_document_conflict') {
+      return conflict(
+        '初回文書が同時に更新されました。最新の患者文書を確認してから再度保存してください。',
+      );
+    }
+    if (result.error === 'previous_visit_source_conflict') {
+      return conflict(
+        '前回訪問データが他のユーザーによって更新されています。訪問準備を再読み込みしてください。',
+        {
+          reason: result.reason,
+          source: result.details,
+        },
+      );
+    }
+    return validationError('指定されたスケジュールが見つかりません');
+  }
 
-    const responsePayload = {
-      record: result.record,
-      suggestedSchedule: result.suggestedSchedule,
-      conflictResolved: result.conflictResolved,
-    };
-    return success({ data: responsePayload }, result.conflictResolved ? 200 : 201);
-  });
+  const requestContext = getRequestAuthContext();
+  if (result.handoffExtraction) {
+    void processHandoffExtraction(prisma, {
+      orgId: ctx.orgId,
+      visitRecordId: result.record.id,
+      patientId: result.handoffExtraction.patientId,
+      patientName: result.handoffExtraction.patientName,
+      structuredSoap: result.handoffExtraction.structuredSoap,
+      soapAssessment: result.handoffExtraction.soapAssessment,
+      soapPlan: result.handoffExtraction.soapPlan,
+      expectedVersion: result.handoffExtraction.expectedVersion,
+      requestContext,
+    }).catch(() => {
+      logger.warn(safeHandoffExtractionWarningContext());
+    });
+  }
+
+  const responsePayload = {
+    record: result.record,
+    suggestedSchedule: result.suggestedSchedule,
+    conflictResolved: result.conflictResolved,
+  };
+  return success({ data: responsePayload }, result.conflictResolved ? 200 : 201);
 }
 
-export async function POST(req: NextRequest) {
-  return withRoutePerformance(req, async () => {
+export const POST = withAuthContext(
+  async (req, ctx) => {
     try {
-      return withSensitiveNoStore(await authenticatedPOST(req));
+      return withSensitiveNoStore(await authenticatedPOST(req, ctx));
     } catch (err) {
       unstable_rethrow(err);
       logger.error({
@@ -1899,5 +1881,9 @@ export async function POST(req: NextRequest) {
       });
       return withSensitiveNoStore(internalError());
     }
-  });
-}
+  },
+  {
+    permission: 'canVisit',
+    message: '訪問記録の作成権限がありません',
+  },
+);
