@@ -21,7 +21,6 @@ import { generateCareReportFromVisit } from '@/lib/reports/generate-from-visit-c
 import type { GeneratedCareReportSummary } from '@/lib/reports/generate-from-visit-contract';
 import { displayDeliveryFailureReason } from '@/lib/reports/delivery-failure-reasons';
 import { buildReportHref } from '@/lib/reports/navigation';
-import { formatDateTimeLabel } from '@/lib/ui/date-format';
 import {
   buildReportInboundCandidateDecisionResponseSchema,
   reportsTodayWorkspaceResponseSchema,
@@ -42,8 +41,16 @@ import type {
 import {
   buildHeaderMeta,
   buildReportEvidence,
+  DELIVERY_CHANNEL_LABELS,
+  deliveryRetryLabel,
+  DRAFT_STATUS_LABELS,
+  formatDateTime,
   formatWorkspaceCountLabel,
   formatTimeOfDay,
+  ISSUE_TONE_CLASSES,
+  REPORT_INBOUND_CANDIDATE_ACTION_LABELS,
+  REPORT_INBOUND_CANDIDATE_ACTION_TOASTS,
+  REPORT_INBOUND_CANDIDATE_ACTIONS,
   waitingBadgeLabel,
 } from './report-share-workspace.helpers';
 
@@ -53,29 +60,6 @@ import {
  * 右レール(次にやること/止まっている理由/根拠・記録)の 2 カラム構成。
  * 文言ルール: ブロッカー→「止まっている理由」/ Next Action→「次にやること」。
  */
-
-const DRAFT_STATUS_LABELS: Record<string, string> = {
-  before_visit: '訪問後に下書き',
-  ready_to_generate: '未作成',
-  draft_ready: '下書きあり',
-  report_existing: '作成済み',
-};
-
-const ISSUE_TONE_CLASSES: Record<ReportOpenIssue['severity'], string> = {
-  critical: 'border-transparent bg-state-blocked/10 text-state-blocked',
-  warning: 'border-transparent bg-state-confirm/10 text-state-confirm',
-  info: 'border-transparent bg-tag-info/10 text-tag-info',
-};
-
-const DELIVERY_CHANNEL_LABELS: Record<string, string> = {
-  email: 'メール',
-  ses: 'メール',
-  fax: 'FAX',
-  phone: '電話',
-  in_person: '対面',
-  postal: '郵送',
-  ph_os_share: 'PH-OS共有',
-};
 
 const reportOutlineActionClassName = cn(
   buttonVariants({ variant: 'outline', size: 'sm' }),
@@ -92,31 +76,6 @@ type ReportInboundCandidateDecisionInput = {
   signalId: string;
   action: ReportInboundCandidateAction;
 };
-
-const REPORT_INBOUND_CANDIDATE_ACTION_LABELS: Record<ReportInboundCandidateAction, string> = {
-  include_in_report: '報告書に含める',
-  handoff_only: '申し送りのみ',
-  internal_record_only: '内部記録のみ',
-};
-const REPORT_INBOUND_CANDIDATE_ACTIONS = [
-  'include_in_report',
-  'handoff_only',
-  'internal_record_only',
-] as const satisfies readonly ReportInboundCandidateAction[];
-
-const REPORT_INBOUND_CANDIDATE_ACTION_TOASTS: Record<ReportInboundCandidateAction, string> = {
-  include_in_report: '報告候補として採用しました',
-  handoff_only: '申し送りのみとして記録しました',
-  internal_record_only: '内部記録のみとして記録しました',
-};
-
-function formatDateTime(iso: string): string {
-  return formatDateTimeLabel(iso, { pattern: 'MM/dd HH:mm' });
-}
-
-function deliveryRetryLabel(retryCount: number): string {
-  return retryCount > 0 ? `再送${retryCount}回` : '再送未実施';
-}
 
 async function fetchReportsTodayWorkspace(orgId: string): Promise<ReportsTodayWorkspaceResponse> {
   const res = await fetch('/api/care-reports/today-workspace', {

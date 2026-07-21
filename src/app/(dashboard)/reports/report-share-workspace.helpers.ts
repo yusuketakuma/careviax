@@ -2,10 +2,15 @@ import { format } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import type { EvidenceItem } from '@/components/features/workspace/action-rail';
 import { buildExternalHref } from '@/lib/dashboard/home-link-builders';
+import { formatDateTimeLabel } from '@/lib/ui/date-format';
 import { formatElapsedLabel } from '@/lib/ui/relative-time';
 import { formatTimeOfDay } from '@/lib/datetime/time-of-day';
 import { familyNameOf as sharedFamilyNameOf } from '@/lib/utils/person-name';
-import type { ReportsTodayWorkspaceResponse } from '@/types/reports-today-workspace';
+import type {
+  ReportInboundCandidateAction,
+  ReportOpenIssue,
+  ReportsTodayWorkspaceResponse,
+} from '@/types/reports-today-workspace';
 
 /**
  * new_10_report(報告・共有)の表示用ヘルパー。
@@ -20,6 +25,57 @@ export const formatAgeLabel = formatElapsedLabel;
 
 /** 「田中 一郎」→「田中」 */
 export const familyNameOf = sharedFamilyNameOf;
+
+export const DRAFT_STATUS_LABELS: Record<string, string> = {
+  before_visit: '訪問後に下書き',
+  ready_to_generate: '未作成',
+  draft_ready: '下書きあり',
+  report_existing: '作成済み',
+};
+
+export const ISSUE_TONE_CLASSES: Record<ReportOpenIssue['severity'], string> = {
+  critical: 'border-transparent bg-state-blocked/10 text-state-blocked',
+  warning: 'border-transparent bg-state-confirm/10 text-state-confirm',
+  info: 'border-transparent bg-tag-info/10 text-tag-info',
+};
+
+export const DELIVERY_CHANNEL_LABELS: Record<string, string> = {
+  email: 'メール',
+  ses: 'メール',
+  fax: 'FAX',
+  phone: '電話',
+  in_person: '対面',
+  postal: '郵送',
+  ph_os_share: 'PH-OS共有',
+};
+
+export const REPORT_INBOUND_CANDIDATE_ACTION_LABELS: Record<ReportInboundCandidateAction, string> =
+  {
+    include_in_report: '報告書に含める',
+    handoff_only: '申し送りのみ',
+    internal_record_only: '内部記録のみ',
+  };
+
+export const REPORT_INBOUND_CANDIDATE_ACTIONS = [
+  'include_in_report',
+  'handoff_only',
+  'internal_record_only',
+] as const satisfies readonly ReportInboundCandidateAction[];
+
+export const REPORT_INBOUND_CANDIDATE_ACTION_TOASTS: Record<ReportInboundCandidateAction, string> =
+  {
+    include_in_report: '報告候補として採用しました',
+    handoff_only: '申し送りのみとして記録しました',
+    internal_record_only: '内部記録のみとして記録しました',
+  };
+
+export function formatDateTime(iso: string): string {
+  return formatDateTimeLabel(iso, { pattern: 'MM/dd HH:mm' });
+}
+
+export function deliveryRetryLabel(retryCount: number): string {
+  return retryCount > 0 ? `再送${retryCount}回` : '再送未実施';
+}
 
 /** ヘッダーメタ「6/11(木) — 書く3件・候補1件・待つ2件・解決1件」 */
 export function buildHeaderMeta(
