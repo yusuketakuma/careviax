@@ -17,7 +17,7 @@ import {
   type QualificationCheckResult,
 } from '@/server/adapters/qualification-check';
 import { japanDateKey } from '@/lib/utils/date-boundary';
-import { notifyWebhookEventForOrg } from '@/server/services/outbound-webhook';
+import { enqueueQualificationCheckedWebhook } from '@/server/services/outbound-webhook-queue';
 import { applyPatientAssignmentWhere } from '@/lib/auth/visit-schedule-access';
 import { resolvePatientInsurance } from '@/server/services/patient-insurance';
 import { requireWritablePatient } from '@/server/services/patient-write-guard';
@@ -191,12 +191,19 @@ async function authenticatedPOST(
       asOfDate: japanDateKey(),
     });
 
-    await notifyWebhookEventForOrg(ctx.orgId, 'qualification.checked', {
-      patientId: patient.id,
-      checkedAt: new Date().toISOString(),
-      insuranceNumberPresent: Boolean(insuranceNumber),
-      identityMatch: result ? resolveIdentityMatch(result, patient) : 'unknown',
-    });
+    const checkedAt = new Date();
+    await withOrgContext(
+      ctx.orgId,
+      (tx) =>
+        enqueueQualificationCheckedWebhook(tx, {
+          orgId: ctx.orgId,
+          patientId: patient.id,
+          checkedAt,
+          insuranceNumberPresent: Boolean(insuranceNumber),
+          identityMatch: result ? resolveIdentityMatch(result, patient) : 'unknown',
+        }),
+      { requestContext: ctx },
+    );
 
     return success({
       data: clientQualificationCheckResult(result, patient),

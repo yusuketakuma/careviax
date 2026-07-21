@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { enqueueWebhookEvent } from './outbound-webhook-queue';
+import { enqueueQualificationCheckedWebhook, enqueueWebhookEvent } from './outbound-webhook-queue';
 
 describe('outbound webhook queue', () => {
   it('queues reference-only webhook deliveries inside the caller transaction', async () => {
@@ -68,5 +68,49 @@ describe('outbound webhook queue', () => {
       }),
     ).rejects.toThrow('webhook_reference_data_key_not_allowed');
     expect(tx.webhookRegistration.findMany).not.toHaveBeenCalled();
+  });
+
+  it('queues qualification checks without persisting insurance identifiers or provider payloads', async () => {
+    const tx = {
+      webhookRegistration: {
+        findMany: vi
+          .fn()
+          .mockResolvedValue([
+            { id: 'webhook_1', url: 'https://partner.example.com/qualification' },
+          ]),
+      },
+      webhookDelivery: { createMany: vi.fn().mockResolvedValue({ count: 1 }) },
+    };
+    const checkedAt = new Date('2026-07-21T05:00:00.000Z');
+
+    await expect(
+      enqueueQualificationCheckedWebhook(tx as never, {
+        orgId: 'org_1',
+        patientId: 'patient_1',
+        checkedAt,
+        insuranceNumberPresent: true,
+        identityMatch: 'matched',
+      }),
+    ).resolves.toBe(1);
+
+    expect(tx.webhookDelivery.createMany).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({
+          event: 'qualification.checked',
+          next_attempt_at: checkedAt,
+          payload: expect.objectContaining({
+            event: 'qualification.checked',
+            occurredAt: checkedAt.toISOString(),
+            data: {
+              patientId: 'patient_1',
+              checkedAt: checkedAt.toISOString(),
+              insuranceNumberPresent: true,
+              identityMatch: 'matched',
+            },
+          }),
+        }),
+      ],
+      skipDuplicates: true,
+    });
   });
 });

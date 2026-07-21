@@ -9,7 +9,7 @@ const {
   createQualificationCheckAdapterMock,
   checkInsuranceMock,
   getCapabilitiesMock,
-  notifyWebhookEventForOrgMock,
+  enqueueQualificationCheckedWebhookMock,
   QualificationCheckAdapterErrorMock,
   loggerErrorMock,
 } = vi.hoisted(() => {
@@ -36,7 +36,7 @@ const {
     })),
     checkInsuranceMock,
     getCapabilitiesMock,
-    notifyWebhookEventForOrgMock: vi.fn(),
+    enqueueQualificationCheckedWebhookMock: vi.fn(),
     QualificationCheckAdapterErrorMock: QualificationCheckAdapterError,
     loggerErrorMock: vi.fn(),
   };
@@ -66,8 +66,8 @@ vi.mock('@/server/adapters/qualification-check', () => ({
   QualificationCheckAdapterError: QualificationCheckAdapterErrorMock,
 }));
 
-vi.mock('@/server/services/outbound-webhook', () => ({
-  notifyWebhookEventForOrg: notifyWebhookEventForOrgMock,
+vi.mock('@/server/services/outbound-webhook-queue', () => ({
+  enqueueQualificationCheckedWebhook: enqueueQualificationCheckedWebhookMock,
 }));
 
 vi.mock('@/lib/utils/logger', () => ({
@@ -139,7 +139,7 @@ describe('/api/patients/[id]/qualification-check POST', () => {
       supportsBenefitHistory: false,
       supportsCareInsurance: false,
     });
-    notifyWebhookEventForOrgMock.mockResolvedValue(undefined);
+    enqueueQualificationCheckedWebhookMock.mockResolvedValue(undefined);
   });
 
   it('rejects blank patient ids before loading the patient or calling external adapters', async () => {
@@ -157,7 +157,7 @@ describe('/api/patients/[id]/qualification-check POST', () => {
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(createQualificationCheckAdapterMock).not.toHaveBeenCalled();
     expect(checkInsuranceMock).not.toHaveBeenCalled();
-    expect(notifyWebhookEventForOrgMock).not.toHaveBeenCalled();
+    expect(enqueueQualificationCheckedWebhookMock).not.toHaveBeenCalled();
   });
 
   it('checks assigned patient insurance and emits a webhook event', async () => {
@@ -189,13 +189,14 @@ describe('/api/patients/[id]/qualification-check POST', () => {
       insuranceNumber: '12345678',
       asOfDate: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
     });
-    expect(notifyWebhookEventForOrgMock).toHaveBeenCalledWith(
-      'org_1',
-      'qualification.checked',
+    expect(enqueueQualificationCheckedWebhookMock).toHaveBeenCalledWith(
+      expect.any(Object),
       expect.objectContaining({
+        orgId: 'org_1',
         patientId: 'patient_1',
         insuranceNumberPresent: true,
         identityMatch: 'matched',
+        checkedAt: expect.any(Date),
       }),
     );
     const body = await response.json();
@@ -269,7 +270,7 @@ describe('/api/patients/[id]/qualification-check POST', () => {
     expect(patientInsuranceFindFirstMock).not.toHaveBeenCalled();
     expect(createQualificationCheckAdapterMock).not.toHaveBeenCalled();
     expect(checkInsuranceMock).not.toHaveBeenCalled();
-    expect(notifyWebhookEventForOrgMock).not.toHaveBeenCalled();
+    expect(enqueueQualificationCheckedWebhookMock).not.toHaveBeenCalled();
   });
 
   it('prefers active structured medical PatientInsurance over legacy patient columns', async () => {
@@ -313,10 +314,10 @@ describe('/api/patients/[id]/qualification-check POST', () => {
       insuranceNumber: '87654321',
       asOfDate: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
     });
-    expect(notifyWebhookEventForOrgMock).toHaveBeenCalledWith(
-      'org_1',
-      'qualification.checked',
+    expect(enqueueQualificationCheckedWebhookMock).toHaveBeenCalledWith(
+      expect.any(Object),
       expect.objectContaining({
+        orgId: 'org_1',
         insuranceNumberPresent: true,
       }),
     );
@@ -353,10 +354,10 @@ describe('/api/patients/[id]/qualification-check POST', () => {
         warnings: expect.arrayContaining(['資格確認結果の氏名が患者情報と一致しません']),
       },
     });
-    expect(notifyWebhookEventForOrgMock).toHaveBeenCalledWith(
-      'org_1',
-      'qualification.checked',
+    expect(enqueueQualificationCheckedWebhookMock).toHaveBeenCalledWith(
+      expect.any(Object),
       expect.objectContaining({
+        orgId: 'org_1',
         patientId: 'patient_1',
         insuranceNumberPresent: true,
         identityMatch: 'mismatch',
@@ -403,10 +404,10 @@ describe('/api/patients/[id]/qualification-check POST', () => {
         warnings: expect.arrayContaining(['資格確認結果の氏名を患者情報と照合できません']),
       },
     });
-    expect(notifyWebhookEventForOrgMock).toHaveBeenCalledWith(
-      'org_1',
-      'qualification.checked',
+    expect(enqueueQualificationCheckedWebhookMock).toHaveBeenCalledWith(
+      expect.any(Object),
       expect.objectContaining({
+        orgId: 'org_1',
         patientId: 'patient_1',
         insuranceNumberPresent: true,
         identityMatch: 'unknown',
@@ -440,7 +441,7 @@ describe('/api/patients/[id]/qualification-check POST', () => {
     expect(patientFindFirstMock).not.toHaveBeenCalled();
     expect(patientInsuranceFindFirstMock).not.toHaveBeenCalled();
     expect(createQualificationCheckAdapterMock).not.toHaveBeenCalled();
-    expect(notifyWebhookEventForOrgMock).not.toHaveBeenCalled();
+    expect(enqueueQualificationCheckedWebhookMock).not.toHaveBeenCalled();
   });
 
   it('returns fixed no-store provider setup failures without exposing configuration details', async () => {
@@ -468,7 +469,7 @@ describe('/api/patients/[id]/qualification-check POST', () => {
     expect(serializedBody).not.toContain('山田 太郎');
     expect(serializedBody).not.toContain('token secret');
     expect(checkInsuranceMock).not.toHaveBeenCalled();
-    expect(notifyWebhookEventForOrgMock).not.toHaveBeenCalled();
+    expect(enqueueQualificationCheckedWebhookMock).not.toHaveBeenCalled();
   });
 
   it('returns fixed no-store upstream failures without echoing provider messages', async () => {
@@ -495,7 +496,7 @@ describe('/api/patients/[id]/qualification-check POST', () => {
     expect(serializedBody).not.toContain('12345678');
     expect(serializedBody).not.toContain('山田 太郎');
     expect(serializedBody).not.toContain('token secret');
-    expect(notifyWebhookEventForOrgMock).not.toHaveBeenCalled();
+    expect(enqueueQualificationCheckedWebhookMock).not.toHaveBeenCalled();
   });
 
   it('returns fixed no-store provider authentication failures without echoing credentials', async () => {
@@ -522,7 +523,7 @@ describe('/api/patients/[id]/qualification-check POST', () => {
     expect(serializedBody).not.toContain('12345678');
     expect(serializedBody).not.toContain('山田 太郎');
     expect(serializedBody).not.toContain('access_token=secret');
-    expect(notifyWebhookEventForOrgMock).not.toHaveBeenCalled();
+    expect(enqueueQualificationCheckedWebhookMock).not.toHaveBeenCalled();
   });
 
   it('keeps not-enabled provider responses no-store and fixed', async () => {
@@ -547,14 +548,14 @@ describe('/api/patients/[id]/qualification-check POST', () => {
     });
     expect(JSON.stringify(body)).not.toContain('12345678');
     expect(JSON.stringify(body)).not.toContain('token secret');
-    expect(notifyWebhookEventForOrgMock).not.toHaveBeenCalled();
+    expect(enqueueQualificationCheckedWebhookMock).not.toHaveBeenCalled();
   });
 
   it('returns a fixed no-store 500 when webhook notification fails without exposing PHI', async () => {
     const unsafeError = new Error(
       'webhook failed for patient 山田 太郎 insurance 12345678 token secret',
     );
-    notifyWebhookEventForOrgMock.mockRejectedValueOnce(unsafeError);
+    enqueueQualificationCheckedWebhookMock.mockRejectedValueOnce(unsafeError);
 
     const response = await POST(createRequest(), {
       params: Promise.resolve({ id: 'patient_1' }),
@@ -617,7 +618,7 @@ describe('/api/patients/[id]/qualification-check POST', () => {
     expect(serializedBody).not.toContain('token secret');
     expect(patientFindFirstMock).not.toHaveBeenCalled();
     expect(createQualificationCheckAdapterMock).not.toHaveBeenCalled();
-    expect(notifyWebhookEventForOrgMock).not.toHaveBeenCalled();
+    expect(enqueueQualificationCheckedWebhookMock).not.toHaveBeenCalled();
     expect(loggerErrorMock).toHaveBeenCalledTimes(1);
     expect(loggerErrorMock).toHaveBeenCalledWith({
       event: 'qualification_check_post_unhandled_error',

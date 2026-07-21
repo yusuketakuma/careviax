@@ -101,3 +101,22 @@ export function enqueuePrescriptionDispensedWebhook(
     data,
   });
 }
+
+export function enqueueQualificationCheckedWebhook(
+  tx: WebhookEnqueueTx,
+  input: {
+    orgId: string;
+    patientId: string;
+    checkedAt: Date;
+    insuranceNumberPresent: boolean;
+    identityMatch: 'matched' | 'mismatch' | 'unknown';
+  },
+) {
+  const { orgId, checkedAt, ...data } = input;
+  return enqueueWebhookEvent(tx, {
+    orgId,
+    event: 'qualification.checked',
+    occurredAt: checkedAt,
+    data: { ...data, checkedAt: checkedAt.toISOString() },
+  });
+}
