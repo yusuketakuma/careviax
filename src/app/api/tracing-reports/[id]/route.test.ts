@@ -33,6 +33,24 @@ const {
 
 vi.mock('@/lib/auth/context', () => ({
   requireAuthContext: requireAuthContextMock,
+  withAuthContext:
+    (
+      handler: (
+        req: NextRequest,
+        ctx: { orgId: string; userId: string; role: string },
+        routeContext: { params: Promise<{ id: string }> },
+      ) => Promise<Response>,
+      options: { permission: string; message: string },
+    ) =>
+    async (req: NextRequest, routeContext: { params: Promise<{ id: string }> }) => {
+      const authResult = await requireAuthContextMock(req, options);
+      if ('response' in authResult) {
+        authResult.response.headers.set('Cache-Control', 'private, no-store, max-age=0');
+        authResult.response.headers.set('Pragma', 'no-cache');
+        return authResult.response;
+      }
+      return handler(req, authResult.ctx, routeContext);
+    },
 }));
 
 vi.mock('@/lib/db/client', () => ({

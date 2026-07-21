@@ -735,7 +735,7 @@
       },
       {
         "path": "Plans.md",
-        "sha256": "40e69567644ed90741799d3b02e217eba38285922c0f0b2ba98e52dd7a02ee19"
+        "sha256": "87214def9cbe5006451f11307691be7e839b3d8386bee85be3eafeaa872ecb00"
       },
       {
         "path": "README.md",
@@ -903,7 +903,7 @@
       },
       {
         "path": "ops/refactor/STATE.md",
-        "sha256": "92d38d9ffc16990952ae0dfd400e3bb447c488b3dc0ad0741c21d9af18a2525a"
+        "sha256": "544e331ffab88b3e155138f7979ed5ed18e7f7ad8213879eb32b717ce7a77a8a"
       },
       {
         "path": "ops/refactor/archive/PERF_FINDINGS.md",
@@ -32596,7 +32596,7 @@
       "path": "src/app/api/tracing-reports/[id]/route.test.ts",
       "classes": ["test"],
       "detectors": ["raw_role_semantics"],
-      "sha256": "40e3dced1ed746984847313d80d7a011bb27f947c602ead8bb70e7b4b6f4ebe8"
+      "sha256": "a590bec480a6292b4bc38a36c00c43639307ea0ca27e3e4f82d09533ab7eaa03"
     },
     {
       "path": "src/app/api/tracing-reports/route.test.ts",

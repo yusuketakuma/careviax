@@ -1,7 +1,7 @@
 import { unstable_rethrow } from 'next/navigation';
 import { NextRequest } from 'next/server';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
-import { requireAuthContext } from '@/lib/auth/context';
+import { withAuthContext, type AuthContext, type AuthRouteContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
@@ -17,7 +17,6 @@ import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { prisma } from '@/lib/db/client';
 import { buildTracingReportPdfPath } from '@/lib/reports/tracing-report-pdf-path';
 import { logger } from '@/lib/utils/logger';
-import { withRoutePerformance } from '@/lib/utils/performance';
 import { z } from 'zod';
 import {
   communicationChannelSchema,
@@ -45,16 +44,10 @@ function logUnhandledRouteError(method: string, err: unknown) {
 
 async function authenticatedDELETE(
   req: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
+  ctx: AuthContext,
+  { params }: AuthRouteContext<{ id: string }>,
 ) {
   try {
-    const authResult = await requireAuthContext(req, {
-      permission: 'canAuthorReport',
-      message: 'トレーシングレポートの削除権限がありません',
-    });
-    if ('response' in authResult) return withSensitiveNoStore(authResult.response);
-    const { ctx } = authResult;
-
     const { id: rawId } = await params;
     const id = normalizeRequiredRouteParam(rawId);
     if (!id) return withSensitiveNoStore(validationError('トレーシングレポートIDが不正です'));
@@ -110,9 +103,10 @@ async function authenticatedDELETE(
   }
 }
 
-export async function DELETE(req: NextRequest, routeContext: { params: Promise<{ id: string }> }) {
-  return withRoutePerformance(req, async () => authenticatedDELETE(req, routeContext));
-}
+export const DELETE = withAuthContext(authenticatedDELETE, {
+  permission: 'canAuthorReport',
+  message: 'トレーシングレポートの削除権限がありません',
+});
 
 const ALLOWED_TRACING_STATUS_TRANSITIONS: Record<
   TracingReportStatusValue,
@@ -157,16 +151,10 @@ function parseStatusChangeReason(value: unknown) {
 
 async function authenticatedPATCH(
   req: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
+  ctx: AuthContext,
+  { params }: AuthRouteContext<{ id: string }>,
 ) {
   try {
-    const authResult = await requireAuthContext(req, {
-      permission: 'canAuthorReport',
-      message: 'トレーシングレポートの更新権限がありません',
-    });
-    if ('response' in authResult) return withSensitiveNoStore(authResult.response);
-    const { ctx } = authResult;
-
     const { id: rawId } = await params;
     const id = normalizeRequiredRouteParam(rawId);
     if (!id) return withSensitiveNoStore(validationError('トレーシングレポートIDが不正です'));
@@ -473,6 +461,7 @@ async function authenticatedPATCH(
   }
 }
 
-export async function PATCH(req: NextRequest, routeContext: { params: Promise<{ id: string }> }) {
-  return withRoutePerformance(req, async () => authenticatedPATCH(req, routeContext));
-}
+export const PATCH = withAuthContext(authenticatedPATCH, {
+  permission: 'canAuthorReport',
+  message: 'トレーシングレポートの更新権限がありません',
+});
