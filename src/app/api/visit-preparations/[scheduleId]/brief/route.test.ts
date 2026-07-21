@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
+import { unstable_rethrow } from 'next/navigation';
 
 const {
   requireAuthContextMock,
@@ -14,7 +15,35 @@ const {
 }));
 
 vi.mock('@/lib/auth/context', () => ({
-  requireAuthContext: requireAuthContextMock,
+  withAuthContext:
+    (
+      handler: (
+        req: NextRequest,
+        ctx: Record<string, unknown>,
+        routeContext: { params: Promise<{ scheduleId: string }> },
+      ) => Promise<Response>,
+      options?: unknown,
+    ) =>
+    async (req: NextRequest, routeContext: { params: Promise<{ scheduleId: string }> }) => {
+      const noStore = (response: Response) => {
+        response.headers.set('Cache-Control', 'private, no-store, max-age=0');
+        response.headers.set('Pragma', 'no-cache');
+        return response;
+      };
+      try {
+        const authResult = await requireAuthContextMock(req, options);
+        if ('response' in authResult) return noStore(authResult.response);
+        return noStore(await handler(req, authResult.ctx, routeContext));
+      } catch (error) {
+        unstable_rethrow(error);
+        return noStore(
+          Response.json(
+            { code: 'INTERNAL_ERROR', message: 'サーバー内部でエラーが発生しました' },
+            { status: 500 },
+          ),
+        );
+      }
+    },
 }));
 
 vi.mock('@/lib/db/client', () => ({

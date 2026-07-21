@@ -1,30 +1,16 @@
 import { NextRequest } from 'next/server';
-import { unstable_rethrow } from 'next/navigation';
-import { requireAuthContext } from '@/lib/auth/context';
+import { withAuthContext, type AuthContext } from '@/lib/auth/context';
 import { canAccessVisitScheduleAssignment } from '@/lib/auth/visit-schedule-access';
-import {
-  forbiddenResponse,
-  internalError,
-  notFound,
-  success,
-  validationError,
-} from '@/lib/api/response';
-import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
+import { forbiddenResponse, notFound, success, validationError } from '@/lib/api/response';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { prisma } from '@/lib/db/client';
 import { getScheduleVisitBrief } from '@/server/services/visit-brief';
 
 async function getVisitPreparationBrief(
   req: NextRequest,
+  ctx: AuthContext,
   { params }: { params: Promise<{ scheduleId: string }> },
 ) {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canVisit',
-    message: '訪問要約の閲覧権限がありません',
-  });
-  if ('response' in authResult) return authResult.response;
-  const { ctx } = authResult;
-
   const { scheduleId: rawScheduleId } = await params;
   const scheduleId = normalizeRequiredRouteParam(rawScheduleId);
   if (!scheduleId) return validationError('訪問予定IDが不正です');
@@ -62,14 +48,7 @@ async function getVisitPreparationBrief(
   return success({ data: brief });
 }
 
-export async function GET(
-  req: NextRequest,
-  routeContext: { params: Promise<{ scheduleId: string }> },
-) {
-  try {
-    return withSensitiveNoStore(await getVisitPreparationBrief(req, routeContext));
-  } catch (err) {
-    unstable_rethrow(err);
-    return withSensitiveNoStore(internalError());
-  }
-}
+export const GET = withAuthContext(getVisitPreparationBrief, {
+  permission: 'canVisit',
+  message: '訪問要約の閲覧権限がありません',
+});

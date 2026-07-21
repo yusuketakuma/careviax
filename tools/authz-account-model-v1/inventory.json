@@ -735,7 +735,7 @@
       },
       {
         "path": "Plans.md",
-        "sha256": "5acbf3c7422a3bdae1643b0b3ecc374ebc86d5ec17070ba848f7a9399db56cf7"
+        "sha256": "f8b254566c20da8728aa45691f568b376fa71332ab6759076dcc18410b944277"
       },
       {
         "path": "README.md",
@@ -903,7 +903,7 @@
       },
       {
         "path": "ops/refactor/STATE.md",
-        "sha256": "4edf1b6c5a3cb34a918e1036f17a4fb41f6d843f019ad7d89cf6038844052ff5"
+        "sha256": "cbf3b40cebf5866216cf9179536ef97de4de6bdb7bf7f312f6cfacd954d6d3b4"
       },
       {
         "path": "ops/refactor/archive/PERF_FINDINGS.md",
@@ -32926,7 +32926,7 @@
       "path": "src/app/api/visit-preparations/[scheduleId]/brief/route.test.ts",
       "classes": ["test"],
       "detectors": ["raw_role_semantics"],
-      "sha256": "78d2306fad743a0df01a839370f9699dd122188b294aa315da3981d5833d2848"
+      "sha256": "03f5615b7c296a397373627dbf7975aa016cb38e81ede0be8b59ad0e2c0b5736"
     },
     {
       "path": "src/app/api/visit-preparations/[scheduleId]/route.test.ts",
