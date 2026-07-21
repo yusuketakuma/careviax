@@ -58,49 +58,10 @@ vi.mock('@/lib/patient/navigation', async (importActual) => {
 // and a cancel button (calling onOpenChange(false)) ONLY when `open` is true.
 // This lets a11y tests assert via role + accessible name/description without a
 // portal, and lets the dup-flow assert the description copy / count.
-vi.mock('@/components/ui/confirm-dialog', () => ({
-  ConfirmDialog: ({
-    open,
-    title,
-    description,
-    confirmLabel,
-    cancelLabel,
-    confirmDisabled,
-    onConfirm,
-    onOpenChange,
-  }: {
-    open: boolean;
-    title: string;
-    description?: string;
-    confirmLabel?: string;
-    cancelLabel?: string;
-    confirmDisabled?: boolean;
-    onConfirm: () => void;
-    onOpenChange?: (open: boolean) => void;
-  }) =>
-    open ? (
-      <div
-        role="alertdialog"
-        aria-modal="true"
-        aria-label={title}
-        aria-describedby="confirm-dialog-description"
-        data-testid="confirm-dialog"
-      >
-        <p data-testid="confirm-dialog-title">{title}</p>
-        {description !== undefined ? (
-          <p id="confirm-dialog-description" data-testid="confirm-dialog-description">
-            {description}
-          </p>
-        ) : null}
-        <button type="button" onClick={() => onOpenChange?.(false)}>
-          {cancelLabel ?? 'キャンセル'}
-        </button>
-        <button type="button" onClick={onConfirm} disabled={confirmDisabled}>
-          {confirmLabel ?? '確認'}
-        </button>
-      </div>
-    ) : null,
-}));
+vi.mock('@/components/ui/confirm-dialog', async () => {
+  const { MockConfirmDialog } = await import('./referral-form.test-fixtures');
+  return { ConfirmDialog: MockConfirmDialog };
+});
 
 // ---------------------------------------------------------------------------
 // Select mock (mirrors drug-master-content.test.tsx slices 4a/4b/4c): replaces

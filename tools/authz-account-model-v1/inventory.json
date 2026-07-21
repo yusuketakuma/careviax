@@ -903,7 +903,7 @@
       },
       {
         "path": "ops/refactor/STATE.md",
-        "sha256": "c3118c3dbc193b044aae7832583a836b1e0d8a9bf27c4da26d0e54a7e1a2edd5"
+        "sha256": "704dffc759ca2d2f93760963e1e43355328e6a2bf715e0138d524a33473c309f"
       },
       {
         "path": "ops/refactor/archive/PERF_FINDINGS.md",
@@ -1234,8 +1234,12 @@
         "sha256": "9f6a23b7e3a51a1b9a1ae71e1f655afea87934a16d9d32146b4dd5ddfe048577"
       },
       {
+        "path": "src/app/(dashboard)/referrals/new/referral-form.test-fixtures.tsx",
+        "sha256": "a5da125e1bb48a370e70ce114226b6b10c9bff7d27e2b046bcb56361de183ee2"
+      },
+      {
         "path": "src/app/(dashboard)/referrals/new/referral-form.test.tsx",
-        "sha256": "baeff5d1428ad2ee3845efb0c6253147746f8f502fbf516e1f37575efaaf037b"
+        "sha256": "89b6540685982abce6bb4821089437c02e9106d4b803bd409c83b23b3aae45ff"
       },
       {
         "path": "src/app/(dashboard)/referrals/new/referral-form.tsx",
