@@ -713,11 +713,6 @@
       "task_id": "MAINT-FILE-SIZE-1000-001"
     },
     {
-      "path": "src/lib/db/display-id.test.ts",
-      "max_lines": 1027,
-      "task_id": "MAINT-FILE-SIZE-1000-001"
-    },
-    {
       "path": "src/lib/pharmacy/__tests__/qr-intake-mapper.test.ts",
       "max_lines": 1340,
       "task_id": "MAINT-FILE-SIZE-1000-001"
