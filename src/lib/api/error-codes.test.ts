@@ -338,6 +338,13 @@ describe('API error code registry', () => {
           "recoveryAction": "retry",
           "retryable": true,
         },
+        "WEBHOOK_SECRET_ENCRYPTION_UNAVAILABLE": {
+          "httpStatus": 503,
+          "logLevel": "error",
+          "messageLabel": "api.error.webhook.secret_encryption_unavailable",
+          "recoveryAction": "return_to_previous",
+          "retryable": false,
+        },
         "WORKFLOW_CONFLICT": {
           "httpStatus": 409,
           "logLevel": "warn",

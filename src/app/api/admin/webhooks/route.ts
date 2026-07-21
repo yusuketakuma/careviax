@@ -1,7 +1,7 @@
 import { withAuthContext } from '@/lib/auth/context';
 import { parseBoundedInteger } from '@/lib/api/pagination';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
-import { error, success, validationError } from '@/lib/api/response';
+import { registeredError, success, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { withOrgContext } from '@/lib/db/rls';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
@@ -115,10 +115,9 @@ export const POST = withAuthContext(
       encryptedSecret = await encryptWebhookSecret(secret);
     } catch {
       return withSensitiveNoStore(
-        error(
+        registeredError(
           'WEBHOOK_SECRET_ENCRYPTION_UNAVAILABLE',
           'Webhook secret 暗号化キーが設定されていません',
-          503,
         ),
       );
     }

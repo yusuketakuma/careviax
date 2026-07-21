@@ -340,6 +340,13 @@ export const API_ERROR_CODE_REGISTRY = Object.freeze({
     recoveryAction: 'retry',
     messageLabel: 'api.error.visit_record.pdf_export_audit_failed',
   },
+  WEBHOOK_SECRET_ENCRYPTION_UNAVAILABLE: {
+    httpStatus: 503,
+    logLevel: 'error',
+    retryable: false,
+    recoveryAction: 'return_to_previous',
+    messageLabel: 'api.error.webhook.secret_encryption_unavailable',
+  },
   WORKFLOW_CONFLICT: {
     httpStatus: 409,
     logLevel: 'warn',

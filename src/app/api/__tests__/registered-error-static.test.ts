@@ -82,11 +82,6 @@ const allowedRawLiteralErrorUsages: RawLiteralErrorUsage[] = [
     httpStatus: 500,
   },
   {
-    filePath: 'src/app/api/admin/webhooks/route.ts',
-    code: 'WEBHOOK_SECRET_ENCRYPTION_UNAVAILABLE',
-    httpStatus: 503,
-  },
-  {
     filePath: 'src/app/api/billing-candidates/close/route.ts',
     code: 'BILLING_CLOSE_BLOCKED',
     httpStatus: 409,
