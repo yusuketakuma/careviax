@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { unstable_rethrow } from 'next/navigation';
 import { NextRequest } from 'next/server';
 
 const {
@@ -12,6 +13,8 @@ const {
   auditLogCreateMock,
   loggerErrorMock,
   allocateDisplayIdMock,
+  runWithRequestAuthContextMock,
+  withRoutePerformanceMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
   withOrgContextMock: vi.fn(),
@@ -23,10 +26,53 @@ const {
   auditLogCreateMock: vi.fn(),
   loggerErrorMock: vi.fn(),
   allocateDisplayIdMock: vi.fn(),
+  runWithRequestAuthContextMock: vi.fn((_ctx, callback: () => unknown) => callback()),
+  withRoutePerformanceMock: vi.fn((_req, callback: () => unknown) => callback()),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
-  requireAuthContext: requireAuthContextMock,
+  withAuthContext:
+    (
+      handler: (
+        req: NextRequest,
+        ctx: Record<string, unknown>,
+        routeContext: { params: Promise<{ id: string }> },
+      ) => Promise<Response>,
+      options?: unknown,
+    ) =>
+    async (req: NextRequest, routeContext: { params: Promise<{ id: string }> }) =>
+      withRoutePerformanceMock(req, async () => {
+        const noStore = (response: Response) => {
+          response.headers.set('Cache-Control', 'private, no-store, max-age=0');
+          response.headers.set('Pragma', 'no-cache');
+          return response;
+        };
+        const authResult = await requireAuthContextMock(req, options);
+        if ('response' in authResult) return noStore(authResult.response);
+        return runWithRequestAuthContextMock(authResult.ctx, async () => {
+          try {
+            return noStore(await handler(req, authResult.ctx, routeContext));
+          } catch (error) {
+            unstable_rethrow(error);
+            loggerErrorMock(
+              {
+                event: 'route_handler_unhandled_error',
+                route: req.nextUrl.pathname,
+                method: req.method,
+                requestId: authResult.ctx.requestId,
+                correlationId: authResult.ctx.correlationId,
+              },
+              error,
+            );
+            return noStore(
+              Response.json(
+                { code: 'INTERNAL_ERROR', message: 'サーバー内部でエラーが発生しました' },
+                { status: 500 },
+              ),
+            );
+          }
+        });
+      }),
 }));
 
 vi.mock('@/lib/db/client', () => ({
@@ -109,7 +155,13 @@ describe('/api/pca-pumps/[id] PATCH', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     requireAuthContextMock.mockResolvedValue({
-      ctx: { orgId: 'org_1', userId: 'user_1', role: 'admin' },
+      ctx: {
+        orgId: 'org_1',
+        userId: 'user_1',
+        role: 'admin',
+        requestId: 'request_1',
+        correlationId: 'correlation_1',
+      },
     });
     pcaPumpFindFirstMock.mockResolvedValue({
       id: 'pump_1',
@@ -216,7 +268,13 @@ describe('/api/pca-pumps/[id] PATCH', () => {
         action: 'pca_pump_updated',
         target_type: 'PcaPump',
         target_id: 'pump_1',
-        changes: { status: 'maintenance' },
+        changes: {
+          status: 'maintenance',
+          request_trace: {
+            request_id: 'request_1',
+            correlation_id: 'correlation_1',
+          },
+        },
       }),
     });
     expect(allocateDisplayIdMock).not.toHaveBeenCalled();
@@ -386,7 +444,7 @@ describe('/api/pca-pumps/[id] PATCH', () => {
     expect(loggerErrorMock).toHaveBeenCalledWith(
       expect.objectContaining({
         event: 'route_handler_unhandled_error',
-        route: '/api/pca-pumps/[id]',
+        route: '/api/pca-pumps/pump_1',
         method: 'PATCH',
       }),
       expect.any(Error),
@@ -416,7 +474,13 @@ describe('/api/pca-pumps/[id] PATCH', () => {
         action: 'pca_pump_deleted',
         target_type: 'PcaPump',
         target_id: 'pump_1',
-        changes: { id: 'pump_1' },
+        changes: {
+          id: 'pump_1',
+          request_trace: {
+            request_id: 'request_1',
+            correlation_id: 'correlation_1',
+          },
+        },
       }),
     });
     await expect(response.json()).resolves.toMatchObject({ data: { id: 'pump_1' } });
@@ -457,7 +521,7 @@ describe('/api/pca-pumps/[id] PATCH', () => {
     expect(loggerErrorMock).toHaveBeenCalledWith(
       expect.objectContaining({
         event: 'route_handler_unhandled_error',
-        route: '/api/pca-pumps/[id]',
+        route: '/api/pca-pumps/pump_1',
         method: 'DELETE',
       }),
       expect.any(Error),

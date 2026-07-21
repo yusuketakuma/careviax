@@ -735,7 +735,7 @@
       },
       {
         "path": "Plans.md",
-        "sha256": "2e953059146a2f04dcecaa1a1d69fb7db1f387f8f14cb00172353c6c6fd5127f"
+        "sha256": "cedaa5ada2207681e651ed94901c4b333e9ee8e6e9b53026126c747337161976"
       },
       {
         "path": "README.md",
@@ -903,7 +903,7 @@
       },
       {
         "path": "ops/refactor/STATE.md",
-        "sha256": "46b31dba3836ab61fb2f8209bddca55fa3bcc20eb8acfcdccc2098d7a0199c48"
+        "sha256": "fc7d349f5d38b6447083ef68e8c23035a807fc298b506586fbd712fc19406d44"
       },
       {
         "path": "ops/refactor/archive/PERF_FINDINGS.md",
@@ -6247,30 +6247,6 @@
       "reprojection_or_removal": "owner_review_required_before_cutover:src/app/api/patients/[id]/care-team/route.ts",
       "binding_profile": "p_d3f8b85adfe7",
       "capability_profile": "p_a04a7f9d4aaf"
-    },
-    {
-      "id": "mapping_precedence:src/app/api/pca-pumps/[id]/route.ts",
-      "detector": "mapping_precedence",
-      "path": "src/app/api/pca-pumps/[id]/route.ts",
-      "evidence_sha256": "e5601167ff531ae7aa8373110aa5e1810d9c776060429b6f31b7f03f36df8f7d",
-      "principal": "human",
-      "lifecycles": ["request"],
-      "surfaces": ["rls", "writer"],
-      "exact_values_or_scopes": [
-        "not_applicable:mapping_precedence:no-enumerated-value:src/app/api/pca-pumps/[id]/route.ts"
-      ],
-      "route_method_purpose": "DELETE,PATCH /api/pca-pumps/[id] purpose=legacy_unspecified_pending_review",
-      "precedence_selection": "legacy_observed_requires_human_review",
-      "synthetic_derived_mapping": "not_applicable:no-synthetic-mapping-observed:src/app/api/pca-pumps/[id]/route.ts",
-      "persistence_contract": "not_applicable:no-persistence-observed:src/app/api/pca-pumps/[id]/route.ts",
-      "ttl_contract": "not_applicable:no-ttl-observed:src/app/api/pca-pumps/[id]/route.ts",
-      "mapping_disposition": "candidate_requires_human",
-      "owner": "Identity / Authz",
-      "approval_status": "pending_owner_review",
-      "test_refs": ["src/app/api/pca-pumps/[id]/route.test.ts"],
-      "reprojection_or_removal": "owner_review_required_before_cutover:src/app/api/pca-pumps/[id]/route.ts",
-      "binding_profile": "p_307456c242ed",
-      "capability_profile": "p_a325f45c9b2a"
     },
     {
       "id": "mapping_precedence:src/app/api/pharmacists/[id]/route.ts",
@@ -32135,8 +32111,8 @@
     {
       "path": "src/app/api/pca-pumps/[id]/route.test.ts",
       "classes": ["test"],
-      "detectors": ["raw_role_semantics"],
-      "sha256": "74a67a7b1868e6667fa0da6d8653c7f03247a7a1ced406f0893b4ac9e9c7d90f"
+      "detectors": ["mapping_precedence", "raw_role_semantics"],
+      "sha256": "ce9575d4fbd8ec28fd3652166bec99c04484484d1d45ed5ddb040e310e5d0f0e"
     },
     {
       "path": "src/app/api/pca-pumps/route.test.ts",
