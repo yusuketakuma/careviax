@@ -1,0 +1,70 @@
+export function buildWeeklySchedule(overrides?: Record<string, unknown>) {
+  return {
+    id: 'schedule_1',
+    display_id: 'vs0000000001',
+    case_id: 'case_schedule',
+    visit_type: 'regular',
+    priority: 'normal',
+    schedule_status: 'planned',
+    scheduled_date: '2026-04-09',
+    time_window_start: '2026-04-09T09:00:00.000Z',
+    time_window_end: '2026-04-09T10:00:00.000Z',
+    pharmacist_id: 'pharmacist_1',
+    assignment_mode: 'primary',
+    route_order: 1,
+    confirmed_at: null,
+    carry_items_status: 'not_started',
+    case_: {
+      patient: {
+        id: 'patient_schedule',
+        name: '山田花子',
+        residences: [{ address: '東京都港区1-1-1', lat: 35.1, lng: 139.1 }],
+      },
+    },
+    site: { id: 'site_1', name: '本店', address: '東京都港区2-2-2', lat: 35, lng: 139 },
+    preparation: null,
+    visit_record: null,
+    vehicle_resource: null,
+    ...overrides,
+  };
+}
+
+export function buildWeeklyProposal(overrides?: Record<string, unknown>) {
+  return {
+    id: 'proposal_1',
+    display_id: 'vsp0000000001',
+    case_id: 'case_proposal',
+    visit_type: 'regular',
+    priority: 'normal',
+    proposal_status: 'patient_contact_pending',
+    patient_contact_status: 'confirmed',
+    proposed_date: '2026-04-09',
+    time_window_start: '2026-04-09T10:00:00.000Z',
+    time_window_end: '2026-04-09T11:00:00.000Z',
+    proposed_pharmacist_id: 'pharmacist_1',
+    proposed_pharmacist: { id: 'pharmacist_1', name: '薬剤師A', name_kana: null },
+    assignment_mode: 'primary',
+    route_order: 2,
+    route_distance_score: 1.2,
+    updated_at: '2026-04-09T08:00:00.000Z',
+    medication_end_date: null,
+    visit_deadline_date: null,
+    proposal_reason: '東京都渋谷区3-3-3 090-1111-2222 アムロジピン 処方詳細',
+    escalation_reason: null,
+    finalized_schedule_id: null,
+    reschedule_source_schedule_id: null,
+    case_: {
+      patient: {
+        id: 'patient_proposal',
+        name: '佐藤太郎',
+        residences: [{ address: '東京都渋谷区3-3-3', lat: 35.2, lng: 139.2 }],
+      },
+    },
+    site: { id: 'site_1', name: '本店', address: '東京都港区2-2-2', lat: 35, lng: 139 },
+    vehicle_resource: null,
+    finalized_schedule: null,
+    reschedule_source_schedule: null,
+    contact_logs: [],
+    ...overrides,
+  };
+}

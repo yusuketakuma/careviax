@@ -293,11 +293,6 @@
       "task_id": "MAINT-FILE-SIZE-1000-001"
     },
     {
-      "path": "src/app/(dashboard)/schedules/proposals/schedule-weekly-optimizer.test.tsx",
-      "max_lines": 1003,
-      "task_id": "MAINT-FILE-SIZE-1000-001"
-    },
-    {
       "path": "src/app/(dashboard)/schedules/proposals/schedule-weekly-optimizer.tsx",
       "max_lines": 2035,
       "task_id": "MAINT-FILE-SIZE-1000-001"
