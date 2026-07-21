@@ -10,7 +10,30 @@ const { requireAuthContextMock, withOrgContextMock, auditLogCreateMock, patientF
   }));
 
 vi.mock('@/lib/auth/context', () => ({
-  requireAuthContext: requireAuthContextMock,
+  withAuthContext:
+    (
+      handler: (req: NextRequest, ctx: Record<string, unknown>) => Promise<Response>,
+      options?: unknown,
+    ) =>
+    async (req: NextRequest) => {
+      const noStore = (response: Response) => {
+        response.headers.set('Cache-Control', 'private, no-store, max-age=0');
+        response.headers.set('Pragma', 'no-cache');
+        return response;
+      };
+      try {
+        const authResult = await requireAuthContextMock(req, options);
+        if ('response' in authResult) return noStore(authResult.response);
+        return noStore(await handler(req, authResult.ctx));
+      } catch {
+        return noStore(
+          Response.json(
+            { code: 'INTERNAL_ERROR', message: 'サーバー内部でエラーが発生しました' },
+            { status: 500 },
+          ),
+        );
+      }
+    },
 }));
 
 vi.mock('@/lib/db/rls', () => ({
@@ -19,6 +42,12 @@ vi.mock('@/lib/db/rls', () => ({
 
 import { POST } from './route';
 import { expectSensitiveNoStore } from '@/test/api-response-assertions';
+
+const emptyRouteContext = { params: Promise.resolve({}) };
+
+function callPOST(request: NextRequest) {
+  return POST(request, emptyRouteContext);
+}
 
 function createRequest(body: unknown) {
   return new NextRequest('http://localhost/api/visit-brief-feedback', {
@@ -80,7 +109,7 @@ describe('/api/visit-brief-feedback POST', () => {
       ),
     });
 
-    const response = (await POST(createMalformedJsonRequest()))!;
+    const response = (await callPOST(createMalformedJsonRequest()))!;
 
     expect(response.status).toBe(401);
     expectSensitiveNoStore(response);
@@ -94,7 +123,7 @@ describe('/api/visit-brief-feedback POST', () => {
   });
 
   it('records visit brief feedback through RLS context', async () => {
-    const response = (await POST(
+    const response = (await callPOST(
       createRequest({
         patient_id: 'patient_1',
         context: 'patient',
@@ -137,7 +166,7 @@ describe('/api/visit-brief-feedback POST', () => {
   it('returns a no-store not-found response without auditing inaccessible patients', async () => {
     patientFindFirstMock.mockResolvedValueOnce(null);
 
-    const response = (await POST(
+    const response = (await callPOST(
       createRequest({
         patient_id: 'patient_outside_scope',
         context: 'patient',
@@ -164,7 +193,7 @@ describe('/api/visit-brief-feedback POST', () => {
   });
 
   it('rejects oversized feedback identifiers before patient lookup or audit logging', async () => {
-    const response = (await POST(
+    const response = (await callPOST(
       createRequest({
         patient_id: 'p'.repeat(192),
         context: 'patient',
@@ -182,7 +211,7 @@ describe('/api/visit-brief-feedback POST', () => {
   });
 
   it('records the corrected summary for 一部修正する into the audit changes', async () => {
-    const response = (await POST(
+    const response = (await callPOST(
       createRequest({
         patient_id: 'patient_1',
         context: 'patient',
@@ -208,7 +237,7 @@ describe('/api/visit-brief-feedback POST', () => {
   });
 
   it('rejects an empty corrected_summary string', async () => {
-    const response = (await POST(
+    const response = (await callPOST(
       createRequest({
         patient_id: 'patient_1',
         context: 'patient',
@@ -226,7 +255,7 @@ describe('/api/visit-brief-feedback POST', () => {
   });
 
   it('rejects non-object feedback payloads before audit logging', async () => {
-    const response = (await POST(createRequest([])))!;
+    const response = (await callPOST(createRequest([])))!;
 
     expect(response.status).toBe(400);
     expect(withOrgContextMock).not.toHaveBeenCalled();
@@ -234,7 +263,7 @@ describe('/api/visit-brief-feedback POST', () => {
   });
 
   it('rejects malformed JSON before audit logging', async () => {
-    const response = (await POST(createMalformedJsonRequest()))!;
+    const response = (await callPOST(createMalformedJsonRequest()))!;
 
     expect(response.status).toBe(400);
     expect(withOrgContextMock).not.toHaveBeenCalled();
@@ -246,7 +275,7 @@ describe('/api/visit-brief-feedback POST', () => {
       new Error('患者 山田花子 090-1234-5678 raw visit brief feedback auth detail'),
     );
 
-    const response = (await POST(
+    const response = (await callPOST(
       createRequest({
         patient_id: 'patient_1',
         context: 'patient',
@@ -275,7 +304,7 @@ describe('/api/visit-brief-feedback POST', () => {
       new Error('患者 山田花子 raw corrected summary audit failure detail'),
     );
 
-    const response = (await POST(
+    const response = (await callPOST(
       createRequest({
         patient_id: 'patient_1',
         context: 'patient',

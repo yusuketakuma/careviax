@@ -1,10 +1,8 @@
-import { unstable_rethrow } from 'next/navigation';
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
-import { requireAuthContext } from '@/lib/auth/context';
+import { withAuthContext, type AuthContext } from '@/lib/auth/context';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
-import { success, validationError, internalError, notFound } from '@/lib/api/response';
-import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
+import { success, validationError, notFound } from '@/lib/api/response';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { withOrgContext } from '@/lib/db/rls';
 import { canAccessPatient } from '@/server/services/patient-access';
@@ -26,14 +24,7 @@ const feedbackSchema = z.object({
   is_fallback: z.boolean().optional(),
 });
 
-const authenticatedPOST = async (req: NextRequest) => {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canVisit',
-    message: '訪問要約フィードバックの送信権限がありません',
-  });
-  if ('response' in authResult) return authResult.response;
-  const { ctx } = authResult;
-
+const authenticatedPOST = async (req: NextRequest, ctx: AuthContext) => {
   const payload = await readJsonObjectRequestBody(req);
   if (!payload) return validationError('リクエストボディが不正です');
 
@@ -86,11 +77,7 @@ const authenticatedPOST = async (req: NextRequest) => {
   return success({ data: { ok: true } }, 201);
 };
 
-export const POST: typeof authenticatedPOST = async (req) => {
-  try {
-    return withSensitiveNoStore(await authenticatedPOST(req));
-  } catch (err) {
-    unstable_rethrow(err);
-    return withSensitiveNoStore(internalError());
-  }
-};
+export const POST = withAuthContext(authenticatedPOST, {
+  permission: 'canVisit',
+  message: '訪問要約フィードバックの送信権限がありません',
+});
