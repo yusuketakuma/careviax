@@ -1,11 +1,9 @@
 import { NextRequest } from 'next/server';
 import { unstable_rethrow } from 'next/navigation';
-import { requireAuthContext } from '@/lib/auth/context';
-import { runWithRequestAuthContext } from '@/lib/auth/request-context';
+import { withAuthContext, type AuthContext } from '@/lib/auth/context';
 import { deriveFacilityLabel } from '@/lib/utils/facility';
 import { withOrgContext } from '@/lib/db/rls';
 import { internalError, success, validationError } from '@/lib/api/response';
-import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { formatUtcDateKey } from '@/lib/date-key';
 import { createFacilityBatchPrescriptionIntakeSchema } from '@/lib/validations/prescription';
@@ -107,376 +105,375 @@ function collectIdentityMismatchFields(args: {
   return fields;
 }
 
-async function authenticatedPOST(req: NextRequest) {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canVisit',
-    message: '施設まとめ処方の作成権限がありません',
-  });
-  if ('response' in authResult) return authResult.response;
-  const { ctx } = authResult;
+async function createFacilityBatch(req: NextRequest, ctx: AuthContext) {
+  const payload = await readJsonObjectRequestBody(req);
+  if (!payload) return validationError('リクエストボディが不正です');
 
-  return runWithRequestAuthContext(ctx, async () => {
-    const payload = await readJsonObjectRequestBody(req);
-    if (!payload) return validationError('リクエストボディが不正です');
+  const parsed = createFacilityBatchPrescriptionIntakeSchema.safeParse(payload);
+  if (!parsed.success) {
+    return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
+  }
 
-    const parsed = createFacilityBatchPrescriptionIntakeSchema.safeParse(payload);
-    if (!parsed.success) {
-      return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
-    }
+  const {
+    source_type,
+    prescribed_date,
+    prescriber_name,
+    prescriber_institution_id,
+    prescriber_institution,
+    original_document_url,
+    prescription_category,
+    emergency_category,
+    entries,
+  } = parsed.data;
 
-    const {
-      source_type,
-      prescribed_date,
-      prescriber_name,
-      prescriber_institution_id,
-      prescriber_institution,
-      original_document_url,
-      prescription_category,
-      emergency_category,
-      entries,
-    } = parsed.data;
+  const dateWindow = validatePrescriptionDateWindow(prescribed_date);
+  if (!dateWindow.ok && dateWindow.reason === 'expiry_exceeded') {
+    return validationError('処方箋の有効期限が切れています（発行日から4日以内が有効です）');
+  }
+  if (!dateWindow.ok && dateWindow.reason === 'future_prescribed_date') {
+    return validationError('未来日の処方箋は登録できません');
+  }
 
-    const dateWindow = validatePrescriptionDateWindow(prescribed_date);
-    if (!dateWindow.ok && dateWindow.reason === 'expiry_exceeded') {
-      return validationError('処方箋の有効期限が切れています（発行日から4日以内が有効です）');
-    }
-    if (!dateWindow.ok && dateWindow.reason === 'future_prescribed_date') {
-      return validationError('未来日の処方箋は登録できません');
-    }
+  const duplicatedCaseIds = entries
+    .map((entry) => entry.case_id)
+    .filter((caseId, index, array) => array.indexOf(caseId) !== index);
+  if (duplicatedCaseIds.length > 0) {
+    return validationError('施設まとめ処方に同じケースが重複しています', {
+      duplicated_case_ids: Array.from(new Set(duplicatedCaseIds)),
+    });
+  }
 
-    const duplicatedCaseIds = entries
-      .map((entry) => entry.case_id)
-      .filter((caseId, index, array) => array.indexOf(caseId) !== index);
-    if (duplicatedCaseIds.length > 0) {
-      return validationError('施設まとめ処方に同じケースが重複しています', {
-        duplicated_case_ids: Array.from(new Set(duplicatedCaseIds)),
-      });
-    }
-
-    let result: FacilityBatchSuccessResult | FacilityBatchErrorResult;
-    try {
-      result = await withOrgContext(
-        ctx.orgId,
-        async (tx) => {
-          const assignmentWhere = buildCareCaseAssignmentWhere(ctx);
-          const cases = await tx.careCase.findMany({
-            where: {
-              org_id: ctx.orgId,
-              id: {
-                in: entries.map((entry) => entry.case_id),
-              },
-              ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
+  let result: FacilityBatchSuccessResult | FacilityBatchErrorResult;
+  try {
+    result = await withOrgContext(
+      ctx.orgId,
+      async (tx) => {
+        const assignmentWhere = buildCareCaseAssignmentWhere(ctx);
+        const cases = await tx.careCase.findMany({
+          where: {
+            org_id: ctx.orgId,
+            id: {
+              in: entries.map((entry) => entry.case_id),
             },
-            select: {
-              id: true,
-              patient_id: true,
-              patient: {
-                select: {
-                  id: true,
-                  name: true,
-                  name_kana: true,
-                  birth_date: true,
-                  residences: {
-                    where: { is_primary: true },
-                    take: 1,
-                    select: {
-                      address: true,
-                      building_id: true,
-                    },
+            ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
+          },
+          select: {
+            id: true,
+            patient_id: true,
+            patient: {
+              select: {
+                id: true,
+                name: true,
+                name_kana: true,
+                birth_date: true,
+                residences: {
+                  where: { is_primary: true },
+                  take: 1,
+                  select: {
+                    address: true,
+                    building_id: true,
                   },
                 },
               },
             },
+          },
+        });
+
+        if (cases.length !== entries.length) {
+          return { error: 'missing_case' as const };
+        }
+
+        const caseById = new Map(cases.map((careCase) => [careCase.id, careCase]));
+        const facilityLabels = new Set<string>();
+
+        for (const entry of entries) {
+          const careCase = caseById.get(entry.case_id);
+          if (!careCase || careCase.patient_id !== entry.patient_id) {
+            return { error: 'case_patient_mismatch' as const, caseId: entry.case_id };
+          }
+
+          const mismatchFields = collectIdentityMismatchFields({
+            snapshot: entry.patient_identity_snapshot,
+            patient: careCase.patient,
           });
-
-          if (cases.length !== entries.length) {
-            return { error: 'missing_case' as const };
-          }
-
-          const caseById = new Map(cases.map((careCase) => [careCase.id, careCase]));
-          const facilityLabels = new Set<string>();
-
-          for (const entry of entries) {
-            const careCase = caseById.get(entry.case_id);
-            if (!careCase || careCase.patient_id !== entry.patient_id) {
-              return { error: 'case_patient_mismatch' as const, caseId: entry.case_id };
-            }
-
-            const mismatchFields = collectIdentityMismatchFields({
-              snapshot: entry.patient_identity_snapshot,
-              patient: careCase.patient,
-            });
-            if (mismatchFields.length > 0) {
-              return {
-                error: 'patient_identity_mismatch' as const,
-                caseId: entry.case_id,
-                patientId: entry.patient_id,
-                mismatchFields,
-              };
-            }
-
-            const duplicateCandidates = collectDuplicatePrescriptionLines(entry.lines);
-            if (duplicateCandidates.length > 0) {
-              return {
-                error: 'duplicate_prescription_lines' as const,
-                caseId: entry.case_id,
-                patientName: careCase.patient.name,
-                duplicates: duplicateCandidates,
-              };
-            }
-
-            const blockedLines = collectStructuringBlockedLines(entry.lines);
-            if (blockedLines.length > 0) {
-              return {
-                error: 'structuring_blocked_lines' as const,
-                caseId: entry.case_id,
-                patientName: careCase.patient.name,
-                blockedLines: blockedLines.map((line) => ({
-                  line_number: line.line_number,
-                  drug_name: line.drug_name,
-                })),
-              };
-            }
-
-            const residence = careCase.patient.residences[0];
-            const facilityLabel = deriveFacilityLabel(residence ?? null);
-            if (!facilityLabel) {
-              return {
-                error: 'missing_facility_label' as const,
-                caseId: entry.case_id,
-                patientName: careCase.patient.name,
-              };
-            }
-            facilityLabels.add(facilityLabel);
-          }
-
-          if (facilityLabels.size > 1) {
+          if (mismatchFields.length > 0) {
             return {
-              error: 'mixed_facilities' as const,
-              facilities: Array.from(facilityLabels),
+              error: 'patient_identity_mismatch' as const,
+              caseId: entry.case_id,
+              patientId: entry.patient_id,
+              mismatchFields,
             };
           }
 
-          const createdEntries = [];
-          const hookArgs: Array<Parameters<typeof runPrescriptionIntakePostCreateHooks>[0]> = [];
-          for (const entry of entries) {
-            const careCase = caseById.get(entry.case_id)!;
-            const intakeResult = await createPrescriptionIntakeInTx(
-              tx,
-              {
-                case_id: entry.case_id,
-                patient_id: entry.patient_id,
-                source_type,
-                prescribed_date,
-                prescriber_name,
-                prescriber_institution_id,
-                prescriber_institution,
-                original_document_url,
-                prescription_category,
-                emergency_category,
-                lines: entry.lines,
-              },
-              ctx.orgId,
-              ctx.userId,
-              { accessContext: { userId: ctx.userId, role: ctx.role } },
-            );
+          const duplicateCandidates = collectDuplicatePrescriptionLines(entry.lines);
+          if (duplicateCandidates.length > 0) {
+            return {
+              error: 'duplicate_prescription_lines' as const,
+              caseId: entry.case_id,
+              patientName: careCase.patient.name,
+              duplicates: duplicateCandidates,
+            };
+          }
 
-            if (intakeResult.kind === 'error') {
-              if (intakeResult.error === 'cycle_not_found') {
-                throw new FacilityBatchIntakeRollback({
-                  error: 'case_patient_mismatch' as const,
-                  caseId: entry.case_id,
-                });
-              }
-              if (intakeResult.error === 'duplicate_prescription_lines') {
-                throw new FacilityBatchIntakeRollback({
-                  error: 'duplicate_prescription_lines' as const,
-                  caseId: entry.case_id,
-                  patientName: careCase.patient.name,
-                  duplicates: intakeResult.duplicates,
-                });
-              }
-              if (intakeResult.error === 'structuring_blocked_lines') {
-                throw new FacilityBatchIntakeRollback({
-                  error: 'structuring_blocked_lines' as const,
-                  caseId: entry.case_id,
-                  patientName: careCase.patient.name,
-                  blockedLines: intakeResult.blockedLines,
-                });
-              }
-              if (intakeResult.error === 'outpatient_injection_not_eligible') {
-                throw new FacilityBatchIntakeRollback({
-                  error: 'outpatient_injection_not_eligible' as const,
-                  caseId: entry.case_id,
-                  patientId: entry.patient_id,
-                  patientName: careCase.patient.name,
-                  blockedLines: intakeResult.blockedLines,
-                });
-              }
-              if (intakeResult.error === 'invalid_drug_master_id') {
-                throw new FacilityBatchIntakeRollback({
-                  error: 'invalid_drug_master_id' as const,
-                  caseId: entry.case_id,
-                  patientName: careCase.patient.name,
-                });
-              }
-              if (intakeResult.error === 'invalid_transition') {
-                throw new FacilityBatchIntakeRollback({ error: 'invalid_transition' as const });
-              }
-              if (intakeResult.error === 'version_conflict') {
-                throw new FacilityBatchIntakeRollback({ error: 'version_conflict' as const });
-              }
+          const blockedLines = collectStructuringBlockedLines(entry.lines);
+          if (blockedLines.length > 0) {
+            return {
+              error: 'structuring_blocked_lines' as const,
+              caseId: entry.case_id,
+              patientName: careCase.patient.name,
+              blockedLines: blockedLines.map((line) => ({
+                line_number: line.line_number,
+                drug_name: line.drug_name,
+              })),
+            };
+          }
+
+          const residence = careCase.patient.residences[0];
+          const facilityLabel = deriveFacilityLabel(residence ?? null);
+          if (!facilityLabel) {
+            return {
+              error: 'missing_facility_label' as const,
+              caseId: entry.case_id,
+              patientName: careCase.patient.name,
+            };
+          }
+          facilityLabels.add(facilityLabel);
+        }
+
+        if (facilityLabels.size > 1) {
+          return {
+            error: 'mixed_facilities' as const,
+            facilities: Array.from(facilityLabels),
+          };
+        }
+
+        const createdEntries = [];
+        const hookArgs: Array<Parameters<typeof runPrescriptionIntakePostCreateHooks>[0]> = [];
+        for (const entry of entries) {
+          const careCase = caseById.get(entry.case_id)!;
+          const intakeResult = await createPrescriptionIntakeInTx(
+            tx,
+            {
+              case_id: entry.case_id,
+              patient_id: entry.patient_id,
+              source_type,
+              prescribed_date,
+              prescriber_name,
+              prescriber_institution_id,
+              prescriber_institution,
+              original_document_url,
+              prescription_category,
+              emergency_category,
+              lines: entry.lines,
+            },
+            ctx.orgId,
+            ctx.userId,
+            { accessContext: { userId: ctx.userId, role: ctx.role } },
+          );
+
+          if (intakeResult.kind === 'error') {
+            if (intakeResult.error === 'cycle_not_found') {
               throw new FacilityBatchIntakeRollback({
-                error: 'unexpected_create_failure' as const,
+                error: 'case_patient_mismatch' as const,
+                caseId: entry.case_id,
               });
             }
-
-            createdEntries.push({
-              cycle_id: intakeResult.cycle.id,
-              intake_id: intakeResult.intake.id,
-              case_id: careCase.id,
-              patient_id: careCase.patient.id,
-              patient_name: careCase.patient.name,
-              line_count: intakeResult.intake.lines.length,
-            });
-            hookArgs.push({
-              cycleId: intakeResult.cycle.id,
-              intakeId: intakeResult.intake.id,
-              patientId: careCase.patient.id,
-              orgId: ctx.orgId,
-              userId: ctx.userId,
-              lines: intakeResult.intake.lines,
-              prescriberName: prescriber_name ?? null,
-              sourceType: source_type,
+            if (intakeResult.error === 'duplicate_prescription_lines') {
+              throw new FacilityBatchIntakeRollback({
+                error: 'duplicate_prescription_lines' as const,
+                caseId: entry.case_id,
+                patientName: careCase.patient.name,
+                duplicates: intakeResult.duplicates,
+              });
+            }
+            if (intakeResult.error === 'structuring_blocked_lines') {
+              throw new FacilityBatchIntakeRollback({
+                error: 'structuring_blocked_lines' as const,
+                caseId: entry.case_id,
+                patientName: careCase.patient.name,
+                blockedLines: intakeResult.blockedLines,
+              });
+            }
+            if (intakeResult.error === 'outpatient_injection_not_eligible') {
+              throw new FacilityBatchIntakeRollback({
+                error: 'outpatient_injection_not_eligible' as const,
+                caseId: entry.case_id,
+                patientId: entry.patient_id,
+                patientName: careCase.patient.name,
+                blockedLines: intakeResult.blockedLines,
+              });
+            }
+            if (intakeResult.error === 'invalid_drug_master_id') {
+              throw new FacilityBatchIntakeRollback({
+                error: 'invalid_drug_master_id' as const,
+                caseId: entry.case_id,
+                patientName: careCase.patient.name,
+              });
+            }
+            if (intakeResult.error === 'invalid_transition') {
+              throw new FacilityBatchIntakeRollback({ error: 'invalid_transition' as const });
+            }
+            if (intakeResult.error === 'version_conflict') {
+              throw new FacilityBatchIntakeRollback({ error: 'version_conflict' as const });
+            }
+            throw new FacilityBatchIntakeRollback({
+              error: 'unexpected_create_failure' as const,
             });
           }
 
-          return {
-            facility_label: Array.from(facilityLabels)[0] ?? null,
-            patient_count: createdEntries.length,
-            entries: createdEntries,
-            hookArgs,
-          };
-        },
-        { requestContext: ctx },
-      );
-    } catch (error) {
-      if (error instanceof FacilityBatchIntakeRollback) {
-        result = error.result;
-      } else if (error instanceof PrescriptionIntakeTransactionRollback) {
-        result = { error: error.result.error };
-      } else if (error instanceof PrescriberInstitutionReferenceValidationError) {
-        return validationError(error.message);
-      } else {
-        throw error;
-      }
-    }
+          createdEntries.push({
+            cycle_id: intakeResult.cycle.id,
+            intake_id: intakeResult.intake.id,
+            case_id: careCase.id,
+            patient_id: careCase.patient.id,
+            patient_name: careCase.patient.name,
+            line_count: intakeResult.intake.lines.length,
+          });
+          hookArgs.push({
+            cycleId: intakeResult.cycle.id,
+            intakeId: intakeResult.intake.id,
+            patientId: careCase.patient.id,
+            orgId: ctx.orgId,
+            userId: ctx.userId,
+            lines: intakeResult.intake.lines,
+            prescriberName: prescriber_name ?? null,
+            sourceType: source_type,
+          });
+        }
 
-    if ('error' in result) {
-      if (result.error === 'missing_case') {
-        return validationError('施設まとめ処方に含まれるケースが見つかりません');
-      }
-      if (result.error === 'case_patient_mismatch') {
-        return validationError('ケースと患者の組み合わせが不正です', {
+        return {
+          facility_label: Array.from(facilityLabels)[0] ?? null,
+          patient_count: createdEntries.length,
+          entries: createdEntries,
+          hookArgs,
+        };
+      },
+      { requestContext: ctx },
+    );
+  } catch (error) {
+    if (error instanceof FacilityBatchIntakeRollback) {
+      result = error.result;
+    } else if (error instanceof PrescriptionIntakeTransactionRollback) {
+      result = { error: error.result.error };
+    } else if (error instanceof PrescriberInstitutionReferenceValidationError) {
+      return validationError(error.message);
+    } else {
+      throw error;
+    }
+  }
+
+  if ('error' in result) {
+    if (result.error === 'missing_case') {
+      return validationError('施設まとめ処方に含まれるケースが見つかりません');
+    }
+    if (result.error === 'case_patient_mismatch') {
+      return validationError('ケースと患者の組み合わせが不正です', {
+        case_id: result.caseId,
+      });
+    }
+    if (result.error === 'patient_identity_mismatch') {
+      return validationError(
+        '施設まとめ処方の患者同定情報が現在の患者情報と一致しません。患者を再選択してください',
+        {
+          error: 'patient_identity_mismatch',
           case_id: result.caseId,
-        });
-      }
-      if (result.error === 'patient_identity_mismatch') {
-        return validationError(
-          '施設まとめ処方の患者同定情報が現在の患者情報と一致しません。患者を再選択してください',
-          {
-            error: 'patient_identity_mismatch',
-            case_id: result.caseId,
-            patient_id: result.patientId,
-            mismatches: result.mismatchFields,
-          },
-        );
-      }
-      if (result.error === 'duplicate_prescription_lines') {
-        return validationError('施設まとめ処方に重複候補の処方明細があります', {
+          patient_id: result.patientId,
+          mismatches: result.mismatchFields,
+        },
+      );
+    }
+    if (result.error === 'duplicate_prescription_lines') {
+      return validationError('施設まとめ処方に重複候補の処方明細があります', {
+        case_id: result.caseId,
+        patient_name: result.patientName,
+        duplicates: result.duplicates,
+      });
+    }
+    if (result.error === 'structuring_blocked_lines') {
+      return validationError('施設まとめ処方に未構造化または不明な明細があります', {
+        case_id: result.caseId,
+        patient_name: result.patientName,
+        blocked_lines: result.blockedLines,
+      });
+    }
+    if (result.error === 'outpatient_injection_not_eligible') {
+      return validationError(
+        '施設まとめ処方に外来/在宅自己注射として調剤可否が未確認の注射剤があります',
+        {
           case_id: result.caseId,
-          patient_name: result.patientName,
-          duplicates: result.duplicates,
-        });
-      }
-      if (result.error === 'structuring_blocked_lines') {
-        return validationError('施設まとめ処方に未構造化または不明な明細があります', {
-          case_id: result.caseId,
+          patient_id: result.patientId,
           patient_name: result.patientName,
           blocked_lines: result.blockedLines,
-        });
-      }
-      if (result.error === 'outpatient_injection_not_eligible') {
-        return validationError(
-          '施設まとめ処方に外来/在宅自己注射として調剤可否が未確認の注射剤があります',
-          {
-            case_id: result.caseId,
-            patient_id: result.patientId,
-            patient_name: result.patientName,
-            blocked_lines: result.blockedLines,
-          },
-        );
-      }
-      if (result.error === 'invalid_drug_master_id') {
-        return validationError('施設まとめ処方に存在しない医薬品マスターが含まれています', {
-          case_id: result.caseId,
-          patient_name: result.patientName,
-          drug_master_id: ['存在するYJコード付き医薬品マスターを選択してください'],
-        });
-      }
-      if (result.error === 'missing_facility_label') {
-        return validationError('施設まとめ処方の対象患者に施設住所または建物IDがありません', {
-          case_id: result.caseId,
-          patient_name: result.patientName,
-        });
-      }
-      if (result.error === 'mixed_facilities') {
-        return validationError('施設まとめ処方は同一施設の患者のみ一括登録できます', {
-          facilities: result.facilities,
-        });
-      }
-      if (result.error === 'invalid_transition') {
-        return validationError('施設まとめ処方の状態遷移が無効です');
-      }
-      if (result.error === 'version_conflict') {
-        return validationError(
-          '施設まとめ処方の登録中に他ユーザーの更新が入りました。再度実行してください',
-        );
-      }
-      if (result.error === 'unexpected_create_failure') {
-        return validationError('施設まとめ処方の登録に失敗しました');
-      }
-    }
-
-    await Promise.allSettled(
-      result.hookArgs.map((args) => runPrescriptionIntakePostCreateHooks(args)),
-    );
-
-    return success(
-      {
-        data: {
-          facility_label: result.facility_label,
-          patient_count: result.patient_count,
-          entries: result.entries,
         },
+      );
+    }
+    if (result.error === 'invalid_drug_master_id') {
+      return validationError('施設まとめ処方に存在しない医薬品マスターが含まれています', {
+        case_id: result.caseId,
+        patient_name: result.patientName,
+        drug_master_id: ['存在するYJコード付き医薬品マスターを選択してください'],
+      });
+    }
+    if (result.error === 'missing_facility_label') {
+      return validationError('施設まとめ処方の対象患者に施設住所または建物IDがありません', {
+        case_id: result.caseId,
+        patient_name: result.patientName,
+      });
+    }
+    if (result.error === 'mixed_facilities') {
+      return validationError('施設まとめ処方は同一施設の患者のみ一括登録できます', {
+        facilities: result.facilities,
+      });
+    }
+    if (result.error === 'invalid_transition') {
+      return validationError('施設まとめ処方の状態遷移が無効です');
+    }
+    if (result.error === 'version_conflict') {
+      return validationError(
+        '施設まとめ処方の登録中に他ユーザーの更新が入りました。再度実行してください',
+      );
+    }
+    if (result.error === 'unexpected_create_failure') {
+      return validationError('施設まとめ処方の登録に失敗しました');
+    }
+  }
+
+  await Promise.allSettled(
+    result.hookArgs.map((args) => runPrescriptionIntakePostCreateHooks(args)),
+  );
+
+  return success(
+    {
+      data: {
+        facility_label: result.facility_label,
+        patient_count: result.patient_count,
+        entries: result.entries,
       },
-      201,
-    );
-  });
+    },
+    201,
+  );
 }
 
-export async function POST(req: NextRequest) {
-  try {
-    return withSensitiveNoStore(await authenticatedPOST(req));
-  } catch (err) {
-    unstable_rethrow(err);
-    logger.error('facility_batch_prescription_intake_unhandled_error', undefined, {
-      event: 'facility_batch_prescription_intake_unhandled_error',
-      route: req.nextUrl?.pathname ?? '/api/prescription-intakes/facility-batch',
-      method: req.method,
-      status: 500,
-      error_name: 'Error',
-    });
-    return withSensitiveNoStore(internalError());
-  }
-}
+export const POST = withAuthContext(
+  async (req, ctx) => {
+    try {
+      return await createFacilityBatch(req, ctx);
+    } catch (err) {
+      unstable_rethrow(err);
+      logger.error('facility_batch_prescription_intake_unhandled_error', undefined, {
+        event: 'facility_batch_prescription_intake_unhandled_error',
+        route: req.nextUrl?.pathname ?? '/api/prescription-intakes/facility-batch',
+        method: req.method,
+        status: 500,
+        error_name: 'Error',
+        requestId: ctx.requestId,
+        correlationId: ctx.correlationId,
+      });
+      return internalError();
+    }
+  },
+  {
+    permission: 'canVisit',
+    message: '施設まとめ処方の作成権限がありません',
+  },
+);

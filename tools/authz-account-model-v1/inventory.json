@@ -735,7 +735,7 @@
       },
       {
         "path": "Plans.md",
-        "sha256": "ffc02fb485b54d25d4d514c9850c3b2115d09632f53fbbe2289b3aa6391988ba"
+        "sha256": "8c51694505c630bc12c493da011babf3560350209ab510a6444b0adb1436cd9a"
       },
       {
         "path": "README.md",
@@ -903,7 +903,7 @@
       },
       {
         "path": "ops/refactor/STATE.md",
-        "sha256": "a5ced32588ceeb68d193c9fb20c92577d4330ec1702d6fb8802fb4c6830e2c4b"
+        "sha256": "c87837fdda245936390b59590756abcdca6d354eff6256c479c1cfef918e8b26"
       },
       {
         "path": "ops/refactor/archive/PERF_FINDINGS.md",
@@ -6324,30 +6324,6 @@
       "reprojection_or_removal": "owner_review_required_before_cutover:src/app/api/pharmacists/route.ts",
       "binding_profile": "p_707b8d027643",
       "capability_profile": "p_6e2fcf09f584"
-    },
-    {
-      "id": "mapping_precedence:src/app/api/prescription-intakes/facility-batch/route.ts",
-      "detector": "mapping_precedence",
-      "path": "src/app/api/prescription-intakes/facility-batch/route.ts",
-      "evidence_sha256": "5a35c6ed0eb4b06c51df00c960c3e8a38e37f4e4de10dac1c8e80c859126bea2",
-      "principal": "human",
-      "lifecycles": ["request"],
-      "surfaces": ["rls", "writer"],
-      "exact_values_or_scopes": [
-        "not_applicable:mapping_precedence:no-enumerated-value:src/app/api/prescription-intakes/facility-batch/route.ts"
-      ],
-      "route_method_purpose": "POST /api/prescription-intakes/facility-batch purpose=legacy_unspecified_pending_review",
-      "precedence_selection": "legacy_observed_requires_human_review",
-      "synthetic_derived_mapping": "not_applicable:no-synthetic-mapping-observed:src/app/api/prescription-intakes/facility-batch/route.ts",
-      "persistence_contract": "not_applicable:no-persistence-observed:src/app/api/prescription-intakes/facility-batch/route.ts",
-      "ttl_contract": "legacy_ttl_observed_requires_review",
-      "mapping_disposition": "candidate_requires_human",
-      "owner": "Identity / Authz",
-      "approval_status": "pending_owner_review",
-      "test_refs": ["src/app/api/prescription-intakes/facility-batch/route.test.ts"],
-      "reprojection_or_removal": "owner_review_required_before_cutover:src/app/api/prescription-intakes/facility-batch/route.ts",
-      "binding_profile": "p_272bb648526f",
-      "capability_profile": "p_e877ab5cedae"
     },
     {
       "id": "mapping_precedence:src/app/api/set-audits/route.ts",
@@ -32386,8 +32362,8 @@
     {
       "path": "src/app/api/prescription-intakes/facility-batch/route.test.ts",
       "classes": ["test"],
-      "detectors": ["raw_role_semantics"],
-      "sha256": "43c4a20df3e62c74a9af2259de5bee162dc1e2cf87ab38d98e98be327564c921"
+      "detectors": ["mapping_precedence", "raw_role_semantics"],
+      "sha256": "b4daccd0a3e0320fa56412b4f292078460dad3eb2cc676e5ff2560845126154f"
     },
     {
       "path": "src/app/api/prescription-intakes/route.test.ts",

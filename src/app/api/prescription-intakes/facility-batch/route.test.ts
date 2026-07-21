@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { addDays, subDays } from 'date-fns';
 import { NextRequest } from 'next/server';
 import { japanDateKey } from '@/lib/utils/date-boundary';
+import { runWithRequestAuthContext } from '@/lib/auth/request-context';
 
 const TODAY = japanDateKey();
 const FUTURE_DATE = japanDateKey(addDays(new Date(), 1));
@@ -30,7 +31,23 @@ const {
 }));
 
 vi.mock('@/lib/auth/context', () => ({
-  requireAuthContext: requireAuthContextMock,
+  withAuthContext:
+    (
+      handler: (req: NextRequest, ctx: Record<string, unknown>) => Promise<Response>,
+      options?: unknown,
+    ) =>
+    async (req: NextRequest) => {
+      const authResult = await requireAuthContextMock(req, options);
+      const response =
+        'response' in authResult
+          ? authResult.response
+          : await runWithRequestAuthContext(authResult.ctx, () =>
+              handler(req, authResult.ctx as Record<string, unknown>),
+            );
+      response.headers.set('Cache-Control', 'private, no-store, max-age=0');
+      response.headers.set('Pragma', 'no-cache');
+      return response;
+    },
 }));
 
 vi.mock('@/lib/db/rls', () => ({
@@ -139,6 +156,8 @@ describe('/api/prescription-intakes/facility-batch POST', () => {
         orgId: 'org_1',
         userId: 'user_1',
         role: 'admin',
+        requestId: 'request_1',
+        correlationId: 'correlation_1',
       },
     });
     drugMasterFindManyMock.mockResolvedValue([]);
@@ -709,6 +728,12 @@ describe('/api/prescription-intakes/facility-batch POST', () => {
           prescriberInstitution: {
             findFirst: vi.fn(),
           },
+          webhookRegistration: {
+            findMany: vi.fn().mockResolvedValue([]),
+          },
+          webhookDelivery: {
+            createMany: vi.fn().mockResolvedValue({ count: 0 }),
+          },
           prescriptionIntake: {
             create: intakeCreateMock,
           },
@@ -937,6 +962,12 @@ describe('/api/prescription-intakes/facility-batch POST', () => {
           findFirst: vi.fn().mockResolvedValue(null),
           create: vi.fn(),
         },
+        webhookRegistration: {
+          findMany: vi.fn().mockResolvedValue([]),
+        },
+        webhookDelivery: {
+          createMany: vi.fn().mockResolvedValue({ count: 0 }),
+        },
         prescriptionIntake: {
           create: intakeCreateMock,
         },
@@ -1070,6 +1101,8 @@ describe('/api/prescription-intakes/facility-batch POST', () => {
         method: 'POST',
         status: 500,
         error_name: 'Error',
+        requestId: 'request_1',
+        correlationId: 'correlation_1',
       },
     );
     expect(loggerErrorMock.mock.calls[0]?.[1]).toBeUndefined();
