@@ -735,7 +735,7 @@
       },
       {
         "path": "Plans.md",
-        "sha256": "4fb28c84061eb32b52450abe798cc1dcc626986a96890f84a7ded14eac53f77b"
+        "sha256": "366b8f463d0aa70b41f629198480b42e2d945c373c8af60ccf4ddded90a76ae0"
       },
       {
         "path": "README.md",
@@ -903,7 +903,7 @@
       },
       {
         "path": "ops/refactor/STATE.md",
-        "sha256": "8c20408fbe76321d2c4755c3c8fff7a282b32f865ce15437ece8451662c03ab9"
+        "sha256": "8b15421c95d8d3f0871b91b8c455a9927b93d684883fb4e94cf2c5b5cdca78d5"
       },
       {
         "path": "ops/refactor/archive/PERF_FINDINGS.md",
@@ -16855,24 +16855,50 @@
       "capability_profile": "p_d89f555cccec"
     },
     {
-      "id": "permission_capability:src/server/services/patient-detail-timeline-registry.ts",
+      "id": "permission_capability:src/server/services/patient-detail-timeline-registry-clinical.ts",
       "detector": "permission_capability",
-      "path": "src/server/services/patient-detail-timeline-registry.ts",
-      "evidence_sha256": "3ccb84e6f20f433e23dce65762be9a0000476f8f662c9c519a3d3d8324123e82",
+      "path": "src/server/services/patient-detail-timeline-registry-clinical.ts",
+      "evidence_sha256": "1c7dfa6e760121130135afb9d848a451ea023a9aeb0b56b3cff1c3b8a45d4a37",
       "principal": "human",
       "lifecycles": ["request"],
       "surfaces": ["reader_evaluator"],
       "exact_values_or_scopes": ["supporting_literal:canManageBilling"],
-      "route_method_purpose": "not_applicable:non-route-source:src/server/services/patient-detail-timeline-registry.ts",
-      "precedence_selection": "not_applicable:no-selection-observed:src/server/services/patient-detail-timeline-registry.ts",
-      "synthetic_derived_mapping": "not_applicable:no-synthetic-mapping-observed:src/server/services/patient-detail-timeline-registry.ts",
-      "persistence_contract": "not_applicable:no-persistence-observed:src/server/services/patient-detail-timeline-registry.ts",
-      "ttl_contract": "not_applicable:no-ttl-observed:src/server/services/patient-detail-timeline-registry.ts",
+      "route_method_purpose": "not_applicable:non-route-source:src/server/services/patient-detail-timeline-registry-clinical.ts",
+      "precedence_selection": "not_applicable:no-selection-observed:src/server/services/patient-detail-timeline-registry-clinical.ts",
+      "synthetic_derived_mapping": "not_applicable:no-synthetic-mapping-observed:src/server/services/patient-detail-timeline-registry-clinical.ts",
+      "persistence_contract": "not_applicable:no-persistence-observed:src/server/services/patient-detail-timeline-registry-clinical.ts",
+      "ttl_contract": "not_applicable:no-ttl-observed:src/server/services/patient-detail-timeline-registry-clinical.ts",
       "mapping_disposition": "inventory_only",
       "owner": "Permission matrix",
       "approval_status": "pending_owner_review",
-      "test_refs": ["src/server/services/patient-detail-timeline-registry.test.ts"],
-      "reprojection_or_removal": "owner_review_required_before_cutover:src/server/services/patient-detail-timeline-registry.ts",
+      "test_refs": [
+        "uncovered:no-focused-test:src/server/services/patient-detail-timeline-registry-clinical.ts"
+      ],
+      "reprojection_or_removal": "owner_review_required_before_cutover:src/server/services/patient-detail-timeline-registry-clinical.ts",
+      "binding_profile": "p_d30ff6d0cd63",
+      "capability_profile": "p_d89f555cccec"
+    },
+    {
+      "id": "permission_capability:src/server/services/patient-detail-timeline-registry-contract.ts",
+      "detector": "permission_capability",
+      "path": "src/server/services/patient-detail-timeline-registry-contract.ts",
+      "evidence_sha256": "f9f661403a40efb1006eada9f0fb9aa8a44430dcff91f2507fb71a5d9a0d9eb6",
+      "principal": "human",
+      "lifecycles": ["request"],
+      "surfaces": ["reader_evaluator"],
+      "exact_values_or_scopes": ["supporting_literal:canManageBilling"],
+      "route_method_purpose": "not_applicable:non-route-source:src/server/services/patient-detail-timeline-registry-contract.ts",
+      "precedence_selection": "not_applicable:no-selection-observed:src/server/services/patient-detail-timeline-registry-contract.ts",
+      "synthetic_derived_mapping": "not_applicable:no-synthetic-mapping-observed:src/server/services/patient-detail-timeline-registry-contract.ts",
+      "persistence_contract": "not_applicable:no-persistence-observed:src/server/services/patient-detail-timeline-registry-contract.ts",
+      "ttl_contract": "not_applicable:no-ttl-observed:src/server/services/patient-detail-timeline-registry-contract.ts",
+      "mapping_disposition": "inventory_only",
+      "owner": "Permission matrix",
+      "approval_status": "pending_owner_review",
+      "test_refs": [
+        "uncovered:no-focused-test:src/server/services/patient-detail-timeline-registry-contract.ts"
+      ],
+      "reprojection_or_removal": "owner_review_required_before_cutover:src/server/services/patient-detail-timeline-registry-contract.ts",
       "binding_profile": "p_d30ff6d0cd63",
       "capability_profile": "p_d89f555cccec"
     },

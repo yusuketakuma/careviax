@@ -758,11 +758,6 @@
       "task_id": "MAINT-FILE-SIZE-1000-001"
     },
     {
-      "path": "src/server/services/patient-detail-timeline-registry.ts",
-      "max_lines": 1349,
-      "task_id": "MAINT-FILE-SIZE-1000-001"
-    },
-    {
       "path": "src/server/services/patient-detail.test.ts",
       "max_lines": 5864,
       "task_id": "MAINT-FILE-SIZE-1000-001"
