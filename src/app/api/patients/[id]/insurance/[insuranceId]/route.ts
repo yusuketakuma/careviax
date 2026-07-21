@@ -1,12 +1,10 @@
 import { NextRequest } from 'next/server';
-import { unstable_rethrow } from 'next/navigation';
 import { z } from 'zod';
-import { requireAuthContext } from '@/lib/auth/context';
+import { withAuthContext, type AuthContext } from '@/lib/auth/context';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { withOrgContext } from '@/lib/db/rls';
-import { conflict, internalError, notFound, success, validationError } from '@/lib/api/response';
-import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
+import { conflict, notFound, success, validationError } from '@/lib/api/response';
 import { buildCareCaseAssignmentWhere } from '@/lib/auth/visit-schedule-access';
 import { requireWritablePatient } from '@/server/services/patient-write-guard';
 import { buildPatientInsuranceOverlapWhere } from '@/lib/patient/insurance-overlap';
@@ -73,15 +71,9 @@ function readRequiredExpectedUpdatedAt(req: NextRequest): ExpectedUpdatedAtResul
 
 async function authenticatedPUT(
   req: NextRequest,
+  ctx: AuthContext,
   { params }: { params: Promise<{ id: string; insuranceId: string }> },
 ): Promise<Response> {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canVisit',
-    message: '患者保険情報の更新権限がありません',
-  });
-  if ('response' in authResult) return authResult.response;
-  const ctx = authResult.ctx;
-
   const { id: rawId, insuranceId: rawInsuranceId } = await params;
   const id = normalizeRequiredRouteParam(rawId);
   if (!id) return validationError('患者IDが不正です');
@@ -253,17 +245,10 @@ async function authenticatedPUT(
   return success({ data: result.updated });
 }
 
-export async function PUT(
-  req: NextRequest,
-  routeContext: { params: Promise<{ id: string; insuranceId: string }> },
-) {
-  try {
-    return withSensitiveNoStore(await authenticatedPUT(req, routeContext));
-  } catch (err) {
-    unstable_rethrow(err);
-    return withSensitiveNoStore(internalError());
-  }
-}
+export const PUT = withAuthContext(authenticatedPUT, {
+  permission: 'canVisit',
+  message: '患者保険情報の更新権限がありません',
+});
 
 function staleInsuranceConflict(expectedUpdatedAt: Date, currentUpdatedAt: Date | null) {
   return conflict('保険情報が他の操作で更新されています。再読み込みしてください', {
@@ -275,15 +260,9 @@ function staleInsuranceConflict(expectedUpdatedAt: Date, currentUpdatedAt: Date 
 
 async function authenticatedDELETE(
   req: NextRequest,
+  ctx: AuthContext,
   { params }: { params: Promise<{ id: string; insuranceId: string }> },
 ): Promise<Response> {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canVisit',
-    message: '患者保険情報の削除権限がありません',
-  });
-  if ('response' in authResult) return authResult.response;
-  const ctx = authResult.ctx;
-
   const { id: rawId, insuranceId: rawInsuranceId } = await params;
   const id = normalizeRequiredRouteParam(rawId);
   if (!id) return validationError('患者IDが不正です');
@@ -368,14 +347,7 @@ async function authenticatedDELETE(
   return success({ data: { id: insuranceId, deleted: result.deleted } });
 }
 
-export async function DELETE(
-  req: NextRequest,
-  routeContext: { params: Promise<{ id: string; insuranceId: string }> },
-) {
-  try {
-    return withSensitiveNoStore(await authenticatedDELETE(req, routeContext));
-  } catch (err) {
-    unstable_rethrow(err);
-    return withSensitiveNoStore(internalError());
-  }
-}
+export const DELETE = withAuthContext(authenticatedDELETE, {
+  permission: 'canVisit',
+  message: '患者保険情報の削除権限がありません',
+});

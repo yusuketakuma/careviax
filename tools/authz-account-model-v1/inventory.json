@@ -735,7 +735,7 @@
       },
       {
         "path": "Plans.md",
-        "sha256": "35047616e1fd7ae7cd992805623257b097aa8fcf8bddf50851e4798c39d1015d"
+        "sha256": "65d1b07854735a1e2a2b87719c550e726f54db10a75fb2475a154d9e045da519"
       },
       {
         "path": "README.md",
@@ -903,7 +903,7 @@
       },
       {
         "path": "ops/refactor/STATE.md",
-        "sha256": "be6bdc268bb4b54ad3aa8ccb968aaf5e6516b48e7e8f48496c8bf7fc56c3f2b2"
+        "sha256": "c4a320168cce7a6a2b1d74968fef1386c852c225c91cdc414ed734edd8c7b18d"
       },
       {
         "path": "ops/refactor/archive/PERF_FINDINGS.md",
@@ -32137,7 +32137,7 @@
       "path": "src/app/api/patients/[id]/insurance/[insuranceId]/route.test.ts",
       "classes": ["test"],
       "detectors": ["permission_capability", "raw_role_semantics"],
-      "sha256": "8d774a90445560d4b0f7731d9362475a98ba1866681e3be4daf1493c6fbc7caa"
+      "sha256": "440ad9a31bdabc2bcaa9aad203087c8d912c9246db5b7469603080080a7a3309"
     },
     {
       "path": "src/app/api/patients/[id]/insurance/route.test.ts",
