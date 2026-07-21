@@ -98,11 +98,6 @@
       "task_id": "MAINT-FILE-SIZE-1000-001"
     },
     {
-      "path": "src/app/(dashboard)/billing/partner-cooperation/partner-cooperation-billing-content.test.tsx",
-      "max_lines": 1149,
-      "task_id": "MAINT-FILE-SIZE-1000-001"
-    },
-    {
       "path": "src/app/(dashboard)/billing/partner-cooperation/partner-cooperation-billing-content.tsx",
       "max_lines": 1976,
       "task_id": "MAINT-FILE-SIZE-1000-001"
