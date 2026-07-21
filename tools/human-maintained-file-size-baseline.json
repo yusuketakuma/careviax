@@ -723,11 +723,6 @@
       "task_id": "MAINT-FILE-SIZE-1000-001"
     },
     {
-      "path": "src/server/services/billing-rules/revisions/medical/2026.ts",
-      "max_lines": 1088,
-      "task_id": "MAINT-FILE-SIZE-1000-001"
-    },
-    {
       "path": "src/server/services/communication-queue.ts",
       "max_lines": 1287,
       "task_id": "MAINT-FILE-SIZE-1000-001"
