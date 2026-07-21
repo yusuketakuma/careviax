@@ -735,7 +735,7 @@
       },
       {
         "path": "Plans.md",
-        "sha256": "31d7bec7fa742e90944093325f51f0a9d1a690cf79a581844a7e4f92fb023132"
+        "sha256": "c1eb6aa67ffe0cc03afce72e911f4b78c56d8694f643a57094e4d5fc8e2ccc96"
       },
       {
         "path": "README.md",
@@ -903,7 +903,7 @@
       },
       {
         "path": "ops/refactor/STATE.md",
-        "sha256": "d80c49000114884b2f92939de7dc066bc29e95c2073c762c5684eb3ec56c47e2"
+        "sha256": "167bfdb45e558c27bd12c530e85004b1e4a5027efe229dc18f65e724bbda89a5"
       },
       {
         "path": "ops/refactor/archive/PERF_FINDINGS.md",
@@ -32101,7 +32101,7 @@
       "path": "src/app/api/patients/[id]/contacts/route.test.ts",
       "classes": ["test"],
       "detectors": ["raw_role_semantics", "tenant_role"],
-      "sha256": "30459be3e473a9610c4a8c40ef775b5ab2f300d7e5868a0e9e892fc1ca73225c"
+      "sha256": "93aadd9fe0d9c92df55c9bf8f57e963c1ab9f21dae1e1ef031501469e1b77bd6"
     },
     {
       "path": "src/app/api/patients/[id]/detail-slices.test.ts",
