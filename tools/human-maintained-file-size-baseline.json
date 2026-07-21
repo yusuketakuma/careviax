@@ -403,11 +403,6 @@
       "task_id": "MAINT-FILE-SIZE-1000-001"
     },
     {
-      "path": "src/app/api/conference-notes/[id]/route.test.ts",
-      "max_lines": 1107,
-      "task_id": "MAINT-FILE-SIZE-1000-001"
-    },
-    {
       "path": "src/app/api/conference-notes/route.test.ts",
       "max_lines": 2949,
       "task_id": "MAINT-FILE-SIZE-1000-001"

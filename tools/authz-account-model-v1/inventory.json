@@ -903,7 +903,7 @@
       },
       {
         "path": "ops/refactor/STATE.md",
-        "sha256": "03d34eac09faddf12fcee1aba6e8ff30bba184e0e7235b697caa10e4c50126ef"
+        "sha256": "c3118c3dbc193b044aae7832583a836b1e0d8a9bf27c4da26d0e54a7e1a2edd5"
       },
       {
         "path": "ops/refactor/archive/PERF_FINDINGS.md",
@@ -30912,7 +30912,7 @@
       "path": "src/app/api/conference-notes/[id]/route.test.ts",
       "classes": ["test"],
       "detectors": ["phos_role", "raw_role_semantics"],
-      "sha256": "a973c4bc50742f76d58ef739952e9509f7dcbbfa9da490d1f131cf6ddde403ee"
+      "sha256": "17395b1fcf8954031be9ab9fac86871d8abde3622e2df239cae85e9f6051007e"
     },
     {
       "path": "src/app/api/conference-notes/[id]/tasks/route.test.ts",
