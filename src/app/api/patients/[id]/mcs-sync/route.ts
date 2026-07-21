@@ -1,14 +1,6 @@
-import { unstable_rethrow } from 'next/navigation';
 import { NextRequest } from 'next/server';
-import { requireAuthContext } from '@/lib/auth/context';
-import {
-  conflict,
-  forbidden,
-  internalError,
-  registeredError,
-  validationError,
-  success,
-} from '@/lib/api/response';
+import { withAuthContext, type AuthContext } from '@/lib/auth/context';
+import { conflict, forbidden, registeredError, validationError, success } from '@/lib/api/response';
 import { syncPatientMcsSchema } from '@/lib/validations/patient-mcs';
 import { prisma } from '@/lib/db/client';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
@@ -16,7 +8,6 @@ import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { PatientMcsSyncError, syncPatientMcsTimeline } from '@/server/services/patient-mcs';
 import { canViewSensitivePatientData } from '@/lib/patient/sensitive';
 import { requireWritablePatient } from '@/server/services/patient-write-guard';
-import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 
 export const runtime = 'nodejs';
 
@@ -25,14 +16,9 @@ const PATIENT_MCS_SYNC_CONFLICT_MESSAGE =
 
 async function authenticatedPOST(
   req: NextRequest,
+  ctx: AuthContext,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canVisit',
-    message: 'MCS 連携の同期権限がありません',
-  });
-  if ('response' in authResult) return authResult.response;
-  const ctx = authResult.ctx;
   if (!canViewSensitivePatientData(ctx.role)) {
     return forbidden('MCS 連携の同期権限がありません');
   }
@@ -76,11 +62,7 @@ async function authenticatedPOST(
   }
 }
 
-export const POST: typeof authenticatedPOST = async (req, routeContext) => {
-  try {
-    return withSensitiveNoStore(await authenticatedPOST(req, routeContext));
-  } catch (err) {
-    unstable_rethrow(err);
-    return withSensitiveNoStore(internalError());
-  }
-};
+export const POST = withAuthContext(authenticatedPOST, {
+  permission: 'canVisit',
+  message: 'MCS 連携の同期権限がありません',
+});
