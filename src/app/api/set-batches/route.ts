@@ -1,12 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { unstable_rethrow } from 'next/navigation';
-import { requireAuthContext } from '@/lib/auth/context';
-import type { AuthContext } from '@/lib/auth/context';
+import { withAuthContext, type AuthContext } from '@/lib/auth/context';
 import { runWithRequestAuthContext } from '@/lib/auth/request-context';
 import { withOrgContext } from '@/lib/db/rls';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { conflict, internalError, notFound, success, validationError } from '@/lib/api/response';
-import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import {
   buildSetBatchHistorySnapshot,
   createSetBatchChangeLog,
@@ -26,7 +24,6 @@ import {
   buildSetPlanAssignmentWhere,
 } from '@/server/services/prescription-access';
 import { logger } from '@/lib/utils/logger';
-import { withRoutePerformance } from '@/lib/utils/performance';
 import { Prisma } from '@prisma/client';
 import { z } from 'zod';
 
@@ -96,12 +93,7 @@ async function withSerializableSetBatchCreateTransaction<T>(
   throw new SetBatchCreateRetryLimitError();
 }
 
-async function authenticatedGET(req: NextRequest) {
-  const auth = await requireAuthContext(req, { permission: 'canSet' });
-  if ('response' in auth) return auth.response;
-
-  const { ctx } = auth;
-
+async function handleGET(req: NextRequest, ctx: AuthContext) {
   return runWithRequestAuthContext(ctx, async () => {
     const { searchParams } = new URL(req.url);
     const planId = searchParams.get('plan_id');
@@ -146,10 +138,10 @@ async function authenticatedGET(req: NextRequest) {
   });
 }
 
-export async function GET(req: NextRequest) {
-  return withRoutePerformance(req, async () => {
+export const GET = withAuthContext(
+  async (req, ctx) => {
     try {
-      return withSensitiveNoStore(await authenticatedGET(req));
+      return await handleGET(req, ctx);
     } catch (err) {
       unstable_rethrow(err);
       logger.error(
@@ -161,17 +153,13 @@ export async function GET(req: NextRequest) {
         },
         err,
       );
-      return withSensitiveNoStore(internalError());
+      return internalError();
     }
-  });
-}
+  },
+  { permission: 'canSet' },
+);
 
-async function authenticatedPOST(req: NextRequest): Promise<NextResponse> {
-  const auth = await requireAuthContext(req, { permission: 'canSet' });
-  if ('response' in auth) return auth.response;
-
-  const { ctx } = auth;
-
+async function handlePOST(req: NextRequest, ctx: AuthContext): Promise<NextResponse> {
   return runWithRequestAuthContext(ctx, async () => {
     const payload = await readJsonObjectRequestBody(req);
     if (!payload) return validationError('リクエストボディが不正です');
@@ -539,10 +527,10 @@ async function authenticatedPOST(req: NextRequest): Promise<NextResponse> {
   });
 }
 
-export async function POST(req: NextRequest) {
-  return withRoutePerformance(req, async () => {
+export const POST = withAuthContext(
+  async (req, ctx) => {
     try {
-      return withSensitiveNoStore(await authenticatedPOST(req));
+      return await handlePOST(req, ctx);
     } catch (err) {
       unstable_rethrow(err);
       logger.error(
@@ -554,7 +542,8 @@ export async function POST(req: NextRequest) {
         },
         err,
       );
-      return withSensitiveNoStore(internalError());
+      return internalError();
     }
-  });
-}
+  },
+  { permission: 'canSet' },
+);

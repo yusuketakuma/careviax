@@ -735,7 +735,7 @@
       },
       {
         "path": "Plans.md",
-        "sha256": "9d7c20e7aa7bce9015834660ae82e0c057fe0cfdf4a269174d6031be52ae1645"
+        "sha256": "162a6611d466143308e49c2eea6d172442e29fb13d659f82edd6fdd93f1fa2c6"
       },
       {
         "path": "README.md",
@@ -903,7 +903,7 @@
       },
       {
         "path": "ops/refactor/STATE.md",
-        "sha256": "9740fcb00ec36cd227ef7ea322faf7b49085e18a5a2433b8cf81a32faf3b1933"
+        "sha256": "5eb074c27cc1c18b75d52df799d63d623143c97b0524244c22f5ad5357f60d57"
       },
       {
         "path": "ops/refactor/archive/PERF_FINDINGS.md",
@@ -26408,7 +26408,7 @@
       "id": "ui_role_affordance:src/app/api/set-batches/route.ts",
       "detector": "ui_role_affordance",
       "path": "src/app/api/set-batches/route.ts",
-      "evidence_sha256": "6842e07a4dc7307e8854e674365d488eb3c0786caad721a6b1c97ba6363630bb",
+      "evidence_sha256": "12bf03c715bafd8f286d2f8dd3cf36b21107471a292e5892dd503209dbaa3c4e",
       "principal": "human",
       "lifecycles": ["request"],
       "surfaces": ["rls", "writer"],
