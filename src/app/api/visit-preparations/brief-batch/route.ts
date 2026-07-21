@@ -1,16 +1,8 @@
 import { NextRequest } from 'next/server';
-import { unstable_rethrow } from 'next/navigation';
 import { z } from 'zod';
-import { requireAuthContext } from '@/lib/auth/context';
+import { withAuthContext, type AuthContext } from '@/lib/auth/context';
 import { canAccessVisitScheduleAssignment } from '@/lib/auth/visit-schedule-access';
-import {
-  forbiddenResponse,
-  internalError,
-  notFound,
-  success,
-  validationError,
-} from '@/lib/api/response';
-import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
+import { forbiddenResponse, notFound, success, validationError } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { getScheduleVisitBriefsForSchedules } from '@/server/services/visit-brief';
@@ -42,14 +34,7 @@ function toVisitBriefBatchSummary(brief: VisitBrief): VisitBriefBatchSummary {
   };
 }
 
-async function authenticatedPOST(req: NextRequest) {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canVisit',
-    message: '訪問要約の閲覧権限がありません',
-  });
-  if ('response' in authResult) return authResult.response;
-  const { ctx } = authResult;
-
+async function authenticatedPOST(req: NextRequest, ctx: AuthContext) {
   const payload = await readJsonObjectRequestBody(req);
   if (!payload) return validationError('リクエストボディが不正です');
 
@@ -108,11 +93,7 @@ async function authenticatedPOST(req: NextRequest) {
   return success({ data });
 }
 
-export async function POST(req: NextRequest) {
-  try {
-    return withSensitiveNoStore(await authenticatedPOST(req));
-  } catch (err) {
-    unstable_rethrow(err);
-    return withSensitiveNoStore(internalError());
-  }
-}
+export const POST = withAuthContext(authenticatedPOST, {
+  permission: 'canVisit',
+  message: '訪問要約の閲覧権限がありません',
+});

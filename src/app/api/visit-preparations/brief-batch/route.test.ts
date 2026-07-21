@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
+import { unstable_rethrow } from 'next/navigation';
 import type { VisitBrief } from '@/types/visit-brief';
 
 const {
@@ -15,7 +16,31 @@ const {
 }));
 
 vi.mock('@/lib/auth/context', () => ({
-  requireAuthContext: requireAuthContextMock,
+  withAuthContext:
+    (
+      handler: (req: NextRequest, ctx: Record<string, unknown>) => Promise<Response>,
+      options?: unknown,
+    ) =>
+    async (req: NextRequest) => {
+      const noStore = (response: Response) => {
+        response.headers.set('Cache-Control', 'private, no-store, max-age=0');
+        response.headers.set('Pragma', 'no-cache');
+        return response;
+      };
+      try {
+        const authResult = await requireAuthContextMock(req, options);
+        if ('response' in authResult) return noStore(authResult.response);
+        return noStore(await handler(req, authResult.ctx));
+      } catch (error) {
+        unstable_rethrow(error);
+        return noStore(
+          Response.json(
+            { code: 'INTERNAL_ERROR', message: 'サーバー内部でエラーが発生しました' },
+            { status: 500 },
+          ),
+        );
+      }
+    },
 }));
 
 vi.mock('@/lib/db/client', () => ({
@@ -36,6 +61,12 @@ vi.mock('@/server/services/visit-brief', () => ({
 
 import { POST } from './route';
 import { expectSensitiveNoStore } from '@/test/api-response-assertions';
+
+const emptyRouteContext = { params: Promise.resolve({}) };
+
+function callPOST(request: NextRequest) {
+  return POST(request, emptyRouteContext);
+}
 
 function createRequest(body: unknown, headers?: Record<string, string>) {
   return new NextRequest('http://localhost/api/visit-preparations/brief-batch', {
@@ -132,7 +163,7 @@ describe('/api/visit-preparations/brief-batch POST', () => {
   });
 
   it('returns schedule-keyed briefs while deduping schedule ids and patient brief generation', async () => {
-    const response = await POST(
+    const response = await callPOST(
       createRequest(
         {
           schedule_ids: [' schedule_1 ', 'schedule_2', 'schedule_1'],
@@ -255,7 +286,7 @@ describe('/api/visit-preparations/brief-batch POST', () => {
       ]),
     );
 
-    const response = await POST(
+    const response = await callPOST(
       createRequest(
         {
           schedule_ids: ['schedule_1'],
@@ -280,7 +311,7 @@ describe('/api/visit-preparations/brief-batch POST', () => {
   it('returns forbidden when any requested schedule is outside assignment scope', async () => {
     canAccessVisitScheduleAssignmentMock.mockReturnValueOnce(true).mockReturnValueOnce(false);
 
-    const response = await POST(
+    const response = await callPOST(
       createRequest(
         {
           schedule_ids: ['schedule_1', 'schedule_2'],
@@ -295,7 +326,7 @@ describe('/api/visit-preparations/brief-batch POST', () => {
   });
 
   it('rejects non-object batch payloads before loading schedules', async () => {
-    const response = await POST(createRequest([], { 'x-org-id': 'org_1' }));
+    const response = await callPOST(createRequest([], { 'x-org-id': 'org_1' }));
 
     expect(response.status).toBe(400);
     expectSensitiveNoStore(response);
@@ -305,7 +336,7 @@ describe('/api/visit-preparations/brief-batch POST', () => {
   });
 
   it('rejects malformed JSON batch payloads before loading schedules', async () => {
-    const response = await POST(createMalformedJsonRequest({ 'x-org-id': 'org_1' }));
+    const response = await callPOST(createMalformedJsonRequest({ 'x-org-id': 'org_1' }));
 
     expect(response.status).toBe(400);
     expectSensitiveNoStore(response);
@@ -319,7 +350,7 @@ describe('/api/visit-preparations/brief-batch POST', () => {
   });
 
   it('rejects blank schedule ids before loading schedules', async () => {
-    const response = await POST(
+    const response = await callPOST(
       createRequest({ schedule_ids: ['schedule_1', '   '] }, { 'x-org-id': 'org_1' }),
     );
 
@@ -344,7 +375,7 @@ describe('/api/visit-preparations/brief-batch POST', () => {
       },
     ]);
 
-    const response = await POST(
+    const response = await callPOST(
       createRequest(
         {
           schedule_ids: ['schedule_1', 'schedule_2'],
@@ -363,7 +394,7 @@ describe('/api/visit-preparations/brief-batch POST', () => {
       response: new Response(JSON.stringify({ code: 'UNAUTHORIZED' }), { status: 401 }),
     });
 
-    const response = await POST(
+    const response = await callPOST(
       createRequest(
         {
           schedule_ids: ['schedule_1'],
@@ -382,7 +413,7 @@ describe('/api/visit-preparations/brief-batch POST', () => {
   it('returns no-store not found when any schedule brief cannot be generated', async () => {
     scheduleVisitBriefsForSchedulesMock.mockResolvedValueOnce(new Map([['schedule_1', brief]]));
 
-    const response = await POST(
+    const response = await callPOST(
       createRequest(
         {
           schedule_ids: ['schedule_1', 'schedule_2'],
@@ -404,7 +435,7 @@ describe('/api/visit-preparations/brief-batch POST', () => {
       new Error('患者A ワルファリン SOAP詳細 の一括訪問要約生成に失敗しました'),
     );
 
-    const response = await POST(
+    const response = await callPOST(
       createRequest(
         {
           schedule_ids: ['schedule_1', 'schedule_2'],
@@ -434,7 +465,7 @@ describe('/api/visit-preparations/brief-batch POST', () => {
     scheduleVisitBriefsForSchedulesMock.mockRejectedValueOnce(redirectError);
 
     await expect(
-      POST(
+      callPOST(
         createRequest(
           {
             schedule_ids: ['schedule_1', 'schedule_2'],
