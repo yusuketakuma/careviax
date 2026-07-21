@@ -735,7 +735,7 @@
       },
       {
         "path": "Plans.md",
-        "sha256": "878349ff92adaed0e735a08e3d5b3de53fe290580f1cf72368ab055650a9d591"
+        "sha256": "ef94195b596d870ba2ac54cec10d8e805e927b60f7e28b3c556e2658cd9eefae"
       },
       {
         "path": "README.md",
@@ -903,7 +903,7 @@
       },
       {
         "path": "ops/refactor/STATE.md",
-        "sha256": "f9cb6b53f80f95e7ac84edb91c2e0b6b62597c032774a035ddb485905cf37e5c"
+        "sha256": "9dba230d34bb2d0d5706086a52ad6e5dfca2b45aabdd8b4c3f424ee00a121ef7"
       },
       {
         "path": "ops/refactor/archive/PERF_FINDINGS.md",
@@ -1178,8 +1178,12 @@
         "sha256": "13d5c0c9e572cf15c4a98f690ce41497d9adbc30be8b2206484377a5d6cd6fed"
       },
       {
+        "path": "src/app/(dashboard)/patients/[id]/patient-documents-panel-contract.ts",
+        "sha256": "8ac417591ccdb513c3fb482520bacb5497cd4288cbdb6d0d6e1f4539d3e314db"
+      },
+      {
         "path": "src/app/(dashboard)/patients/[id]/patient-documents-panel.tsx",
-        "sha256": "530ce6ef5df0c977ea31cb9af2de0a717da881121cc7b81ec6e5e30295e8ee8a"
+        "sha256": "61aacdf056688858bf5d0923bdedd6dd24bade9b83b61df6394553558ffeec0a"
       },
       {
         "path": "src/app/(dashboard)/patients/[id]/patient-home-operations-model.ts",

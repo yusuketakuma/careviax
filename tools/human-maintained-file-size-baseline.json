@@ -163,11 +163,6 @@
       "task_id": "MAINT-FILE-SIZE-1000-001"
     },
     {
-      "path": "src/app/(dashboard)/patients/[id]/patient-documents-panel.tsx",
-      "max_lines": 1035,
-      "task_id": "MAINT-FILE-SIZE-1000-001"
-    },
-    {
       "path": "src/app/(dashboard)/patients/[id]/patient-insurance-card.tsx",
       "max_lines": 1091,
       "task_id": "MAINT-FILE-SIZE-1000-001"
