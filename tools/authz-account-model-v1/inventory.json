@@ -735,7 +735,7 @@
       },
       {
         "path": "Plans.md",
-        "sha256": "f8527e883a0ade6fb7cc052a75f39125ebea548fa375cae57b2bc8cdc2b7f411"
+        "sha256": "28c235eaf004d90a8837ac1b225ea20dbb01bdc2b624c392efc03bf779863ddb"
       },
       {
         "path": "README.md",
@@ -903,7 +903,7 @@
       },
       {
         "path": "ops/refactor/STATE.md",
-        "sha256": "2afebf2ccd9e6ae29784c37bf5ba9443654d9366a8afa1352d25093bc6886396"
+        "sha256": "f2dae774cc1d3227d679f6c1fc551331adb3babc315af06b79d4be5d2209b1d3"
       },
       {
         "path": "ops/refactor/archive/PERF_FINDINGS.md",
@@ -32679,7 +32679,7 @@
       "path": "src/app/api/visit-schedule-proposals/[id]/route.test.ts",
       "classes": ["test"],
       "detectors": ["raw_role_semantics"],
-      "sha256": "49048abe9379eafd96a61b0d1cb6d4341939b999e4324ac2ba4e8200b6207f97"
+      "sha256": "891737a27b3b353438bcd9422b39e47150112b5d58b4eb55a6e87dba9e28f51c"
     },
     {
       "path": "src/app/api/visit-schedule-proposals/billing-preview-batch/route.test.ts",
