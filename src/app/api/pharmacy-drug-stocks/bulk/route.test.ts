@@ -1,5 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { NextRequest } from 'next/server';
+import {
+  createMalformedJsonRequest,
+  createRequest,
+  drugMasterFixture,
+  readBulkPayload,
+} from './route.test-fixtures';
 
 const { authMock, prismaMock, withOrgContextMock, loggerErrorMock, logSecurityEventMock } =
   vi.hoisted(() => ({
@@ -40,53 +45,7 @@ vi.mock('@/lib/utils/logger', () => ({
 import { POST } from './route';
 import { expectNoStore } from '@/test/api-response-assertions';
 
-function createRequest(body: unknown) {
-  return new NextRequest('http://localhost/api/pharmacy-drug-stocks/bulk', {
-    method: 'POST',
-    body: JSON.stringify(body),
-    headers: {
-      'content-type': 'application/json',
-      'x-org-id': 'org_1',
-    },
-  });
-}
-
-function createMalformedJsonRequest() {
-  return new NextRequest('http://localhost/api/pharmacy-drug-stocks/bulk', {
-    method: 'POST',
-    body: '{"site_id":',
-    headers: {
-      'content-type': 'application/json',
-      'x-org-id': 'org_1',
-    },
-  });
-}
-
-type BulkPayload = {
-  importedCount: number;
-  unmatchedRows: Array<Record<string, unknown>>;
-  invalidRows: Array<Record<string, unknown>>;
-  preview: {
-    summary: Record<string, number>;
-    rows: Array<Record<string, unknown>>;
-  };
-};
-
-async function readBulkPayload(response: Response): Promise<BulkPayload> {
-  const payload: unknown = await response.json();
-  expect(payload).toMatchObject({
-    data: {
-      importedCount: expect.any(Number),
-      unmatchedRows: expect.any(Array),
-      invalidRows: expect.any(Array),
-      preview: {
-        summary: expect.any(Object),
-        rows: expect.any(Array),
-      },
-    },
-  });
-  return (payload as { data: BulkPayload }).data;
-}
+const emptyRouteContext = { params: Promise.resolve({}) };
 
 describe('/api/pharmacy-drug-stocks/bulk', () => {
   beforeEach(() => {
@@ -116,12 +75,7 @@ describe('/api/pharmacy-drug-stocks/bulk', () => {
   it('imports CSV rows by YJ code and reports unmatched rows', async () => {
     prismaMock.drugMaster.findMany
       .mockResolvedValueOnce([
-        {
-          id: 'drug_1',
-          yj_code: '123456789012',
-          drug_name: 'アムロジピン錠5mg',
-          generic_name: 'アムロジピン',
-        },
+        drugMasterFixture('drug_1', '123456789012', 'アムロジピン錠5mg', 'アムロジピン'),
       ])
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([]);
@@ -193,9 +147,7 @@ describe('/api/pharmacy-drug-stocks/bulk', () => {
   });
 
   it('rejects non-object request bodies before lookup or import work', async () => {
-    const response = await POST(createRequest(['unexpected']), {
-      params: Promise.resolve({}),
-    });
+    const response = await POST(createRequest(['unexpected']), emptyRouteContext);
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
@@ -210,9 +162,7 @@ describe('/api/pharmacy-drug-stocks/bulk', () => {
   });
 
   it('rejects malformed JSON request bodies before lookup or import work', async () => {
-    const response = await POST(createMalformedJsonRequest(), {
-      params: Promise.resolve({}),
-    });
+    const response = await POST(createMalformedJsonRequest(), emptyRouteContext);
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
@@ -233,9 +183,7 @@ describe('/api/pharmacy-drug-stocks/bulk', () => {
   it('returns no-store auth failure before parsing body or starting RLS work', async () => {
     authMock.mockResolvedValueOnce(null);
 
-    const response = await POST(createMalformedJsonRequest(), {
-      params: Promise.resolve({}),
-    });
+    const response = await POST(createMalformedJsonRequest(), emptyRouteContext);
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(401);
@@ -293,12 +241,7 @@ describe('/api/pharmacy-drug-stocks/bulk', () => {
   it('returns a sanitized no-store 500 when bulk import apply fails unexpectedly', async () => {
     prismaMock.drugMaster.findMany
       .mockResolvedValueOnce([
-        {
-          id: 'drug_unsafe',
-          yj_code: '123456789012',
-          drug_name: '監査対象薬',
-          generic_name: '成分A',
-        },
+        drugMasterFixture('drug_unsafe', '123456789012', '監査対象薬', '成分A'),
       ])
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([]);
@@ -339,18 +282,8 @@ describe('/api/pharmacy-drug-stocks/bulk', () => {
   it('numbers CSV rows after JSON rows when both inputs are provided', async () => {
     prismaMock.drugMaster.findMany
       .mockResolvedValueOnce([
-        {
-          id: 'drug_json',
-          yj_code: '111111111111',
-          drug_name: 'JSON薬',
-          generic_name: '成分J',
-        },
-        {
-          id: 'drug_csv',
-          yj_code: '222222222222',
-          drug_name: 'CSV薬',
-          generic_name: '成分C',
-        },
+        drugMasterFixture('drug_json', '111111111111', 'JSON薬', '成分J'),
+        drugMasterFixture('drug_csv', '222222222222', 'CSV薬', '成分C'),
       ])
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([]);
@@ -496,24 +429,9 @@ describe('/api/pharmacy-drug-stocks/bulk', () => {
   it('previews CSV differences without mutating stock rows or writing audit logs', async () => {
     prismaMock.drugMaster.findMany
       .mockResolvedValueOnce([
-        {
-          id: 'drug_new',
-          yj_code: '111111111111',
-          drug_name: '新規薬',
-          generic_name: '成分A',
-        },
-        {
-          id: 'drug_existing',
-          yj_code: '222222222222',
-          drug_name: '既存薬',
-          generic_name: '成分B',
-        },
-        {
-          id: 'drug_stop',
-          yj_code: '333333333333',
-          drug_name: '解除薬',
-          generic_name: '成分C',
-        },
+        drugMasterFixture('drug_new', '111111111111', '新規薬', '成分A'),
+        drugMasterFixture('drug_existing', '222222222222', '既存薬', '成分B'),
+        drugMasterFixture('drug_stop', '333333333333', '解除薬', '成分C'),
       ])
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([]);
@@ -686,12 +604,7 @@ describe('/api/pharmacy-drug-stocks/bulk', () => {
   it('rejects rows with unresolved preferred generic codes without importing the drug', async () => {
     prismaMock.drugMaster.findMany
       .mockResolvedValueOnce([
-        {
-          id: 'drug_1',
-          yj_code: '123456789012',
-          drug_name: 'アムロジピン錠5mg',
-          generic_name: 'アムロジピン',
-        },
+        drugMasterFixture('drug_1', '123456789012', 'アムロジピン錠5mg', 'アムロジピン'),
       ])
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([]);
@@ -739,12 +652,7 @@ describe('/api/pharmacy-drug-stocks/bulk', () => {
   it('rejects duplicate rows for the same drug before applying CSV changes', async () => {
     prismaMock.drugMaster.findMany
       .mockResolvedValueOnce([
-        {
-          id: 'drug_1',
-          yj_code: '123456789012',
-          drug_name: 'アムロジピン錠5mg',
-          generic_name: 'アムロジピン',
-        },
+        drugMasterFixture('drug_1', '123456789012', 'アムロジピン錠5mg', 'アムロジピン'),
       ])
       .mockResolvedValueOnce([]);
 
@@ -794,12 +702,7 @@ describe('/api/pharmacy-drug-stocks/bulk', () => {
 
   it('marks name-only exact matches invalid in dry-run instead of auto-resolving the master', async () => {
     prismaMock.drugMaster.findMany.mockResolvedValueOnce([
-      {
-        id: 'drug_exact',
-        yj_code: '111111111111',
-        drug_name: '単一一致薬',
-        generic_name: '成分A',
-      },
+      drugMasterFixture('drug_exact', '111111111111', '単一一致薬', '成分A'),
     ]);
 
     const response = await POST(
@@ -820,14 +723,7 @@ describe('/api/pharmacy-drug-stocks/bulk', () => {
         {
           rowNumber: 2,
           reason: '医薬品名だけでは採用薬を確定できません。YJコードを指定してください',
-          candidates: [
-            {
-              id: 'drug_exact',
-              yj_code: '111111111111',
-              drug_name: '単一一致薬',
-              generic_name: '成分A',
-            },
-          ],
+          candidates: [drugMasterFixture('drug_exact', '111111111111', '単一一致薬', '成分A')],
         },
       ],
       preview: {
@@ -840,14 +736,7 @@ describe('/api/pharmacy-drug-stocks/bulk', () => {
           {
             rowNumber: 2,
             status: 'invalid',
-            candidates: [
-              {
-                id: 'drug_exact',
-                yj_code: '111111111111',
-                drug_name: '単一一致薬',
-                generic_name: '成分A',
-              },
-            ],
+            candidates: [drugMasterFixture('drug_exact', '111111111111', '単一一致薬', '成分A')],
           },
         ],
       },
@@ -859,12 +748,7 @@ describe('/api/pharmacy-drug-stocks/bulk', () => {
 
   it('does not upsert name-only exact matches during apply and records them in the summary audit', async () => {
     prismaMock.drugMaster.findMany.mockResolvedValueOnce([
-      {
-        id: 'drug_exact',
-        yj_code: '111111111111',
-        drug_name: '単一一致薬',
-        generic_name: '成分A',
-      },
+      drugMasterFixture('drug_exact', '111111111111', '単一一致薬', '成分A'),
     ]);
 
     const response = await POST(
@@ -907,12 +791,7 @@ describe('/api/pharmacy-drug-stocks/bulk', () => {
                 rowNumber: 2,
                 reason: '医薬品名だけでは採用薬を確定できません。YJコードを指定してください',
                 candidates: [
-                  {
-                    id: 'drug_exact',
-                    yj_code: '111111111111',
-                    drug_name: '単一一致薬',
-                    generic_name: '成分A',
-                  },
+                  drugMasterFixture('drug_exact', '111111111111', '単一一致薬', '成分A'),
                 ],
               },
             ],
@@ -922,12 +801,7 @@ describe('/api/pharmacy-drug-stocks/bulk', () => {
                 status: 'invalid',
                 drug_master_id: null,
                 candidates: [
-                  {
-                    id: 'drug_exact',
-                    yj_code: '111111111111',
-                    drug_name: '単一一致薬',
-                    generic_name: '成分A',
-                  },
+                  drugMasterFixture('drug_exact', '111111111111', '単一一致薬', '成分A'),
                 ],
               }),
             ],
@@ -939,21 +813,9 @@ describe('/api/pharmacy-drug-stocks/bulk', () => {
 
   it('applies valid YJ-coded rows while keeping name-only exact matches invalid', async () => {
     prismaMock.drugMaster.findMany
+      .mockResolvedValueOnce([drugMasterFixture('drug_yj', '222222222222', 'YJ指定薬', '成分B')])
       .mockResolvedValueOnce([
-        {
-          id: 'drug_yj',
-          yj_code: '222222222222',
-          drug_name: 'YJ指定薬',
-          generic_name: '成分B',
-        },
-      ])
-      .mockResolvedValueOnce([
-        {
-          id: 'drug_exact',
-          yj_code: '111111111111',
-          drug_name: '単一一致薬',
-          generic_name: '成分A',
-        },
+        drugMasterFixture('drug_exact', '111111111111', '単一一致薬', '成分A'),
       ]);
 
     const response = await POST(
@@ -1054,18 +916,8 @@ describe('/api/pharmacy-drug-stocks/bulk', () => {
                 row_number: 2,
                 status: 'invalid',
                 candidates: [
-                  {
-                    id: 'drug_1',
-                    yj_code: '111111111111',
-                    drug_name: '同名薬',
-                    generic_name: '成分A',
-                  },
-                  {
-                    id: 'drug_2',
-                    yj_code: '222222222222',
-                    drug_name: '同名薬',
-                    generic_name: '成分B',
-                  },
+                  drugMasterFixture('drug_1', '111111111111', '同名薬', '成分A'),
+                  drugMasterFixture('drug_2', '222222222222', '同名薬', '成分B'),
                 ],
               }),
             ],
@@ -1077,14 +929,7 @@ describe('/api/pharmacy-drug-stocks/bulk', () => {
 
   it('rejects preferred generic rows with a different generic name', async () => {
     prismaMock.drugMaster.findMany
-      .mockResolvedValueOnce([
-        {
-          id: 'drug_1',
-          yj_code: '123456789012',
-          drug_name: '先発薬A錠',
-          generic_name: '成分A',
-        },
-      ])
+      .mockResolvedValueOnce([drugMasterFixture('drug_1', '123456789012', '先発薬A錠', '成分A')])
       .mockResolvedValueOnce([
         {
           id: 'generic_1',
@@ -1121,20 +966,10 @@ describe('/api/pharmacy-drug-stocks/bulk', () => {
   it('rejects the target drug itself as a preferred generic in CSV rows', async () => {
     prismaMock.drugMaster.findMany
       .mockResolvedValueOnce([
-        {
-          id: 'drug_1',
-          yj_code: '123456789012',
-          drug_name: 'アムロジピン後発錠',
-          generic_name: 'アムロジピン',
-        },
+        drugMasterFixture('drug_1', '123456789012', 'アムロジピン後発錠', 'アムロジピン'),
       ])
       .mockResolvedValueOnce([
-        {
-          id: 'drug_1',
-          yj_code: '123456789012',
-          drug_name: 'アムロジピン後発錠',
-          generic_name: 'アムロジピン',
-        },
+        drugMasterFixture('drug_1', '123456789012', 'アムロジピン後発錠', 'アムロジピン'),
       ]);
 
     const response = await POST(

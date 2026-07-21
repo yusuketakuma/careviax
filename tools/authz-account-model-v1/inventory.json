@@ -903,7 +903,7 @@
       },
       {
         "path": "ops/refactor/STATE.md",
-        "sha256": "88d2f18895f0dff5ad3c582e33dbaef71ce07a7fe26a8a8b490b1fef6974417f"
+        "sha256": "6a7cdc2886fc9da322771e5ad54545cb57050cde4e9a4b2dd21f745452b5e045"
       },
       {
         "path": "ops/refactor/archive/PERF_FINDINGS.md",
@@ -32077,7 +32077,7 @@
       "path": "src/app/api/pharmacy-drug-stocks/bulk/route.test.ts",
       "classes": ["test"],
       "detectors": ["mapping_precedence", "raw_role_semantics"],
-      "sha256": "78cf72fef42a9b05ddb2499dcee18b94c3668373a6ed21fbf6094fa60bea10d9"
+      "sha256": "99f3f5c2e1cb1bcfc7ae8ab0381beb3ca4b68b647b670b457a03221e5182b398"
     },
     {
       "path": "src/app/api/pharmacy-drug-stocks/copy/route.test.ts",

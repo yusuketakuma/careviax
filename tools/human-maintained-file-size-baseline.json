@@ -473,11 +473,6 @@
       "task_id": "MAINT-FILE-SIZE-1000-001"
     },
     {
-      "path": "src/app/api/pharmacy-drug-stocks/bulk/route.test.ts",
-      "max_lines": 1163,
-      "task_id": "MAINT-FILE-SIZE-1000-001"
-    },
-    {
       "path": "src/app/api/prescription-intakes/route.test.ts",
       "max_lines": 3661,
       "task_id": "MAINT-FILE-SIZE-1000-001"
