@@ -89,28 +89,14 @@ vi.mock('@/lib/audit/phi-read-audit', () => ({
 }));
 
 import { GET, PUT } from './route';
-
-function createRequest(url: string, body?: unknown, headers?: Record<string, string>) {
-  return new NextRequest(url, {
-    method: body === undefined ? 'GET' : 'PUT',
-    headers: {
-      ...(body === undefined ? {} : { 'content-type': 'application/json' }),
-      ...headers,
-    },
-    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-  });
-}
-
-function createMalformedJsonPutRequest() {
-  return new NextRequest('http://localhost/api/patients/patient_1/care-team', {
-    method: 'PUT',
-    headers: {
-      'content-type': 'application/json',
-      'x-org-id': 'corg1234567890123456789012',
-    },
-    body: '{"case_id":',
-  });
-}
+import {
+  buildDefaultCareCases,
+  buildDefaultContactParties,
+  buildDefaultExternalProfessionals,
+  createMalformedJsonPutRequest,
+  createRequest,
+  installCareTeamTransactionMock,
+} from './route.test-helpers';
 
 describe('/api/patients/[id]/care-team', () => {
   beforeEach(() => {
@@ -125,65 +111,18 @@ describe('/api/patients/[id]/care-team', () => {
       },
     });
     patientFindFirstMock.mockResolvedValue({ id: 'patient_1' });
-    careCaseFindManyMock.mockResolvedValue([
-      {
-        id: 'case_active',
-        status: 'active',
-        created_at: new Date('2026-03-01'),
-        care_team_links: [
-          {
-            id: 'link_1',
-            external_professional_id: 'external_1',
-            role: 'physician',
-            name: '佐藤医師',
-            is_primary: true,
-            organization_name: '在宅医療クリニック',
-            department: '内科',
-            phone: '03-1111-2222',
-            email: 'doctor@example.com',
-            fax: '03-1111-3333',
-            address: '東京都千代田区1-1',
-            notes: '訪問前に薬局へ連絡',
-          },
-        ],
-      },
-      {
-        id: 'case_old',
-        status: 'on_hold',
-        created_at: new Date('2026-02-01'),
-        care_team_links: [],
-      },
-    ]);
+    careCaseFindManyMock.mockResolvedValue(buildDefaultCareCases());
     careCaseFindFirstMock.mockResolvedValue({ id: 'case_active' });
     findManyMock.mockResolvedValue([{ id: 'link_1', role: 'physician', name: '佐藤医師' }]);
-    contactFindManyMock.mockResolvedValue([
-      {
-        is_primary: true,
-        is_emergency_contact: true,
-        phone: '090-1111-2222',
-        email: null,
-        fax: null,
-      },
-    ]);
-    externalProfessionalFindManyMock.mockResolvedValue([
-      { id: 'external_1', profession_type: 'nurse' },
-    ]);
+    contactFindManyMock.mockResolvedValue(buildDefaultContactParties());
+    externalProfessionalFindManyMock.mockResolvedValue(buildDefaultExternalProfessionals());
     createAuditLogEntryMock.mockResolvedValue({ id: 'audit_1' });
-    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
-      callback({
-        externalProfessional: {
-          findMany: externalProfessionalFindManyMock,
-        },
-        careTeamLink: {
-          deleteMany: deleteManyMock,
-          createMany: createManyMock,
-          findMany: findManyMock,
-        },
-        auditLog: {
-          create: vi.fn(),
-        },
-      }),
-    );
+    installCareTeamTransactionMock(withOrgContextMock, {
+      externalProfessionalFindManyMock,
+      deleteManyMock,
+      createManyMock,
+      findManyMock,
+    });
   });
 
   it('returns the active case by default for care-team editing', async () => {
