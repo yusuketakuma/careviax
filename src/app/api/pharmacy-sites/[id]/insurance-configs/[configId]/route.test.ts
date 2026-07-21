@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { unstable_rethrow } from 'next/navigation';
 import { NextRequest } from 'next/server';
 import { expectSensitiveNoStore } from '@/test/api-response-assertions';
 
@@ -10,6 +11,10 @@ const {
   insuranceConfigDeleteMock,
   auditLogCreateMock,
   withOrgContextMock,
+  acquireAdvisoryTxLockMock,
+  loggerErrorMock,
+  runWithRequestAuthContextMock,
+  withRoutePerformanceMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
   insuranceConfigFindFirstMock: vi.fn(),
@@ -18,10 +23,59 @@ const {
   insuranceConfigDeleteMock: vi.fn(),
   auditLogCreateMock: vi.fn(),
   withOrgContextMock: vi.fn(),
+  acquireAdvisoryTxLockMock: vi.fn(),
+  loggerErrorMock: vi.fn(),
+  runWithRequestAuthContextMock: vi.fn((_ctx, callback: () => unknown) => callback()),
+  withRoutePerformanceMock: vi.fn((_req, callback: () => unknown) => callback()),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
-  requireAuthContext: requireAuthContextMock,
+  withAuthContext:
+    (
+      handler: (
+        req: NextRequest,
+        ctx: Record<string, unknown>,
+        routeContext: { params: Promise<{ id: string; configId: string }> },
+      ) => Promise<Response>,
+      options?: unknown,
+    ) =>
+    async (req: NextRequest, routeContext: { params: Promise<{ id: string; configId: string }> }) =>
+      withRoutePerformanceMock(req, async () => {
+        const noStore = (response: Response) => {
+          response.headers.set('Cache-Control', 'private, no-store, max-age=0');
+          response.headers.set('Pragma', 'no-cache');
+          return response;
+        };
+        const authResult = await requireAuthContextMock(req, options);
+        if ('response' in authResult) return noStore(authResult.response);
+        return runWithRequestAuthContextMock(authResult.ctx, async () => {
+          try {
+            return noStore(await handler(req, authResult.ctx, routeContext));
+          } catch (error) {
+            unstable_rethrow(error);
+            loggerErrorMock(
+              {
+                event: 'route_handler_unhandled_error',
+                route: req.nextUrl.pathname,
+                method: req.method,
+                requestId: authResult.ctx.requestId,
+                correlationId: authResult.ctx.correlationId,
+              },
+              error,
+            );
+            return noStore(
+              Response.json(
+                { code: 'INTERNAL_ERROR', message: 'サーバー内部でエラーが発生しました' },
+                { status: 500 },
+              ),
+            );
+          }
+        });
+      }),
+}));
+
+vi.mock('@/lib/db/advisory-lock', () => ({
+  acquireAdvisoryTxLock: acquireAdvisoryTxLockMock,
 }));
 
 vi.mock('@/lib/db/client', () => ({
@@ -83,6 +137,8 @@ describe('/api/pharmacy-sites/[id]/insurance-configs/[configId]', () => {
         userId: 'user_1',
         ipAddress: '127.0.0.1',
         userAgent: 'vitest',
+        requestId: 'request_1',
+        correlationId: 'correlation_1',
       },
     });
     insuranceConfigFindFirstMock.mockResolvedValue({
@@ -113,6 +169,8 @@ describe('/api/pharmacy-sites/[id]/insurance-configs/[configId]', () => {
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
         pharmacySiteInsuranceConfig: {
+          findFirst: insuranceConfigFindFirstMock,
+          findMany: insuranceConfigFindManyMock,
           update: insuranceConfigUpdateMock,
           delete: insuranceConfigDeleteMock,
         },
@@ -185,8 +243,20 @@ describe('/api/pharmacy-sites/[id]/insurance-configs/[configId]', () => {
           effective_from: '2024-04-01',
           effective_to: null,
           config_changed_keys: ['base_fee', 'raw_pii_marker'],
+          request_trace: {
+            request_id: 'request_1',
+            correlation_id: 'correlation_1',
+          },
         },
       }),
+    });
+    expect(acquireAdvisoryTxLockMock).toHaveBeenCalledWith(
+      expect.anything(),
+      'insurance_config_dedup',
+      'org_1:site_1:medical',
+    );
+    expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
+      requestContext: expect.objectContaining({ orgId: 'org_1', userId: 'user_1' }),
     });
     const auditCallText = JSON.stringify(auditLogCreateMock.mock.calls[0]);
     expect(auditCallText).not.toContain('患者 山田太郎');

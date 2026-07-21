@@ -1,20 +1,18 @@
 import { NextRequest } from 'next/server';
-import { unstable_rethrow } from 'next/navigation';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
-import { requireAuthContext } from '@/lib/auth/context';
+import { withAuthContext, type AuthContext, type AuthRouteContext } from '@/lib/auth/context';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { withOrgContext } from '@/lib/db/rls';
-import { prisma } from '@/lib/db/client';
-import { internalError, success, validationError, notFound } from '@/lib/api/response';
-import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
+import { acquireAdvisoryTxLock } from '@/lib/db/advisory-lock';
+import { success, validationError, notFound } from '@/lib/api/response';
 import { normalizeJsonInput, toPrismaJsonInput } from '@/lib/db/json';
 import {
   pharmacySiteInsuranceConfigUpdateSchema,
   rangesOverlap,
 } from '@/lib/validations/pharmacy-site-insurance-config';
 
-type InsuranceConfigRouteContext = { params: Promise<{ id: string; configId: string }> };
+type InsuranceConfigRouteContext = AuthRouteContext<{ id: string; configId: string }>;
 
 type InsuranceConfigResponseInput = {
   id: string;
@@ -63,14 +61,11 @@ function buildInsuranceConfigUpdateAuditChanges(parsed: {
   };
 }
 
-async function authenticatedPATCH(req: NextRequest, { params }: InsuranceConfigRouteContext) {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canAdmin',
-    message: '保険設定の更新権限がありません',
-  });
-  if ('response' in authResult) return authResult.response;
-  const ctx = authResult.ctx;
-
+async function authenticatedPATCH(
+  req: NextRequest,
+  ctx: AuthContext,
+  { params }: InsuranceConfigRouteContext,
+) {
   const payload = await readJsonObjectRequestBody(req);
   if (!payload) return validationError('リクエストボディが不正です');
 
@@ -85,108 +80,134 @@ async function authenticatedPATCH(req: NextRequest, { params }: InsuranceConfigR
   const insuranceConfigId = normalizeRequiredRouteParam(configId);
   if (!insuranceConfigId) return validationError('保険設定IDが不正です');
 
-  const existing = await prisma.pharmacySiteInsuranceConfig.findFirst({
-    where: { id: insuranceConfigId, site_id: siteId, org_id: ctx.orgId },
-    select: { id: true, insurance_type: true },
-  });
-  if (!existing) return notFound('保険設定が見つかりません');
-
   const nextStart = new Date(parsed.data.effective_from);
   const nextEnd = parsed.data.effective_to ? new Date(parsed.data.effective_to) : null;
-  const overlappingConfigs = await prisma.pharmacySiteInsuranceConfig.findMany({
-    where: {
-      org_id: ctx.orgId,
-      site_id: siteId,
-      insurance_type: existing.insurance_type,
-      id: { not: insuranceConfigId },
+  const result = await withOrgContext(
+    ctx.orgId,
+    async (tx) => {
+      const initial = await tx.pharmacySiteInsuranceConfig.findFirst({
+        where: { id: insuranceConfigId, site_id: siteId, org_id: ctx.orgId },
+        select: { id: true, insurance_type: true },
+      });
+      if (!initial) return { kind: 'not_found' as const };
+
+      await acquireAdvisoryTxLock(
+        tx,
+        'insurance_config_dedup',
+        `${ctx.orgId}:${siteId}:${initial.insurance_type}`,
+      );
+      const existing = await tx.pharmacySiteInsuranceConfig.findFirst({
+        where: { id: insuranceConfigId, site_id: siteId, org_id: ctx.orgId },
+        select: { id: true, insurance_type: true },
+      });
+      if (!existing) return { kind: 'not_found' as const };
+
+      const overlappingConfigs = await tx.pharmacySiteInsuranceConfig.findMany({
+        where: {
+          org_id: ctx.orgId,
+          site_id: siteId,
+          insurance_type: existing.insurance_type,
+          id: { not: insuranceConfigId },
+        },
+      });
+      if (
+        overlappingConfigs.some((config) =>
+          rangesOverlap({
+            nextStart,
+            nextEnd,
+            currentStart: config.effective_from,
+            currentEnd: config.effective_to,
+          }),
+        )
+      ) {
+        return { kind: 'overlap' as const };
+      }
+
+      const config = await tx.pharmacySiteInsuranceConfig.update({
+        where: { id: insuranceConfigId },
+        data: {
+          revision_label: parsed.data.revision_label ?? null,
+          effective_from: nextStart,
+          effective_to: nextEnd,
+          config: toPrismaJsonInput(parsed.data.config),
+        },
+      });
+
+      await createAuditLogEntry(tx, ctx, {
+        action: 'insurance_config_updated',
+        targetType: 'PharmacySiteInsuranceConfig',
+        targetId: insuranceConfigId,
+        changes: buildInsuranceConfigUpdateAuditChanges(parsed.data),
+      });
+
+      return { kind: 'updated' as const, config };
     },
-  });
-  if (
-    overlappingConfigs.some((config) =>
-      rangesOverlap({
-        nextStart,
-        nextEnd,
-        currentStart: config.effective_from,
-        currentEnd: config.effective_to,
-      }),
-    )
-  ) {
+    { requestContext: ctx },
+  );
+
+  if (result.kind === 'not_found') return notFound('保険設定が見つかりません');
+  if (result.kind === 'overlap') {
     return validationError('同一保険種別で適用期間が重複する設定は更新できません');
   }
 
-  const updated = await withOrgContext(ctx.orgId, async (tx) => {
-    const config = await tx.pharmacySiteInsuranceConfig.update({
-      where: { id: insuranceConfigId },
-      data: {
-        revision_label: parsed.data.revision_label ?? null,
-        effective_from: nextStart,
-        effective_to: nextEnd,
-        config: toPrismaJsonInput(parsed.data.config),
-      },
-    });
-
-    await createAuditLogEntry(tx, ctx, {
-      action: 'insurance_config_updated',
-      targetType: 'PharmacySiteInsuranceConfig',
-      targetId: insuranceConfigId,
-      changes: buildInsuranceConfigUpdateAuditChanges(parsed.data),
-    });
-
-    return config;
-  });
-
-  return success({ data: toInsuranceConfigResponse(updated) });
+  return success({ data: toInsuranceConfigResponse(result.config) });
 }
 
-export async function PATCH(req: NextRequest, routeContext: InsuranceConfigRouteContext) {
-  try {
-    return withSensitiveNoStore(await authenticatedPATCH(req, routeContext));
-  } catch (error) {
-    unstable_rethrow(error);
-    return withSensitiveNoStore(internalError());
-  }
-}
+export const PATCH = withAuthContext(authenticatedPATCH, {
+  permission: 'canAdmin',
+  message: '保険設定の更新権限がありません',
+});
 
-async function authenticatedDELETE(req: NextRequest, { params }: InsuranceConfigRouteContext) {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canAdmin',
-    message: '保険設定の削除権限がありません',
-  });
-  if ('response' in authResult) return authResult.response;
-  const ctx = authResult.ctx;
-
+async function authenticatedDELETE(
+  _req: NextRequest,
+  ctx: AuthContext,
+  { params }: InsuranceConfigRouteContext,
+) {
   const { id, configId } = await params;
   const siteId = normalizeRequiredRouteParam(id);
   if (!siteId) return validationError('薬局IDが不正です');
   const insuranceConfigId = normalizeRequiredRouteParam(configId);
   if (!insuranceConfigId) return validationError('保険設定IDが不正です');
 
-  const existing = await prisma.pharmacySiteInsuranceConfig.findFirst({
-    where: { id: insuranceConfigId, site_id: siteId, org_id: ctx.orgId },
-    select: { id: true },
-  });
-  if (!existing) return notFound('保険設定が見つかりません');
+  const deleted = await withOrgContext(
+    ctx.orgId,
+    async (tx) => {
+      const initial = await tx.pharmacySiteInsuranceConfig.findFirst({
+        where: { id: insuranceConfigId, site_id: siteId, org_id: ctx.orgId },
+        select: { id: true, insurance_type: true },
+      });
+      if (!initial) return false;
+      await acquireAdvisoryTxLock(
+        tx,
+        'insurance_config_dedup',
+        `${ctx.orgId}:${siteId}:${initial.insurance_type}`,
+      );
+      const existing = await tx.pharmacySiteInsuranceConfig.findFirst({
+        where: { id: insuranceConfigId, site_id: siteId, org_id: ctx.orgId },
+        select: { id: true },
+      });
+      if (!existing) return false;
 
-  await withOrgContext(ctx.orgId, async (tx) => {
-    await tx.pharmacySiteInsuranceConfig.delete({
-      where: { id: insuranceConfigId },
-    });
+      await tx.pharmacySiteInsuranceConfig.delete({
+        where: { id: insuranceConfigId },
+      });
 
-    await createAuditLogEntry(tx, ctx, {
-      action: 'insurance_config_deleted',
-      targetType: 'PharmacySiteInsuranceConfig',
-      targetId: insuranceConfigId,
-    });
-  });
+      await createAuditLogEntry(tx, ctx, {
+        action: 'insurance_config_deleted',
+        targetType: 'PharmacySiteInsuranceConfig',
+        targetId: insuranceConfigId,
+      });
+      return true;
+    },
+    { requestContext: ctx },
+  );
+
+  if (!deleted) return notFound('保険設定が見つかりません');
 
   return success({ data: { id: insuranceConfigId } });
 }
 
-export async function DELETE(req: NextRequest, routeContext: InsuranceConfigRouteContext) {
-  try {
-    return withSensitiveNoStore(await authenticatedDELETE(req, routeContext));
-  } catch (error) {
-    unstable_rethrow(error);
-    return withSensitiveNoStore(internalError());
-  }
-}
+export const DELETE = withAuthContext(authenticatedDELETE, {
+  permission: 'canAdmin',
+  message: '保険設定の削除権限がありません',
+});
