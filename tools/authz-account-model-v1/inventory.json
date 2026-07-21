@@ -903,7 +903,7 @@
       },
       {
         "path": "ops/refactor/STATE.md",
-        "sha256": "566057b478adf9e18d4962bb0642d5743862f473e36b70d11ce4018f7dd83538"
+        "sha256": "e7f2086957fd98ed198c65451a1995d27c9991151faafd9978721d498982a472"
       },
       {
         "path": "ops/refactor/archive/PERF_FINDINGS.md",
@@ -31237,7 +31237,7 @@
       "path": "src/app/api/facility-visit-batches/[id]/route.test.ts",
       "classes": ["test"],
       "detectors": ["permission_capability", "raw_role_semantics", "tenant_role"],
-      "sha256": "8efb421957d34412800cacf4182e3bd0c3a9df6c7203a15e73e6484bd032725b"
+      "sha256": "a690cd9a9d167989eb4be714c15dfe348a10d7d30d5ec287aca052391c9fbb26"
     },
     {
       "path": "src/app/api/facility-visit-batches/route.test.ts",

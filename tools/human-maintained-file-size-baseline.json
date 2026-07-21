@@ -458,11 +458,6 @@
       "task_id": "MAINT-FILE-SIZE-1000-001"
     },
     {
-      "path": "src/app/api/facility-visit-batches/[id]/route.test.ts",
-      "max_lines": 1024,
-      "task_id": "MAINT-FILE-SIZE-1000-001"
-    },
-    {
       "path": "src/app/api/facility-visit-batches/route.test.ts",
       "max_lines": 1842,
       "task_id": "MAINT-FILE-SIZE-1000-001"

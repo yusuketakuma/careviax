@@ -1,8 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 import { expectSensitiveNoStore } from '@/test/api-response-assertions';
+import {
+  createFacilityBatchDetailRequest as createRequest,
+  createMalformedFacilityBatchPatchRequest as createMalformedPatchRequest,
+  expectFacilityBatchDeleteUnlinkWrites,
+  facilityBatchRouteContext as routeContext,
+  type FacilityBatchRouteContext as RouteContext,
+} from './route.test-fixtures';
 
-type RouteContext = { params: Promise<{ id: string }> };
 type TestRole = 'pharmacist' | 'pharmacist_trainee' | 'driver';
 type TestAuthContext = { orgId: string; userId: string; role: TestRole };
 type WithAuthOptions = { permission?: string; message?: string };
@@ -89,34 +95,6 @@ vi.mock('@/server/services/workflow-dashboard-cache', () => ({
 
 import { DELETE, PATCH } from './route';
 
-function createRequest(body?: unknown) {
-  return new NextRequest('http://localhost/api/facility-visit-batches/batch_1', {
-    method: body === undefined ? 'DELETE' : 'PATCH',
-    ...(body === undefined
-      ? {}
-      : {
-          headers: {
-            'content-type': 'application/json',
-          },
-          body: JSON.stringify(body),
-        }),
-  });
-}
-
-function createMalformedPatchRequest() {
-  return new NextRequest('http://localhost/api/facility-visit-batches/batch_1', {
-    method: 'PATCH',
-    headers: {
-      'content-type': 'application/json',
-    },
-    body: '{"ordered_schedule_ids":',
-  });
-}
-
-function routeContext(id: string): RouteContext {
-  return { params: Promise.resolve({ id }) };
-}
-
 function expectNoMutationSideEffects() {
   expect(visitScheduleUpdateManyMock).not.toHaveBeenCalled();
   expect(visitScheduleUpdateMock).not.toHaveBeenCalled();
@@ -125,31 +103,8 @@ function expectNoMutationSideEffects() {
   expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
 }
 
-function expectDeleteScheduleUnlinkWrites() {
-  expect(visitScheduleUpdateManyMock).toHaveBeenCalledTimes(2);
-  expect(visitScheduleUpdateManyMock).toHaveBeenNthCalledWith(1, {
-    where: {
-      id: 'schedule_1',
-      org_id: 'org_1',
-      facility_batch_id: 'batch_1',
-      version: 7,
-      schedule_status: { in: ['planned', 'in_preparation', 'ready', 'departed', 'in_progress'] },
-      confirmed_at: null,
-    },
-    data: { facility_batch_id: null, route_order: null, version: { increment: 1 } },
-  });
-  expect(visitScheduleUpdateManyMock).toHaveBeenNthCalledWith(2, {
-    where: {
-      id: 'schedule_2',
-      org_id: 'org_1',
-      facility_batch_id: 'batch_1',
-      version: 3,
-      schedule_status: { in: ['planned', 'in_preparation', 'ready', 'departed', 'in_progress'] },
-      confirmed_at: null,
-    },
-    data: { facility_batch_id: null, route_order: null, version: { increment: 1 } },
-  });
-}
+const expectDeleteScheduleUnlinkWrites = () =>
+  expectFacilityBatchDeleteUnlinkWrites(visitScheduleUpdateManyMock);
 
 describe('/api/facility-visit-batches/[id]', () => {
   beforeEach(() => {
