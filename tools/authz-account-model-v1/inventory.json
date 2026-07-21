@@ -735,7 +735,7 @@
       },
       {
         "path": "Plans.md",
-        "sha256": "e7d22c704558bbe42682cc78694403a4e1c36f18e4f355b6393a1ce4cdd08bd2"
+        "sha256": "1e92f6d61c7017e4227c487e789d41c7ea56ada11161096a7955eff157f3eb3d"
       },
       {
         "path": "README.md",
@@ -903,7 +903,7 @@
       },
       {
         "path": "ops/refactor/STATE.md",
-        "sha256": "a08ec76725773a804a8f96b37aa9f13af806b9c98f6bcd1c2ceb2e3bba08f049"
+        "sha256": "ac7c83d88448e4363b4c2153de092cea3df8288388032610847f3d7e94bae294"
       },
       {
         "path": "ops/refactor/archive/PERF_FINDINGS.md",
@@ -6247,30 +6247,6 @@
       "reprojection_or_removal": "owner_review_required_before_cutover:src/app/api/patients/[id]/care-team/route.ts",
       "binding_profile": "p_d3f8b85adfe7",
       "capability_profile": "p_a04a7f9d4aaf"
-    },
-    {
-      "id": "mapping_precedence:src/app/api/pca-pump-rentals/route.ts",
-      "detector": "mapping_precedence",
-      "path": "src/app/api/pca-pump-rentals/route.ts",
-      "evidence_sha256": "e5601167ff531ae7aa8373110aa5e1810d9c776060429b6f31b7f03f36df8f7d",
-      "principal": "human",
-      "lifecycles": ["request"],
-      "surfaces": ["rls", "writer"],
-      "exact_values_or_scopes": [
-        "not_applicable:mapping_precedence:no-enumerated-value:src/app/api/pca-pump-rentals/route.ts"
-      ],
-      "route_method_purpose": "GET,POST /api/pca-pump-rentals purpose=legacy_unspecified_pending_review",
-      "precedence_selection": "legacy_observed_requires_human_review",
-      "synthetic_derived_mapping": "not_applicable:no-synthetic-mapping-observed:src/app/api/pca-pump-rentals/route.ts",
-      "persistence_contract": "not_applicable:no-persistence-observed:src/app/api/pca-pump-rentals/route.ts",
-      "ttl_contract": "not_applicable:no-ttl-observed:src/app/api/pca-pump-rentals/route.ts",
-      "mapping_disposition": "candidate_requires_human",
-      "owner": "Identity / Authz",
-      "approval_status": "pending_owner_review",
-      "test_refs": ["src/app/api/pca-pump-rentals/route.test.ts"],
-      "reprojection_or_removal": "owner_review_required_before_cutover:src/app/api/pca-pump-rentals/route.ts",
-      "binding_profile": "p_0a3ce97cbecd",
-      "capability_profile": "p_a325f45c9b2a"
     },
     {
       "id": "mapping_precedence:src/app/api/pca-pumps/[id]/route.ts",
@@ -32178,7 +32154,7 @@
       "path": "src/app/api/pca-pump-rentals/route.test.ts",
       "classes": ["test"],
       "detectors": ["mapping_precedence", "raw_role_semantics"],
-      "sha256": "f2ea5c4d8d132bbb165b666e637ddc5f8690ed6aea26a68c8d42d6e01286365e"
+      "sha256": "9f5dcf66688a4f7ad7f5a8185011ef95ec6c8caf6e53e497f36557b3e2aeb35e"
     },
     {
       "path": "src/app/api/pca-pumps/[id]/route.test.ts",
