@@ -668,11 +668,6 @@
       "task_id": "MAINT-FILE-SIZE-1000-001"
     },
     {
-      "path": "src/lib/tasks/task-registry.ts",
-      "max_lines": 1160,
-      "task_id": "MAINT-FILE-SIZE-1000-001"
-    },
-    {
       "path": "src/modules/pharmacy/medication-stock/application/apply-prescription-supply.test.ts",
       "max_lines": 1204,
       "task_id": "MAINT-FILE-SIZE-1000-001"
