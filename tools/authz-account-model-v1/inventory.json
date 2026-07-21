@@ -735,7 +735,7 @@
       },
       {
         "path": "Plans.md",
-        "sha256": "e992d12100b84672293116f0968d4c0f2c4bc578a58bec35c09eb310198ca498"
+        "sha256": "0345926e8592a421c8d2c31e9a7f223d69dde20e0bb73f06451ec97c0528c64c"
       },
       {
         "path": "README.md",
@@ -903,7 +903,7 @@
       },
       {
         "path": "ops/refactor/STATE.md",
-        "sha256": "d61051dfa638bbb4e60948b35241fc1d1761ca0bb30304f06ba51d82ab0bba70"
+        "sha256": "edc41948230b3485f792d8cf83246905b683cd5e43e8b99f2abb7d9964d11043"
       },
       {
         "path": "ops/refactor/archive/PERF_FINDINGS.md",
@@ -22736,26 +22736,26 @@
       "capability_profile": "p_47a7417500a1"
     },
     {
-      "id": "tenant_role:src/server/services/external-access.ts",
+      "id": "tenant_role:src/server/services/external-access-scope.ts",
       "detector": "tenant_role",
-      "path": "src/server/services/external-access.ts",
+      "path": "src/server/services/external-access-scope.ts",
       "evidence_sha256": "d1018fd02d69592942542f39fbeac98d085a5227773b5dc0a035bbf4aba4dbe8",
       "principal": "human",
       "lifecycles": ["request"],
       "surfaces": ["rls"],
       "exact_values_or_scopes": [
-        "not_applicable:tenant_role:no-enumerated-value:src/server/services/external-access.ts"
+        "not_applicable:tenant_role:no-enumerated-value:src/server/services/external-access-scope.ts"
       ],
-      "route_method_purpose": "not_applicable:non-route-source:src/server/services/external-access.ts",
-      "precedence_selection": "not_applicable:no-selection-observed:src/server/services/external-access.ts",
-      "synthetic_derived_mapping": "not_applicable:no-synthetic-mapping-observed:src/server/services/external-access.ts",
-      "persistence_contract": "not_applicable:no-persistence-observed:src/server/services/external-access.ts",
+      "route_method_purpose": "not_applicable:non-route-source:src/server/services/external-access-scope.ts",
+      "precedence_selection": "not_applicable:no-selection-observed:src/server/services/external-access-scope.ts",
+      "synthetic_derived_mapping": "not_applicable:no-synthetic-mapping-observed:src/server/services/external-access-scope.ts",
+      "persistence_contract": "not_applicable:no-persistence-observed:src/server/services/external-access-scope.ts",
       "ttl_contract": "legacy_ttl_observed_requires_review",
       "mapping_disposition": "candidate_requires_human",
       "owner": "Identity / Authz",
       "approval_status": "pending_owner_review",
-      "test_refs": ["src/server/services/external-access.test.ts"],
-      "reprojection_or_removal": "owner_review_required_before_cutover:src/server/services/external-access.ts",
+      "test_refs": ["uncovered:no-focused-test:src/server/services/external-access-scope.ts"],
+      "reprojection_or_removal": "owner_review_required_before_cutover:src/server/services/external-access-scope.ts",
       "binding_profile": "p_6c665e4d56f0",
       "capability_profile": "p_8f0142dbd0ba"
     },

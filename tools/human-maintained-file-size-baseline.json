@@ -743,11 +743,6 @@
       "task_id": "MAINT-FILE-SIZE-1000-001"
     },
     {
-      "path": "src/server/services/external-access.ts",
-      "max_lines": 1267,
-      "task_id": "MAINT-FILE-SIZE-1000-001"
-    },
-    {
       "path": "src/server/services/file-storage.test.ts",
       "max_lines": 2806,
       "task_id": "MAINT-FILE-SIZE-1000-001"
