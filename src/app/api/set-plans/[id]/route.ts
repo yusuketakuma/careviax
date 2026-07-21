@@ -1,11 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { unstable_rethrow } from 'next/navigation';
 import { recordPhiReadAuditForRequest } from '@/lib/audit/phi-read-audit';
-import { requireAuthContext } from '@/lib/auth/context';
-import type { AuthRouteContext } from '@/lib/auth/context';
+import { withAuthContext, type AuthContext, type AuthRouteContext } from '@/lib/auth/context';
 import { runWithRequestAuthContext } from '@/lib/auth/request-context';
 import { success, validationError, notFound, conflict, internalError } from '@/lib/api/response';
-import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { withOrgContext } from '@/lib/db/rls';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
@@ -16,7 +14,6 @@ import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cac
 import { buildSetPlanAssignmentWhere } from '@/server/services/prescription-access';
 import { MAX_SET_PLAN_DAY_COUNT, isSetPlanPeriodWithinLimit } from '@/lib/set-plan-period';
 import { logger } from '@/lib/utils/logger';
-import { withRoutePerformance } from '@/lib/utils/performance';
 import type { Prisma } from '@prisma/client';
 import { z } from 'zod';
 
@@ -153,15 +150,11 @@ const setPlanSelect = {
   },
 } satisfies Prisma.SetPlanSelect;
 
-async function authenticatedGET(
+async function handleGET(
   req: NextRequest,
+  ctx: AuthContext,
   routeContext: AuthRouteContext<{ id: string }>,
 ): Promise<NextResponse> {
-  const auth = await requireAuthContext(req, { permission: 'canSet' });
-  if ('response' in auth) return auth.response;
-
-  const { ctx } = auth;
-
   return runWithRequestAuthContext(ctx, async () => {
     const { id: rawId } = await routeContext.params;
     const id = normalizeRequiredRouteParam(rawId);
@@ -217,10 +210,10 @@ async function authenticatedGET(
   });
 }
 
-export async function GET(req: NextRequest, routeContext: AuthRouteContext<{ id: string }>) {
-  return withRoutePerformance(req, async () => {
+export const GET = withAuthContext(
+  async (req, ctx, routeContext) => {
     try {
-      return withSensitiveNoStore(await authenticatedGET(req, routeContext));
+      return await handleGET(req, ctx, routeContext);
     } catch (err) {
       unstable_rethrow(err);
       logger.error(
@@ -232,20 +225,17 @@ export async function GET(req: NextRequest, routeContext: AuthRouteContext<{ id:
         },
         err,
       );
-      return withSensitiveNoStore(internalError());
+      return internalError();
     }
-  });
-}
+  },
+  { permission: 'canSet' },
+);
 
-async function authenticatedPATCH(
+async function handlePATCH(
   req: NextRequest,
+  ctx: AuthContext,
   routeContext: AuthRouteContext<{ id: string }>,
 ): Promise<NextResponse> {
-  const auth = await requireAuthContext(req, { permission: 'canSet' });
-  if ('response' in auth) return auth.response;
-
-  const { ctx } = auth;
-
   return runWithRequestAuthContext(ctx, async () => {
     const { id } = await routeContext.params;
     const payload = await readJsonObjectRequestBody(req);
@@ -476,10 +466,10 @@ async function authenticatedPATCH(
   });
 }
 
-export async function PATCH(req: NextRequest, routeContext: AuthRouteContext<{ id: string }>) {
-  return withRoutePerformance(req, async () => {
+export const PATCH = withAuthContext(
+  async (req, ctx, routeContext) => {
     try {
-      return withSensitiveNoStore(await authenticatedPATCH(req, routeContext));
+      return await handlePATCH(req, ctx, routeContext);
     } catch (err) {
       unstable_rethrow(err);
       logger.error(
@@ -491,7 +481,8 @@ export async function PATCH(req: NextRequest, routeContext: AuthRouteContext<{ i
         },
         err,
       );
-      return withSensitiveNoStore(internalError());
+      return internalError();
     }
-  });
-}
+  },
+  { permission: 'canSet' },
+);
