@@ -74,6 +74,13 @@ export const API_ERROR_CODE_REGISTRY = Object.freeze({
     recoveryAction: 'return_to_previous',
     messageLabel: 'api.error.external_access.secret_missing',
   },
+  EXTERNAL_ACCESS_SELF_REPORT_SCOPE_DENIED: {
+    httpStatus: 403,
+    logLevel: 'warn',
+    retryable: false,
+    recoveryAction: 'request_access',
+    messageLabel: 'api.error.external_access.self_report_scope_denied',
+  },
   BILLING_DOCUMENT_PDF_EXPORT_AUDIT_FAILED: {
     httpStatus: 500,
     logLevel: 'error',

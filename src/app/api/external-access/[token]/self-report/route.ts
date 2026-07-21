@@ -1,14 +1,7 @@
 import { createHash } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import { NextRequest } from 'next/server';
-import {
-  conflict,
-  error,
-  notFound,
-  registeredError,
-  success,
-  validationError,
-} from '@/lib/api/response';
+import { conflict, notFound, registeredError, success, validationError } from '@/lib/api/response';
 import { parseOptionalIdempotencyKey } from '@/lib/api/idempotency-key';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
@@ -137,10 +130,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
   if (!validation.ok) return validation.response;
   if (validation.grant.scope.care_reports !== true) {
     return withSensitiveNoStore(
-      error(
+      registeredError(
         'EXTERNAL_ACCESS_SELF_REPORT_SCOPE_DENIED',
         'この共有リンクでは自己申告を登録できません',
-        403,
       ),
     );
   }

@@ -121,6 +121,13 @@ describe('API error code registry', () => {
           "recoveryAction": "return_to_previous",
           "retryable": false,
         },
+        "EXTERNAL_ACCESS_SELF_REPORT_SCOPE_DENIED": {
+          "httpStatus": 403,
+          "logLevel": "warn",
+          "messageLabel": "api.error.external_access.self_report_scope_denied",
+          "recoveryAction": "request_access",
+          "retryable": false,
+        },
         "EXTERNAL_ACCESS_VIEW_AUDIT_FAILED": {
           "httpStatus": 500,
           "logLevel": "error",

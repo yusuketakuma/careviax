@@ -92,11 +92,6 @@ const allowedRawLiteralErrorUsages: RawLiteralErrorUsage[] = [
     httpStatus: 409,
   },
   {
-    filePath: 'src/app/api/external-access/[token]/self-report/route.ts',
-    code: 'EXTERNAL_ACCESS_SELF_REPORT_SCOPE_DENIED',
-    httpStatus: 403,
-  },
-  {
     filePath: 'src/app/api/patients/[id]/prescriptions/e-prescription/route.ts',
     code: 'AMBIGUOUS_ACTIVE_CYCLE',
     httpStatus: 409,
