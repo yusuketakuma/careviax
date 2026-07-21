@@ -1,14 +1,12 @@
 import { unstable_rethrow } from 'next/navigation';
 import { NextRequest } from 'next/server';
-import { requireAuthContext } from '@/lib/auth/context';
+import { withAuthContext, type AuthContext } from '@/lib/auth/context';
 import { runWithRequestAuthContext } from '@/lib/auth/request-context';
 import { prisma } from '@/lib/db/client';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { internalError, success, notFound, validationError } from '@/lib/api/response';
-import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { buildCareCaseAssignmentWhere } from '@/lib/auth/visit-schedule-access';
 import { logger } from '@/lib/utils/logger';
-import { withRoutePerformance } from '@/lib/utils/performance';
 
 const ROUTE_TEMPLATE = '/api/medication-cycles/[id]/history';
 
@@ -19,14 +17,11 @@ function authAuditRequest(req: NextRequest): NextRequest {
   });
 }
 
-async function authenticatedGET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const authResult = await requireAuthContext(authAuditRequest(req), {
-    permission: 'canViewDashboard',
-    message: '処方サイクル履歴の閲覧権限がありません',
-  });
-  if ('response' in authResult) return authResult.response;
-  const ctx = authResult.ctx;
-
+async function handleGET(
+  _req: NextRequest,
+  ctx: AuthContext,
+  { params }: { params: Promise<{ id: string }> },
+) {
   return runWithRequestAuthContext(ctx, async () => {
     const { id: rawId } = await params;
     const cycleId = normalizeRequiredRouteParam(rawId);
@@ -79,10 +74,10 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
   });
 }
 
-export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  return withRoutePerformance(req, async () => {
+const wrappedGET = withAuthContext(
+  async (req, ctx, routeContext) => {
     try {
-      return withSensitiveNoStore(await authenticatedGET(req, { params }));
+      return await handleGET(req, ctx, routeContext);
     } catch (err) {
       unstable_rethrow(err);
       logger.error(
@@ -94,7 +89,15 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         },
         err,
       );
-      return withSensitiveNoStore(internalError());
+      return internalError();
     }
-  });
+  },
+  {
+    permission: 'canViewDashboard',
+    message: '処方サイクル履歴の閲覧権限がありません',
+  },
+);
+
+export async function GET(req: NextRequest, routeContext: { params: Promise<{ id: string }> }) {
+  return await wrappedGET(authAuditRequest(req), routeContext);
 }

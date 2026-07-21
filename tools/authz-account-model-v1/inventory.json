@@ -735,7 +735,7 @@
       },
       {
         "path": "Plans.md",
-        "sha256": "59d6b3f1384ad9957f79a3c7c585f69754e8d74179815e70ae0b285e3c82bb6f"
+        "sha256": "40e69567644ed90741799d3b02e217eba38285922c0f0b2ba98e52dd7a02ee19"
       },
       {
         "path": "README.md",
@@ -903,7 +903,7 @@
       },
       {
         "path": "ops/refactor/STATE.md",
-        "sha256": "eb08aa5ee6aa6a594d2b27e42e1fc89697e5b595e2f497ddea7de4b9f8ae72fe"
+        "sha256": "f3b2d18fd7a9eeacf1ee6b2fb980e70398a8b42909c37595e79565b065f5feb1"
       },
       {
         "path": "ops/refactor/archive/PERF_FINDINGS.md",
@@ -31569,7 +31569,7 @@
       "path": "src/app/api/medication-cycles/[id]/history/route.test.ts",
       "classes": ["test"],
       "detectors": ["mapping_precedence", "raw_role_semantics"],
-      "sha256": "7048904fcb64436d7904e284cc3d0e106d88c9ef17e90c57491671c9fa14e6b3"
+      "sha256": "09291035eb7b5d185338d4f69d902d6a4348e44c9c970e23dc8148cd44a8e58a"
     },
     {
       "path": "src/app/api/medication-cycles/[id]/transition/route.test.ts",

@@ -21,7 +21,26 @@ const {
 }));
 
 vi.mock('@/lib/auth/context', () => ({
-  requireAuthContext: requireAuthContextMock,
+  withAuthContext:
+    (
+      handler: (
+        req: NextRequest,
+        ctx: Record<string, unknown>,
+        routeContext: unknown,
+      ) => Promise<Response>,
+      options?: unknown,
+    ) =>
+    async (req: NextRequest, routeContext: unknown) =>
+      withRoutePerformanceMock(req, async () => {
+        const authResult = await requireAuthContextMock(req, options);
+        const response =
+          'response' in authResult
+            ? authResult.response
+            : await handler(req, authResult.ctx, routeContext);
+        response.headers.set('Cache-Control', 'private, no-store, max-age=0');
+        response.headers.set('Pragma', 'no-cache');
+        return response;
+      }),
 }));
 
 vi.mock('@/lib/auth/request-context', () => ({
@@ -86,7 +105,12 @@ describe('/api/medication-cycles/[id]/history', () => {
     const res = await GET(req, { params: Promise.resolve({ id: '  cycle_1  ' }) });
     expect(res!.status).toBe(200);
     expectSensitiveNoStore(res!);
-    expect(withRoutePerformanceMock).toHaveBeenCalledWith(req, expect.any(Function));
+    expect(withRoutePerformanceMock).toHaveBeenCalledWith(
+      expect.any(NextRequest),
+      expect.any(Function),
+    );
+    const performanceRequest = withRoutePerformanceMock.mock.calls[0]?.[0] as NextRequest;
+    expect(performanceRequest.nextUrl.pathname).toBe('/api/medication-cycles/[id]/history');
     expectAuthAuditPathTemplate();
     expect(runWithRequestAuthContextMock).toHaveBeenCalledWith(authCtx.ctx, expect.any(Function));
     expect(medicationCycleFindFirstMock).toHaveBeenCalledWith({
