@@ -84,29 +84,14 @@ vi.mock('@/server/services/patient-write-guard', () => ({
 }));
 
 import { GET, PATCH } from './route';
+import {
+  buildPhiRichPrescriptionIntake,
+  buildPrescriptionIntakeFixture,
+  createGetRequest,
+  createMalformedJsonRequest,
+  createRequest,
+} from './route.test-helpers';
 import { expectSensitiveNoStore } from '@/test/api-response-assertions';
-
-function createGetRequest() {
-  return new NextRequest('http://localhost/api/prescription-intakes/intake_1', {
-    method: 'GET',
-  });
-}
-
-function createRequest(body: unknown) {
-  return new NextRequest('http://localhost/api/prescription-intakes/intake_1', {
-    method: 'PATCH',
-    body: JSON.stringify(body),
-    headers: { 'content-type': 'application/json' },
-  });
-}
-
-function createMalformedJsonRequest() {
-  return new NextRequest('http://localhost/api/prescription-intakes/intake_1', {
-    method: 'PATCH',
-    body: '{"original_collected_at":',
-    headers: { 'content-type': 'application/json' },
-  });
-}
 
 describe('/api/prescription-intakes/[id] PATCH', () => {
   beforeEach(() => {
@@ -183,53 +168,7 @@ describe('/api/prescription-intakes/[id] PATCH', () => {
   });
 
   it('keeps PHI-rich prescription detail responses no-store', async () => {
-    prescriptionIntakeFindFirstMock.mockResolvedValue({
-      id: 'intake_phi_1',
-      display_id: 'r0000000202',
-      org_id: 'org_1',
-      source_type: 'qr',
-      lines: [
-        {
-          id: 'line_1',
-          drug_name: 'アムロジピン錠5mg',
-          dose: '1回1錠',
-          days: 14,
-          quantity: 14,
-        },
-      ],
-      prescriber_institution_ref: {
-        id: 'institution_1',
-        name: 'みなとクリニック',
-      },
-      jahis_supplemental_records: [
-        {
-          id: 'jahis_1',
-          payload: { patient_name: '山田 太郎', insurance_number: '12345678' },
-          raw_line: 'JAHIS RAW 山田 太郎',
-        },
-      ],
-      cycle: {
-        display_id: 'mcyc0000000009',
-        patient_id: 'patient_1',
-        case_id: 'case_1',
-        case_: {
-          patient: {
-            id: 'patient_1',
-            name: '山田 太郎',
-            name_kana: 'ヤマダ タロウ',
-            birth_date: '1950-01-01',
-            gender: 'male',
-          },
-        },
-        inquiries: [
-          {
-            id: 'inquiry_1',
-            inquiry_content: '服用タイミングを確認',
-            change_detail: '朝食後へ変更',
-          },
-        ],
-      },
-    });
+    prescriptionIntakeFindFirstMock.mockResolvedValue(buildPhiRichPrescriptionIntake());
 
     const response = await GET(createGetRequest(), {
       params: Promise.resolve({ id: 'intake_phi_1' }),
@@ -354,11 +293,7 @@ describe('/api/prescription-intakes/[id] PATCH', () => {
   });
 
   it('records fax original collection and resolves follow-up tasks', async () => {
-    prescriptionIntakeFindFirstMock.mockResolvedValue({
-      id: 'intake_1',
-      org_id: 'org_1',
-      source_type: 'fax',
-    });
+    prescriptionIntakeFindFirstMock.mockResolvedValue(buildPrescriptionIntakeFixture('intake_1'));
 
     const updateMock = vi.fn().mockResolvedValue({
       id: 'intake_1',
@@ -468,15 +403,9 @@ describe('/api/prescription-intakes/[id] PATCH', () => {
   });
 
   it('rejects archived patients before updating the intake', async () => {
-    prescriptionIntakeFindFirstMock.mockResolvedValue({
-      id: 'intake_archived',
-      org_id: 'org_1',
-      source_type: 'fax',
-      cycle: {
-        patient_id: 'patient_1',
-        case_id: 'case_1',
-      },
-    });
+    prescriptionIntakeFindFirstMock.mockResolvedValue(
+      buildPrescriptionIntakeFixture('intake_archived'),
+    );
     requireWritablePatientMock.mockResolvedValue({
       response: Response.json(
         { message: 'アーカイブ中の患者は復元するまで更新できません' },
@@ -524,15 +453,9 @@ describe('/api/prescription-intakes/[id] PATCH', () => {
   });
 
   it('returns a fixed no-store 500 when prescription intake updates fail without exposing raw PHI', async () => {
-    prescriptionIntakeFindFirstMock.mockResolvedValue({
-      id: 'intake_error',
-      org_id: 'org_1',
-      source_type: 'fax',
-      cycle: {
-        patient_id: 'patient_1',
-        case_id: 'case_1',
-      },
-    });
+    prescriptionIntakeFindFirstMock.mockResolvedValue(
+      buildPrescriptionIntakeFixture('intake_error'),
+    );
     withOrgContextMock.mockRejectedValueOnce(
       new Error('prescription update failed for patient 山田 太郎 token secret raw JAHIS'),
     );
@@ -563,21 +486,16 @@ describe('/api/prescription-intakes/[id] PATCH', () => {
   it('records prescription original document retention evidence for uploaded files', async () => {
     const originalDocumentUrl =
       'http://localhost:3000/api/files/11111111-1111-4111-8111-111111111111/download';
-    prescriptionIntakeFindFirstMock.mockResolvedValue({
-      id: 'intake_doc_1',
-      org_id: 'org_1',
-      source_type: 'fax',
-      original_document_url: null,
-      prescription_category: 'regular',
-      emergency_category: null,
-      split_dispense_total: null,
-      split_dispense_current: null,
-      split_next_dispense_date: null,
-      cycle: {
-        patient_id: 'patient_1',
-        case_id: 'case_1',
-      },
-    });
+    prescriptionIntakeFindFirstMock.mockResolvedValue(
+      buildPrescriptionIntakeFixture('intake_doc_1', {
+        original_document_url: null,
+        prescription_category: 'regular',
+        emergency_category: null,
+        split_dispense_total: null,
+        split_dispense_current: null,
+        split_next_dispense_date: null,
+      }),
+    );
 
     const updateMock = vi.fn().mockResolvedValue({
       id: 'intake_doc_1',
