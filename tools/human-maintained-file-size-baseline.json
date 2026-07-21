@@ -524,7 +524,7 @@
     },
     {
       "path": "src/app/api/patients/[id]/route.ts",
-      "max_lines": 2398,
+      "max_lines": 2377,
       "task_id": "MAINT-FILE-SIZE-1000-001"
     },
     {
@@ -539,7 +539,7 @@
     },
     {
       "path": "src/app/api/pharmacy-drug-stocks/bulk/route.test.ts",
-      "max_lines": 1164,
+      "max_lines": 1163,
       "task_id": "MAINT-FILE-SIZE-1000-001"
     },
     {
@@ -579,7 +579,7 @@
     },
     {
       "path": "src/app/api/set-audits/route.ts",
-      "max_lines": 1328,
+      "max_lines": 1318,
       "task_id": "MAINT-FILE-SIZE-1000-001"
     },
     {
@@ -593,23 +593,13 @@
       "task_id": "MAINT-FILE-SIZE-1000-001"
     },
     {
-      "path": "src/app/api/tracing-reports/[id]/route.test.ts",
-      "max_lines": 1013,
-      "task_id": "MAINT-FILE-SIZE-1000-001"
-    },
-    {
       "path": "src/app/api/visit-preparations/[scheduleId]/route.test.ts",
       "max_lines": 3329,
       "task_id": "MAINT-FILE-SIZE-1000-001"
     },
     {
       "path": "src/app/api/visit-preparations/[scheduleId]/route.ts",
-      "max_lines": 2274,
-      "task_id": "MAINT-FILE-SIZE-1000-001"
-    },
-    {
-      "path": "src/app/api/visit-records/[id]/handoff/route.test.ts",
-      "max_lines": 1009,
+      "max_lines": 2245,
       "task_id": "MAINT-FILE-SIZE-1000-001"
     },
     {
@@ -624,7 +614,7 @@
     },
     {
       "path": "src/app/api/visit-records/route.ts",
-      "max_lines": 1903,
+      "max_lines": 1889,
       "task_id": "MAINT-FILE-SIZE-1000-001"
     },
     {
@@ -634,7 +624,7 @@
     },
     {
       "path": "src/app/api/visit-schedule-proposals/[id]/route.ts",
-      "max_lines": 2285,
+      "max_lines": 2266,
       "task_id": "MAINT-FILE-SIZE-1000-001"
     },
     {
@@ -654,17 +644,12 @@
     },
     {
       "path": "src/app/api/visit-schedules/[id]/reschedule/route.ts",
-      "max_lines": 1365,
+      "max_lines": 1352,
       "task_id": "MAINT-FILE-SIZE-1000-001"
     },
     {
       "path": "src/app/api/visit-schedules/[id]/route.test.ts",
       "max_lines": 2856,
-      "task_id": "MAINT-FILE-SIZE-1000-001"
-    },
-    {
-      "path": "src/app/api/visit-schedules/[id]/route.ts",
-      "max_lines": 1010,
       "task_id": "MAINT-FILE-SIZE-1000-001"
     },
     {
