@@ -4,20 +4,44 @@ import type { Pool, PoolClient } from 'pg';
 
 export type DatabaseQueryMetrics = {
   queryCount: number | null;
+  overlappingQueryCount: number | null;
   maxPoolBusy: number | null;
   maxPoolWaiting: number | null;
 };
 
 type MutableDatabaseQueryMetrics = {
   queryCount: number;
+  overlappingQueryCount: number;
   observedQuery: boolean;
   maxPoolBusy: number | null;
   maxPoolWaiting: number | null;
 };
 
-const queryMetricsStorage = new AsyncLocalStorage<MutableDatabaseQueryMetrics>();
-const instrumentedClients = new WeakSet<PoolClient>();
-const instrumentedPools = new WeakSet<Pool>();
+type DatabaseQueryMetricsState = {
+  storage: AsyncLocalStorage<MutableDatabaseQueryMetrics>;
+  instrumentedClients: WeakSet<PoolClient>;
+  instrumentedPools: WeakSet<Pool>;
+  activeQueryCounts?: WeakMap<PoolClient, number>;
+};
+
+type DatabaseQueryMetricsGlobal = typeof globalThis & {
+  __careviaxDatabaseQueryMetrics?: DatabaseQueryMetricsState;
+};
+
+// Next.js can evaluate route bundles independently while reusing the same
+// process-global Prisma client. Keep the request scope and instrumentation
+// registry beside that client so every bundle observes the same pg queries.
+const metricsGlobal = globalThis as DatabaseQueryMetricsGlobal;
+const metricsState = (metricsGlobal.__careviaxDatabaseQueryMetrics ??= {
+  storage: new AsyncLocalStorage<MutableDatabaseQueryMetrics>(),
+  instrumentedClients: new WeakSet<PoolClient>(),
+  instrumentedPools: new WeakSet<Pool>(),
+  activeQueryCounts: new WeakMap<PoolClient, number>(),
+});
+const queryMetricsStorage = metricsState.storage;
+const instrumentedClients = metricsState.instrumentedClients;
+const instrumentedPools = metricsState.instrumentedPools;
+const activeQueryCounts = (metricsState.activeQueryCounts ??= new WeakMap<PoolClient, number>());
 
 function samplePool(pool: Pool, metrics: MutableDatabaseQueryMetrics): void {
   const busy = Math.max(0, pool.totalCount - pool.idleCount);
@@ -32,18 +56,26 @@ function instrumentClient(pool: Pool, client: PoolClient): void {
   const originalQuery = client.query.bind(client);
   client.query = ((...args: Parameters<PoolClient['query']>) => {
     const metrics = queryMetricsStorage.getStore();
+    const activeQueryCount = activeQueryCounts.get(client) ?? 0;
     if (metrics) {
       metrics.observedQuery = true;
       metrics.queryCount += 1;
+      if (activeQueryCount > 0) {
+        metrics.overlappingQueryCount += 1;
+      }
       samplePool(pool, metrics);
     }
 
     const result = originalQuery(...args);
     if (metrics && result && typeof (result as Promise<unknown>).then === 'function') {
-      void (result as Promise<unknown>).then(
-        () => samplePool(pool, metrics),
-        () => samplePool(pool, metrics),
-      );
+      activeQueryCounts.set(client, activeQueryCount + 1);
+      const finishQuery = () => {
+        const remaining = Math.max(0, (activeQueryCounts.get(client) ?? 1) - 1);
+        if (remaining === 0) activeQueryCounts.delete(client);
+        else activeQueryCounts.set(client, remaining);
+        samplePool(pool, metrics);
+      };
+      void (result as Promise<unknown>).then(finishQuery, finishQuery);
     }
     return result;
   }) as PoolClient['query'];
@@ -67,6 +99,7 @@ export async function measureDatabaseQueries<T>(work: () => Promise<T>): Promise
       value: await work(),
       metrics: {
         queryCount: existing.observedQuery ? existing.queryCount : null,
+        overlappingQueryCount: existing.observedQuery ? existing.overlappingQueryCount : null,
         maxPoolBusy: existing.maxPoolBusy,
         maxPoolWaiting: existing.maxPoolWaiting,
       },
@@ -75,6 +108,7 @@ export async function measureDatabaseQueries<T>(work: () => Promise<T>): Promise
 
   const metrics: MutableDatabaseQueryMetrics = {
     queryCount: 0,
+    overlappingQueryCount: 0,
     observedQuery: false,
     maxPoolBusy: null,
     maxPoolWaiting: null,
@@ -84,6 +118,7 @@ export async function measureDatabaseQueries<T>(work: () => Promise<T>): Promise
     value,
     metrics: {
       queryCount: metrics.observedQuery ? metrics.queryCount : null,
+      overlappingQueryCount: metrics.observedQuery ? metrics.overlappingQueryCount : null,
       maxPoolBusy: metrics.maxPoolBusy,
       maxPoolWaiting: metrics.maxPoolWaiting,
     },

@@ -65,6 +65,7 @@ describe('performance metrics', () => {
       status: 503,
       durationMs: 510,
       queryCount: 4,
+      overlappingQueryCount: 1,
       dbPoolBusy: 3,
       dbPoolWaiting: 2,
     });
@@ -79,6 +80,7 @@ describe('performance metrics', () => {
     expect(snapshot.summary.overall_p99_ms).toBe(620);
     expect(snapshot.summary.overall_p95_payload_bytes).toBe(6200);
     expect(snapshot.summary.overall_p95_query_count).toBe(4);
+    expect(snapshot.summary.overall_p95_overlapping_query_count).toBe(1);
     expect(snapshot.summary.overall_p95_db_pool_busy).toBe(3);
     expect(snapshot.summary.overall_p95_db_pool_waiting).toBe(2);
     expect(snapshot.summary.critical_routes).toBe(0);
@@ -109,6 +111,8 @@ describe('performance metrics', () => {
       route: '/api/dashboard/workflow',
       query_count_sample_count: 1,
       p95_query_count: 4,
+      p95_overlapping_query_count: 1,
+      max_overlapping_query_count: 1,
       p95_db_pool_busy: 3,
       max_db_pool_busy: 3,
       p95_db_pool_waiting: 2,

@@ -31,14 +31,24 @@ describe('database query metrics', () => {
 
     expect(result).toEqual({
       value: 'ok',
-      metrics: { queryCount: 2, maxPoolBusy: 2, maxPoolWaiting: 2 },
+      metrics: {
+        queryCount: 2,
+        overlappingQueryCount: 0,
+        maxPoolBusy: 2,
+        maxPoolWaiting: 2,
+      },
     });
   });
 
   it('returns null measurements when no instrumented database query ran', async () => {
     await expect(measureDatabaseQueries(async () => 'no-db')).resolves.toEqual({
       value: 'no-db',
-      metrics: { queryCount: null, maxPoolBusy: null, maxPoolWaiting: null },
+      metrics: {
+        queryCount: null,
+        overlappingQueryCount: null,
+        maxPoolBusy: null,
+        maxPoolWaiting: null,
+      },
     });
   });
 
@@ -57,5 +67,21 @@ describe('database query metrics', () => {
 
     expect(query).toHaveBeenCalledTimes(2);
     expect(result.metrics.queryCount).toBe(1);
+  });
+
+  it('counts overlapping calls on the same pg client without changing execution order', async () => {
+    const { pool, client } = createPoolHarness();
+    instrumentDatabasePool(pool);
+    pool.emit('acquire', client);
+
+    const result = await measureDatabaseQueries(async () => {
+      await Promise.all([client.query('SELECT 1'), client.query('SELECT 2')]);
+      return null;
+    });
+
+    expect(result.metrics).toMatchObject({
+      queryCount: 2,
+      overlappingQueryCount: 1,
+    });
   });
 });

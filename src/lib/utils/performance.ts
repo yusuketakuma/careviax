@@ -29,6 +29,7 @@ type RoutePerformanceSample = {
   recorded_at: number;
   payload_bytes: number | null;
   query_count: number | null;
+  overlapping_query_count: number | null;
   db_pool_busy: number | null;
   db_pool_waiting: number | null;
   org_scope: RouteOrgScope;
@@ -70,6 +71,8 @@ export type RoutePerformanceSummary = {
   average_query_count: number | null;
   p95_query_count: number | null;
   max_query_count: number | null;
+  p95_overlapping_query_count: number | null;
+  max_overlapping_query_count: number | null;
   p95_db_pool_busy: number | null;
   max_db_pool_busy: number | null;
   p95_db_pool_waiting: number | null;
@@ -99,6 +102,7 @@ export type PerformanceSnapshot = {
     overall_p99_ms: number;
     overall_p95_payload_bytes: number | null;
     overall_p95_query_count: number | null;
+    overall_p95_overlapping_query_count: number | null;
     overall_p95_db_pool_busy: number | null;
     overall_p95_db_pool_waiting: number | null;
     critical_routes: number;
@@ -220,6 +224,7 @@ export function recordRoutePerformance(args: {
   durationMs: number;
   payloadBytes?: number | null;
   queryCount?: number | null;
+  overlappingQueryCount?: number | null;
   dbPoolBusy?: number | null;
   dbPoolWaiting?: number | null;
   orgScopePresent?: boolean;
@@ -247,6 +252,11 @@ export function recordRoutePerformance(args: {
     query_count:
       typeof args.queryCount === 'number' && Number.isSafeInteger(args.queryCount)
         ? Math.max(0, args.queryCount)
+        : null,
+    overlapping_query_count:
+      typeof args.overlappingQueryCount === 'number' &&
+      Number.isSafeInteger(args.overlappingQueryCount)
+        ? Math.max(0, args.overlappingQueryCount)
         : null,
     db_pool_busy:
       typeof args.dbPoolBusy === 'number' && Number.isSafeInteger(args.dbPoolBusy)
@@ -287,6 +297,7 @@ function createPerformanceSnapshot(
   const allDurations: number[] = [];
   const allPayloadBytes: number[] = [];
   const allQueryCounts: number[] = [];
+  const allOverlappingQueryCounts: number[] = [];
   const allPoolBusy: number[] = [];
   const allPoolWaiting: number[] = [];
   let slowRequests = 0;
@@ -299,6 +310,9 @@ function createPerformanceSnapshot(
       .filter((value): value is number => value != null);
     const queryCounts = bucket.samples
       .map((sample) => sample.query_count)
+      .filter((value): value is number => value != null);
+    const overlappingQueryCounts = bucket.samples
+      .map((sample) => sample.overlapping_query_count)
       .filter((value): value is number => value != null);
     const poolBusy = bucket.samples
       .map((sample) => sample.db_pool_busy)
@@ -321,6 +335,7 @@ function createPerformanceSnapshot(
     allDurations.push(...durations);
     allPayloadBytes.push(...payloadBytes);
     allQueryCounts.push(...queryCounts);
+    allOverlappingQueryCounts.push(...overlappingQueryCounts);
     allPoolBusy.push(...poolBusy);
     allPoolWaiting.push(...poolWaiting);
     slowRequests += slowCount;
@@ -349,6 +364,12 @@ function createPerformanceSnapshot(
       average_query_count: queryCounts.length ? average(queryCounts) : null,
       p95_query_count: queryCounts.length ? percentile(queryCounts, 0.95) : null,
       max_query_count: queryCounts.length ? Math.max(...queryCounts) : null,
+      p95_overlapping_query_count: overlappingQueryCounts.length
+        ? percentile(overlappingQueryCounts, 0.95)
+        : null,
+      max_overlapping_query_count: overlappingQueryCounts.length
+        ? Math.max(...overlappingQueryCounts)
+        : null,
       p95_db_pool_busy: poolBusy.length ? percentile(poolBusy, 0.95) : null,
       max_db_pool_busy: poolBusy.length ? Math.max(...poolBusy) : null,
       p95_db_pool_waiting: poolWaiting.length ? percentile(poolWaiting, 0.95) : null,
@@ -388,10 +409,11 @@ function createPerformanceSnapshot(
       overall_p99_ms: percentile(allDurations, 0.99),
       overall_p95_payload_bytes: allPayloadBytes.length ? percentile(allPayloadBytes, 0.95) : null,
       overall_p95_query_count: allQueryCounts.length ? percentile(allQueryCounts, 0.95) : null,
-      overall_p95_db_pool_busy: allPoolBusy.length ? percentile(allPoolBusy, 0.95) : null,
-      overall_p95_db_pool_waiting: allPoolWaiting.length
-        ? percentile(allPoolWaiting, 0.95)
+      overall_p95_overlapping_query_count: allOverlappingQueryCounts.length
+        ? percentile(allOverlappingQueryCounts, 0.95)
         : null,
+      overall_p95_db_pool_busy: allPoolBusy.length ? percentile(allPoolBusy, 0.95) : null,
+      overall_p95_db_pool_waiting: allPoolWaiting.length ? percentile(allPoolWaiting, 0.95) : null,
       critical_routes: routeSummaries.filter((route) => route.critical_route).length,
       payload_budgeted_routes: routeSummaries.filter((route) => route.payload_budget_bytes != null)
         .length,
@@ -445,6 +467,7 @@ async function measureRoutePerformance<T extends NextResponse | Response>(
       durationMs: Date.now() - startedAt,
       payloadBytes: parsePayloadBytes(response.headers.get('content-length')),
       queryCount: databaseMetrics.queryCount ?? explicitQueryCount,
+      overlappingQueryCount: databaseMetrics.overlappingQueryCount,
       dbPoolBusy: databaseMetrics.maxPoolBusy,
       dbPoolWaiting: databaseMetrics.maxPoolWaiting,
       orgScopePresent: Boolean(req.headers?.get('x-org-id')),
