@@ -903,7 +903,7 @@
       },
       {
         "path": "ops/refactor/STATE.md",
-        "sha256": "a4dab93954e92bb42779d842e0be0af72a2a59a32bb3a2ebd7460a903edf6337"
+        "sha256": "856be86436aa7d2533ba0d88a3ba5aa3af7d702345b3b90ca28a248eb2fba0c0"
       },
       {
         "path": "ops/refactor/archive/PERF_FINDINGS.md",
@@ -32500,7 +32500,7 @@
       "path": "src/app/api/tracing-reports/[id]/route.test.ts",
       "classes": ["test"],
       "detectors": ["raw_role_semantics"],
-      "sha256": "a590bec480a6292b4bc38a36c00c43639307ea0ca27e3e4f82d09533ab7eaa03"
+      "sha256": "d5da016e051428d85db840d40c90c682cea4b2ffa72b66af77f07c2ed328e399"
     },
     {
       "path": "src/app/api/tracing-reports/route.test.ts",

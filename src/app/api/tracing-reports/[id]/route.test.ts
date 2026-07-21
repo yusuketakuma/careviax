@@ -73,65 +73,17 @@ vi.mock('@/lib/utils/logger', () => ({
 }));
 
 import { DELETE, PATCH } from './route';
+import {
+  createMalformedPatchRequest,
+  createRequest,
+  CURRENT_UPDATED_AT,
+  expectStructuredLifecycleErrorLog,
+  HOSTILE_TRACING_REPORT_ID,
+  HOSTILE_TRACING_REPORT_PDF_URL,
+  LINKED_REQUEST_UPDATED_AT,
+  STALE_UPDATED_AT,
+} from './route.test-helpers';
 import { expectSensitiveNoStore } from '@/test/api-response-assertions';
-
-const CURRENT_UPDATED_AT = '2026-03-28T04:30:00.000Z';
-const STALE_UPDATED_AT = '2026-03-28T04:29:59.000Z';
-const LINKED_REQUEST_UPDATED_AT = new Date('2026-03-28T05:30:00.000Z');
-
-function withDefaultPatchVersion(body: unknown) {
-  if (body && typeof body === 'object' && !Array.isArray(body)) {
-    if (Object.prototype.hasOwnProperty.call(body, 'expected_updated_at')) return body;
-    return { expected_updated_at: CURRENT_UPDATED_AT, ...body };
-  }
-  return body;
-}
-
-function createRequest(body: unknown, headers?: Record<string, string>) {
-  return new NextRequest('http://localhost/api/tracing-reports/tracing_1', {
-    method: body === null ? 'DELETE' : 'PATCH',
-    headers: {
-      ...headers,
-      ...(body === null ? {} : { 'content-type': 'application/json' }),
-    },
-    body: body === null ? undefined : JSON.stringify(withDefaultPatchVersion(body)),
-  });
-}
-
-function createMalformedPatchRequest(headers?: Record<string, string>) {
-  return new NextRequest('http://localhost/api/tracing-reports/tracing_1', {
-    method: 'PATCH',
-    headers: {
-      ...headers,
-      'content-type': 'application/json',
-    },
-    body: '{"status":',
-  });
-}
-
-const HOSTILE_TRACING_REPORT_ID = 'tracing/with space%2F?x=#';
-const HOSTILE_TRACING_REPORT_PDF_URL =
-  '/api/tracing-reports/tracing%2Fwith%20space%252F%3Fx%3D%23/pdf';
-
-function expectStructuredLifecycleErrorLog(method: 'PATCH' | 'DELETE', error: Error) {
-  expect(loggerErrorMock).toHaveBeenCalledWith(
-    {
-      event: 'tracing_report_lifecycle_unhandled_error',
-      route: '/api/tracing-reports/[id]',
-      method,
-      status: 500,
-    },
-    error,
-  );
-  const [logContext, logError] = loggerErrorMock.mock.calls[0] ?? [];
-  expect(logError).toBe(error);
-  expect(logContext).not.toHaveProperty('error_name');
-  const logged = JSON.stringify(logContext);
-  expect(logged).not.toContain('山田太郎');
-  expect(logged).not.toContain('raw SQL');
-  expect(logged).not.toContain('stack');
-  expect(logged).not.toContain(error.name);
-}
 
 describe('/api/tracing-reports/[id] PATCH', () => {
   beforeEach(() => {
@@ -874,7 +826,7 @@ describe('/api/tracing-reports/[id] PATCH', () => {
     expect(body).not.toContain('山田太郎');
     expect(body).not.toContain('raw SQL');
     expect(body).not.toContain('stack');
-    expectStructuredLifecycleErrorLog('PATCH', unsafeError);
+    expectStructuredLifecycleErrorLog(loggerErrorMock, 'PATCH', unsafeError);
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(tracingReportUpdateManyMock).not.toHaveBeenCalled();
     expect(communicationRequestCreateMock).not.toHaveBeenCalled();
@@ -1023,7 +975,7 @@ describe('/api/tracing-reports/[id] DELETE', () => {
     expect(body).not.toContain('山田太郎');
     expect(body).not.toContain('raw SQL');
     expect(body).not.toContain('stack');
-    expectStructuredLifecycleErrorLog('DELETE', unsafeError);
+    expectStructuredLifecycleErrorLog(loggerErrorMock, 'DELETE', unsafeError);
     expect(careCaseFindFirstMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(tracingReportDeleteManyMock).not.toHaveBeenCalled();
