@@ -77,11 +77,6 @@ const allowedRawLiteralErrorUsages: RawLiteralErrorUsage[] = [
     httpStatus: null,
   },
   {
-    filePath: 'src/app/api/platform/break-glass/route.ts',
-    code: 'BREAK_GLASS_REAUTH_FAILED',
-    httpStatus: 401,
-  },
-  {
     filePath: 'src/app/api/visit-records/[id]/handoff/extract/route.ts',
     code: 'no_structured_soap',
     httpStatus: 422,

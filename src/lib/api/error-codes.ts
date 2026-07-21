@@ -117,6 +117,13 @@ export const API_ERROR_CODE_REGISTRY = Object.freeze({
     recoveryAction: 'return_to_previous',
     messageLabel: 'api.error.billing.partner_approval_not_implemented',
   },
+  BREAK_GLASS_REAUTH_FAILED: {
+    httpStatus: 401,
+    logLevel: 'warn',
+    retryable: false,
+    recoveryAction: 'correct_input',
+    messageLabel: 'api.error.break_glass.reauth_failed',
+  },
   CLAIMS_EXPORT_NOT_IMPLEMENTED: {
     httpStatus: 501,
     logLevel: 'info',

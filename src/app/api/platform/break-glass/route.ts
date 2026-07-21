@@ -1,6 +1,6 @@
 import type { NextRequest } from 'next/server';
 import { BreakGlassScope } from '@prisma/client';
-import { error, rateLimited, success, validationError } from '@/lib/api/response';
+import { error, rateLimited, registeredError, success, validationError } from '@/lib/api/response';
 import { checkAuthRateLimit } from '@/lib/api/rate-limit';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
@@ -88,7 +88,9 @@ export async function POST(req: NextRequest) {
   });
   if (!reauthenticated) {
     logger.warn({ event: 'break_glass_stepup_failed', actorId: operator.userId });
-    return withSensitiveNoStore(error('BREAK_GLASS_REAUTH_FAILED', '再認証に失敗しました', 401));
+    return withSensitiveNoStore(
+      registeredError('BREAK_GLASS_REAUTH_FAILED', '再認証に失敗しました'),
+    );
   }
 
   try {

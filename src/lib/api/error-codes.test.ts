@@ -79,6 +79,13 @@ describe('API error code registry', () => {
           "recoveryAction": "return_to_previous",
           "retryable": false,
         },
+        "BREAK_GLASS_REAUTH_FAILED": {
+          "httpStatus": 401,
+          "logLevel": "warn",
+          "messageLabel": "api.error.break_glass.reauth_failed",
+          "recoveryAction": "correct_input",
+          "retryable": false,
+        },
         "CARE_REPORT_PDF_EXPORT_AUDIT_FAILED": {
           "httpStatus": 500,
           "logLevel": "error",
