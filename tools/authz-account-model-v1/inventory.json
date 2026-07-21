@@ -735,7 +735,7 @@
       },
       {
         "path": "Plans.md",
-        "sha256": "45bd38e2e7989a6354043f1a3674a672b10b48895d5877b3da3f8e76a397bf8e"
+        "sha256": "1378c187a044b2edc8d4a6479efba0d6d80e381e89e22ff7986bf8ac14173f3c"
       },
       {
         "path": "README.md",
@@ -903,7 +903,7 @@
       },
       {
         "path": "ops/refactor/STATE.md",
-        "sha256": "51f946294c102a4f4980ebde3477d2896c7f94fa12e98ac816999f0806868b63"
+        "sha256": "ca95389c6e3a7bd130e1f1b050d9e9467c16a513cbd2df8b009fb226f55bdef3"
       },
       {
         "path": "ops/refactor/archive/PERF_FINDINGS.md",
@@ -32848,7 +32848,7 @@
         "tenant_role",
         "ui_role_affordance"
       ],
-      "sha256": "90774e323ca19f08e9f2430c7c754a5de3be9b9d5b1ccc2783ac27bdef30ee9b"
+      "sha256": "32498e0eaa56cb1939e7ec900cc0e052ae76a7c355fc46dd64c4ddd0e4a3137d"
     },
     {
       "path": "src/app/api/tasks/bulk/route.test.ts",

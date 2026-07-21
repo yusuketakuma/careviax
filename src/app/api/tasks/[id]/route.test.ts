@@ -25,7 +25,34 @@ const {
 }));
 
 vi.mock('@/lib/auth/context', () => ({
-  requireAuthContext: requireAuthContextMock,
+  withAuthContext:
+    (
+      handler: (
+        req: NextRequest,
+        ctx: Record<string, unknown>,
+        routeContext: { params: Promise<{ id: string }> },
+      ) => Promise<Response>,
+      options?: unknown,
+    ) =>
+    async (req: NextRequest, routeContext: { params: Promise<{ id: string }> }) => {
+      const noStore = (response: Response) => {
+        response.headers.set('Cache-Control', 'private, no-store, max-age=0');
+        response.headers.set('Pragma', 'no-cache');
+        return response;
+      };
+      try {
+        const authResult = await requireAuthContextMock(req, options);
+        if ('response' in authResult) return noStore(authResult.response);
+        return noStore(await handler(req, authResult.ctx, routeContext));
+      } catch {
+        return noStore(
+          Response.json(
+            { code: 'INTERNAL_ERROR', message: 'サーバー内部でエラーが発生しました' },
+            { status: 500 },
+          ),
+        );
+      }
+    },
 }));
 
 vi.mock('@/lib/db/client', () => ({
@@ -408,6 +435,23 @@ describe('/api/tasks/[id]', () => {
     expect(careCaseFindManyMock).not.toHaveBeenCalled();
     expect(taskFindFirstMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(taskUpdateManyMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a sanitized no-store 500 when task scope resolution fails unexpectedly', async () => {
+    const rawError = '患者 青葉花子 task raw detail';
+    careCaseFindManyMock.mockRejectedValueOnce(new Error(rawError));
+
+    const response = await PATCH(createPatchRequest('task_1', { status: 'completed' }), {
+      params: Promise.resolve({ id: 'task_1' }),
+    });
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.text();
+    expect(body).toContain('INTERNAL_ERROR');
+    expect(body).not.toContain(rawError);
+    expect(body).not.toContain('青葉花子');
     expect(taskUpdateManyMock).not.toHaveBeenCalled();
   });
 

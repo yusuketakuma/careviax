@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
-import { requireAuthContext } from '@/lib/auth/context';
+import { withAuthContext, type AuthContext } from '@/lib/auth/context';
 import { prisma } from '@/lib/db/client';
 import { withOrgContext } from '@/lib/db/rls';
 import {
@@ -28,14 +28,11 @@ import {
 } from '@/server/services/dashboard-assignment-scope';
 import { requireWritableTaskPatient } from '@/server/services/task-write-guard';
 
-export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canManageOperationalTasks',
-    message: '運用タスクの更新権限がありません',
-  });
-  if ('response' in authResult) return authResult.response;
-  const { ctx } = authResult;
-
+async function authenticatedPATCH(
+  req: NextRequest,
+  ctx: AuthContext,
+  { params }: { params: Promise<{ id: string }> },
+) {
   const { id: rawId } = await params;
   const id = normalizeRequiredRouteParam(rawId);
   if (!id) return validationError('タスクIDが不正です');
@@ -201,3 +198,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   return success({ data: task });
 }
+
+export const PATCH = withAuthContext(authenticatedPATCH, {
+  permission: 'canManageOperationalTasks',
+  message: '運用タスクの更新権限がありません',
+});
