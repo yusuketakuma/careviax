@@ -683,11 +683,6 @@
       "task_id": "MAINT-FILE-SIZE-1000-001"
     },
     {
-      "path": "src/phos/api/client.ts",
-      "max_lines": 1089,
-      "task_id": "MAINT-FILE-SIZE-1000-001"
-    },
-    {
       "path": "src/phos/infra/api-gateway-lambda-template.test.ts",
       "max_lines": 1185,
       "task_id": "MAINT-FILE-SIZE-1000-001"
