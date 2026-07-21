@@ -1,7 +1,5 @@
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
 import { prisma } from '@/lib/db/client';
-import { parseJsonObjectOrNull, parseJsonOrNull, readJsonObject } from '@/lib/db/json';
+import { readJsonObject } from '@/lib/db/json';
 import { withOrgContext } from '@/lib/db/rls';
 import { logger } from '@/lib/utils/logger';
 import {
@@ -17,109 +15,34 @@ import {
   type PatientMcsSummarySnapshot,
 } from './patient-mcs-ai';
 import { ALLOWED_MCS_HOSTS } from '@/lib/patient-mcs/source';
+import {
+  MCS_BROWSER_SCRAPE_ERROR_MESSAGE,
+  conflictFailure,
+  connectMcsBrowser,
+  evaluateJson,
+  externalFailure,
+  openUrl,
+  toPatientMcsSyncError,
+  validationFailure,
+} from './patient-mcs-browser';
 
-const execFileAsync = promisify(execFile);
+export {
+  PatientMcsSyncError,
+  isPatientMcsBrowserSyncEnabled,
+  parseAgentBrowserEvalJson,
+  sanitizePatientMcsExternalErrorMessage,
+} from './patient-mcs-browser';
+import type {} from './patient-mcs.types';
+
+export type {} from './patient-mcs.types';
 
 const MCS_HOST = 'www.medical-care.net';
-const DEFAULT_CDP_TARGET = '18800';
 const DEFAULT_MAX_MESSAGES = 50;
 export const PATIENT_MCS_MAX_MESSAGE_LIMIT = 100;
 const TOKYO_OFFSET_MS = 9 * 60 * 60 * 1000;
-const MCS_BROWSER_SYNC_DISABLED_MESSAGE = 'MCS 同期はローカル端末の開発環境でのみ有効です。';
-const MCS_BROWSER_CONNECT_ERROR_MESSAGE =
-  'MCS 連携用ブラウザに接続できません。ローカル端末で MCS にログインした Chrome を開いてから再試行してください。';
-const MCS_BROWSER_SCRAPE_ERROR_MESSAGE =
-  'MCS からデータを取得できませんでした。MCS を開き直してから再試行してください。';
 const MCS_PATIENT_IDENTITY_CONFLICT_MESSAGE =
   'MCS の患者情報が対象患者と一致しません。連携先 URL を確認してください';
 export const PATIENT_MCS_PROFILE_TASK_TYPE = 'patient_mcs_profile';
-
-export type PatientMcsLinkRecord = {
-  id: string;
-  source_url: string;
-  mcs_patient_id: string | null;
-  mcs_patient_url: string | null;
-  mcs_project_id: string | null;
-  mcs_project_url: string | null;
-  project_title: string | null;
-  project_memo: string | null;
-  member_count: number | null;
-  last_sync_attempt_at: Date | null;
-  last_synced_at: Date | null;
-  last_sync_status: string | null;
-  last_sync_error: string | null;
-};
-
-export type PatientMcsMessageRecord = {
-  id: string;
-  source_message_id: string;
-  author_name: string;
-  author_role: string | null;
-  author_organization: string | null;
-  author_descriptor: string | null;
-  posted_at: Date | null;
-  posted_at_label: string;
-  body: string;
-  reaction_count: number;
-  reply_count: number;
-  sort_order: number | null;
-  source_url: string;
-  synced_at: Date;
-};
-
-export type PatientMcsCheckLogRecord = {
-  id: string;
-  subject: string | null;
-  content: string | null;
-  counterpart_name: string | null;
-  occurred_at: Date;
-  created_at: Date;
-};
-
-export type PatientMcsProfileRecord = {
-  linked_status: string | null;
-  participation_status: string | null;
-  pharmacy_participants: string[];
-  counterpart_roles: string[];
-  last_checked_at: Date | null;
-  note: string | null;
-  updated_at: Date | null;
-};
-
-export type PatientMcsOverview = {
-  link: PatientMcsLinkRecord | null;
-  profile: PatientMcsProfileRecord | null;
-  summary: PatientMcsSummaryRecord | null;
-  messages: PatientMcsMessageRecord[];
-  checkLogs: PatientMcsCheckLogRecord[];
-};
-
-export type PatientMcsSyncResult = {
-  link: PatientMcsLinkRecord;
-  summary: PatientMcsSummaryRecord | null;
-  importedCount: number;
-  latestMessageAt: Date | null;
-};
-
-export type PatientMcsSummaryRecord = {
-  id: string;
-  generation_id: string;
-  provider: string;
-  requested_provider: string;
-  is_fallback: boolean;
-  model: string | null;
-  fallback_reason: string | null;
-  headline: string;
-  bullets: string[];
-  must_check_today: string[];
-  suggested_actions: string[];
-  source_refs: string[];
-  message_count: number;
-  other_professional_message_count: number;
-  latest_posted_at: Date | null;
-  generated_at: Date;
-  duration_ms: number | null;
-};
 
 type PatientIdentityRecord = {
   id: string;
@@ -138,8 +61,6 @@ type SyncPatientMcsTimelineDependencies = {
   scrapeTimeline?: (sourceUrl: string) => Promise<ScrapedMcsTimelineWithContext>;
   now?: () => Date;
 };
-
-type PatientMcsSyncErrorKind = 'validation' | 'conflict' | 'external';
 
 type ResolvedMcsProjectLink = {
   sourceUrl: string;
@@ -162,156 +83,6 @@ type PreparedPatientMcsMessage = PatientMcsSummaryMessage & {
   sourceUrl: string;
   rawPayload: ScrapedMcsTimeline['messages'][number];
 };
-
-export class PatientMcsSyncError extends Error {
-  constructor(
-    message: string,
-    readonly kind: PatientMcsSyncErrorKind = 'external',
-  ) {
-    super(message);
-    this.name = 'PatientMcsSyncError';
-  }
-}
-
-function validationFailure(message: string) {
-  return new PatientMcsSyncError(message, 'validation');
-}
-
-function conflictFailure(message: string) {
-  return new PatientMcsSyncError(message, 'conflict');
-}
-
-function externalFailure(message: string) {
-  return new PatientMcsSyncError(message, 'external');
-}
-
-function getAgentBrowserBinary() {
-  return process.env.MCS_AGENT_BROWSER_BIN?.trim() || 'agent-browser';
-}
-
-function getMcsCdpTarget() {
-  return process.env.MCS_BROWSER_CDP_TARGET?.trim() || DEFAULT_CDP_TARGET;
-}
-
-function isHostedRuntime() {
-  return Boolean(process.env.VERCEL || process.env.AWS_EXECUTION_ENV);
-}
-
-export function isPatientMcsBrowserSyncEnabled() {
-  return process.env.PATIENT_MCS_BROWSER_SYNC_ENABLED === 'true' && !isHostedRuntime();
-}
-
-export function sanitizePatientMcsExternalErrorMessage(message: string | null | undefined) {
-  const normalized = message?.trim() ?? '';
-
-  if (normalized.includes('ログイン済みの Chrome セッションが見つかりません')) {
-    return 'Medical Care Station にログイン済みの Chrome セッションが見つかりません';
-  }
-
-  if (normalized.includes('ローカル端末の開発環境でのみ有効')) {
-    return MCS_BROWSER_SYNC_DISABLED_MESSAGE;
-  }
-
-  if (/agent-browser|chrome|browser|cdp|econnrefused|spawn|enoent|connect/i.test(normalized)) {
-    return MCS_BROWSER_CONNECT_ERROR_MESSAGE;
-  }
-
-  return MCS_BROWSER_SCRAPE_ERROR_MESSAGE;
-}
-
-function toPatientMcsSyncError(error: unknown) {
-  if (error instanceof PatientMcsSyncError) {
-    if (error.kind !== 'external') {
-      return error;
-    }
-
-    return externalFailure(sanitizePatientMcsExternalErrorMessage(error.message));
-  }
-
-  return externalFailure(
-    sanitizePatientMcsExternalErrorMessage(error instanceof Error ? error.message : null),
-  );
-}
-
-function extractMeaningfulOutput(stdout: string) {
-  return stdout
-    .split('\n')
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0 && !line.startsWith('✓'))
-    .join('\n')
-    .trim();
-}
-
-async function runAgentBrowser(args: string[]) {
-  try {
-    const { stdout } = await execFileAsync(getAgentBrowserBinary(), args, {
-      maxBuffer: 10 * 1024 * 1024,
-      timeout: 30_000,
-    });
-    return extractMeaningfulOutput(stdout);
-  } catch (error) {
-    const message =
-      error instanceof Error && 'stderr' in error && typeof error.stderr === 'string'
-        ? error.stderr.trim() || error.message
-        : error instanceof Error
-          ? error.message
-          : 'agent-browser の実行に失敗しました';
-    throw externalFailure(sanitizePatientMcsExternalErrorMessage(message));
-  }
-}
-
-async function connectMcsBrowser() {
-  if (!isPatientMcsBrowserSyncEnabled()) {
-    throw externalFailure(MCS_BROWSER_SYNC_DISABLED_MESSAGE);
-  }
-
-  await runAgentBrowser(['connect', getMcsCdpTarget()]);
-}
-
-async function getCurrentUrl() {
-  return runAgentBrowser(['get', 'url']);
-}
-
-function extractUrlFromAgentBrowserOutput(output: string) {
-  const candidates = output
-    .split('\n')
-    .map((line) => line.trim())
-    .filter(Boolean);
-
-  for (const candidate of candidates.toReversed()) {
-    try {
-      return new URL(candidate).toString();
-    } catch {
-      continue;
-    }
-  }
-
-  return null;
-}
-
-async function openUrl(url: string) {
-  const output = await runAgentBrowser(['open', url]);
-  return extractUrlFromAgentBrowserOutput(output) ?? getCurrentUrl();
-}
-
-export function parseAgentBrowserEvalJson(output: string): Record<string, unknown> {
-  const encodedPayload = parseJsonOrNull(output);
-  if (typeof encodedPayload !== 'string') {
-    throw externalFailure(MCS_BROWSER_SCRAPE_ERROR_MESSAGE);
-  }
-
-  const object = parseJsonObjectOrNull(encodedPayload);
-  if (!object) {
-    throw externalFailure(MCS_BROWSER_SCRAPE_ERROR_MESSAGE);
-  }
-
-  return object;
-}
-
-async function evaluateJson(script: string): Promise<Record<string, unknown>> {
-  const output = await runAgentBrowser(['eval', script]);
-  return parseAgentBrowserEvalJson(output);
-}
 
 function isNullableString(value: unknown): value is string | null {
   return typeof value === 'string' || value === null;

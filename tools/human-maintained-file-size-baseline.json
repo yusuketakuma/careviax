@@ -788,11 +788,6 @@
       "task_id": "MAINT-FILE-SIZE-1000-001"
     },
     {
-      "path": "src/server/services/patient-mcs.ts",
-      "max_lines": 1210,
-      "task_id": "MAINT-FILE-SIZE-1000-001"
-    },
-    {
       "path": "src/server/services/patient-service.ts",
       "max_lines": 1293,
       "task_id": "MAINT-FILE-SIZE-1000-001"
