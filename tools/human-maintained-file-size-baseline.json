@@ -763,11 +763,6 @@
       "task_id": "MAINT-FILE-SIZE-1000-001"
     },
     {
-      "path": "src/server/services/conference-data-sync.ts",
-      "max_lines": 1038,
-      "task_id": "MAINT-FILE-SIZE-1000-001"
-    },
-    {
       "path": "src/server/services/conference-sync.ts",
       "max_lines": 1128,
       "task_id": "MAINT-FILE-SIZE-1000-001"
