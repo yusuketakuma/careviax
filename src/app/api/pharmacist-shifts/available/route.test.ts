@@ -1,4 +1,5 @@
 import { NextRequest } from 'next/server';
+import { unstable_rethrow } from 'next/navigation';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const {
@@ -20,25 +21,48 @@ const {
 }));
 
 vi.mock('@/lib/auth/context', () => ({
-  requireAuthContext: requireAuthContextMock,
-}));
-
-vi.mock('@/lib/auth/request-context', () => ({
-  runWithRequestAuthContext: runWithRequestAuthContextMock,
+  withAuthContext:
+    (
+      handler: (req: NextRequest, ctx: Record<string, unknown>) => Promise<Response>,
+      options?: unknown,
+    ) =>
+    async (req: NextRequest) =>
+      withRoutePerformanceMock(req, async () => {
+        const noStore = (response: Response) => {
+          response.headers.set('Cache-Control', 'private, no-store, max-age=0');
+          response.headers.set('Pragma', 'no-cache');
+          return response;
+        };
+        const authResult = await requireAuthContextMock(req, options);
+        if ('response' in authResult) return noStore(authResult.response);
+        return runWithRequestAuthContextMock(authResult.ctx, async () => {
+          try {
+            return noStore(await handler(req, authResult.ctx));
+          } catch (error) {
+            unstable_rethrow(error);
+            loggerErrorMock(
+              {
+                event: 'route_handler_unhandled_error',
+                route: req.nextUrl.pathname,
+                method: req.method,
+                requestId: authResult.ctx.requestId,
+                correlationId: authResult.ctx.correlationId,
+              },
+              error,
+            );
+            return noStore(
+              Response.json(
+                { code: 'INTERNAL_ERROR', message: 'サーバー内部でエラーが発生しました' },
+                { status: 500 },
+              ),
+            );
+          }
+        });
+      }),
 }));
 
 vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
-}));
-
-vi.mock('@/lib/utils/performance', () => ({
-  withRoutePerformance: withRoutePerformanceMock,
-}));
-
-vi.mock('@/lib/utils/logger', () => ({
-  logger: {
-    error: loggerErrorMock,
-  },
 }));
 
 import { GET as rawGET } from './route';
@@ -72,6 +96,8 @@ describe('/api/pharmacist-shifts/available GET', () => {
       role: 'pharmacist',
       ipAddress: '203.0.113.10',
       userAgent: 'vitest',
+      requestId: 'request_1',
+      correlationId: 'correlation_1',
     };
     requireAuthContextMock.mockResolvedValue({ ctx });
     runWithRequestAuthContextMock.mockImplementation(
@@ -404,10 +430,11 @@ describe('/api/pharmacist-shifts/available GET', () => {
     expect(loggerErrorMock).toHaveBeenCalledTimes(1);
     expect(loggerErrorMock).toHaveBeenCalledWith(
       {
-        event: 'pharmacist_shifts_available_get_unhandled_error',
+        event: 'route_handler_unhandled_error',
         route: '/api/pharmacist-shifts/available',
         method: 'GET',
-        status: 500,
+        requestId: 'request_1',
+        correlationId: 'correlation_1',
       },
       unsafeError,
     );

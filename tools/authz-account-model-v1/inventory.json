@@ -735,7 +735,7 @@
       },
       {
         "path": "Plans.md",
-        "sha256": "08db280be6f760107e0c5f0dd771a62dc7bffa810c7b8011f00aedf2155ba969"
+        "sha256": "641a449605bce1721d66b99b686460c5a028a4471b2fb2d55a12ed7ac9892edf"
       },
       {
         "path": "README.md",
@@ -903,7 +903,7 @@
       },
       {
         "path": "ops/refactor/STATE.md",
-        "sha256": "771948aef93a0a29d8a2472f52d8aae9a1dc3aaa22091f5a65804c0fa44d60f6"
+        "sha256": "1f72b18618d9842fd0b8317e19a85e5ef2512d8dbc7969817a3f1c2c756cb8e7"
       },
       {
         "path": "ops/refactor/archive/PERF_FINDINGS.md",
@@ -6391,30 +6391,6 @@
       "reprojection_or_removal": "owner_review_required_before_cutover:src/app/api/pca-pumps/route.ts",
       "binding_profile": "p_5a1a5e55993d",
       "capability_profile": "p_a325f45c9b2a"
-    },
-    {
-      "id": "mapping_precedence:src/app/api/pharmacist-shifts/available/route.ts",
-      "detector": "mapping_precedence",
-      "path": "src/app/api/pharmacist-shifts/available/route.ts",
-      "evidence_sha256": "5a35c6ed0eb4b06c51df00c960c3e8a38e37f4e4de10dac1c8e80c859126bea2",
-      "principal": "human",
-      "lifecycles": ["request"],
-      "surfaces": ["rls", "writer"],
-      "exact_values_or_scopes": [
-        "not_applicable:mapping_precedence:no-enumerated-value:src/app/api/pharmacist-shifts/available/route.ts"
-      ],
-      "route_method_purpose": "GET /api/pharmacist-shifts/available purpose=legacy_unspecified_pending_review",
-      "precedence_selection": "legacy_observed_requires_human_review",
-      "synthetic_derived_mapping": "not_applicable:no-synthetic-mapping-observed:src/app/api/pharmacist-shifts/available/route.ts",
-      "persistence_contract": "not_applicable:no-persistence-observed:src/app/api/pharmacist-shifts/available/route.ts",
-      "ttl_contract": "not_applicable:no-ttl-observed:src/app/api/pharmacist-shifts/available/route.ts",
-      "mapping_disposition": "candidate_requires_human",
-      "owner": "Identity / Authz",
-      "approval_status": "pending_owner_review",
-      "test_refs": ["src/app/api/pharmacist-shifts/available/route.test.ts"],
-      "reprojection_or_removal": "owner_review_required_before_cutover:src/app/api/pharmacist-shifts/available/route.ts",
-      "binding_profile": "p_9971ab61d617",
-      "capability_profile": "p_01a8c3b58caf"
     },
     {
       "id": "mapping_precedence:src/app/api/pharmacist-shifts/bulk/route.ts",
@@ -32382,7 +32358,7 @@
       "path": "src/app/api/pharmacist-shifts/available/route.test.ts",
       "classes": ["test"],
       "detectors": ["mapping_precedence", "permission_capability", "raw_role_semantics"],
-      "sha256": "59b5d52a2174c82e47d64c13ae929191b28b28dc88c9d0e454e31e68842c2391"
+      "sha256": "52f934fd46eba64ec23f1d9eeda2cd55b1c9c3b4b5dab2e4d50a56699d59e399"
     },
     {
       "path": "src/app/api/pharmacist-shifts/bulk/route.test.ts",
