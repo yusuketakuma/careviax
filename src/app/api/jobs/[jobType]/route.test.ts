@@ -1,6 +1,9 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { NextRequest } from 'next/server';
 import { getRequestTraceContext, type RequestTraceContext } from '@/lib/api/request-correlation';
+import {
+  createJobRequest as createRequest,
+  expectJobSuccessData,
+} from '@/test/api-job-response-assertions';
 
 const {
   authMock,
@@ -143,21 +146,6 @@ vi.mock('@/server/jobs', () => ({
 }));
 
 import { POST } from './route';
-
-function createRequest(headers?: Record<string, string>) {
-  return new NextRequest('http://localhost/api/jobs/daily-medication-check', {
-    method: 'POST',
-    headers,
-  });
-}
-
-async function expectJobSuccessData(response: Response, expected: Record<string, unknown>) {
-  const body = await response.json();
-  expect(body).toMatchObject({ data: expected });
-  expect(body).not.toHaveProperty('jobType');
-  expect(body).not.toHaveProperty('processedCount');
-  return body.data as Record<string, unknown>;
-}
 
 describe('/api/jobs/[jobType] POST', () => {
   const originalJobApiKey = process.env.JOB_API_KEY;

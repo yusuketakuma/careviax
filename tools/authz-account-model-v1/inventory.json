@@ -903,7 +903,7 @@
       },
       {
         "path": "ops/refactor/STATE.md",
-        "sha256": "871d71ce5c35dd0d5214c8630a5d0a23ab0b8e5c31ba945ecdf73dd0181d9246"
+        "sha256": "d11e2d4d17adb6023b662053b1efe304a886071204fab6620d0ccb3ae3e06036"
       },
       {
         "path": "ops/refactor/archive/PERF_FINDINGS.md",
@@ -31391,7 +31391,7 @@
       "path": "src/app/api/jobs/[jobType]/route.test.ts",
       "classes": ["test"],
       "detectors": ["mapping_precedence", "raw_role_semantics", "service_job"],
-      "sha256": "59f4f5a9ab0aaac67294db1f5622247973ad5a4a2f562a5ac3399220a10e79fd"
+      "sha256": "67cdfac0f58b6f524be33cc23f84ecc3a5dd4dd069d9b0b8598c6c773197c303"
     },
     {
       "path": "src/app/api/jobs/flush-metrics/route.test.ts",
