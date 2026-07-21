@@ -1,6 +1,5 @@
 import { unstable_rethrow } from 'next/navigation';
-import { type AuthRouteContext, requireAuthContext, withAuthContext } from '@/lib/auth/context';
-import { runWithRequestAuthContext } from '@/lib/auth/request-context';
+import { type AuthRouteContext, withAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { internalError, success, validationError } from '@/lib/api/response';
@@ -17,7 +16,6 @@ import {
 } from '@/lib/auth/visit-schedule-access';
 import { canAccessCaseScopedPatientResource } from '@/server/services/patient-access';
 import { logger } from '@/lib/utils/logger';
-import { withRoutePerformance } from '@/lib/utils/performance';
 import {
   optionalTracingReportStatusSchema,
   optionalTrimmedSearchParam,
@@ -235,76 +233,63 @@ export async function GET(
   }
 }
 
-async function authenticatedPOST(req: NextRequest) {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canAuthorReport',
-    message: 'トレーシングレポートの作成権限がありません',
-  });
-  if ('response' in authResult) return authResult.response;
-  const { ctx } = authResult;
-
-  return runWithRequestAuthContext(ctx, async () => {
-    const payload = await readJsonObjectRequestBody(req);
-    if (!payload) return validationError('リクエストボディが不正です');
-
-    const parsed = createTracingReportSchema.safeParse(payload);
-    if (!parsed.success) {
-      return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
-    }
-
-    const { patient_id, case_id, issue_id, content, sent_to_physician } = parsed.data;
-    if (
-      !(await canAccessCaseScopedPatientResource({
-        db: prisma,
-        orgId: ctx.orgId,
-        patientId: patient_id,
-        caseId: case_id,
-        accessContext: ctx,
-      }))
-    ) {
-      return validationError('患者またはケースの指定が不正です');
-    }
-    if (
-      issue_id &&
-      !(await canAttachMedicationIssue({
-        orgId: ctx.orgId,
-        patientId: patient_id,
-        caseId: case_id,
-        issueId: issue_id,
-      }))
-    ) {
-      return validationError('薬学的課題の指定が不正です');
-    }
-
-    const report = await withOrgContext(ctx.orgId, async (tx) => {
-      return tx.tracingReport.create({
-        data: {
-          org_id: ctx.orgId,
-          patient_id,
-          case_id,
-          issue_id,
-          content: toPrismaJsonInput(content),
-          sent_to_physician,
-        },
-      });
-    });
-
-    return success({ data: report }, 201);
-  });
-}
-
-export async function POST(
-  req: NextRequest,
-  routeContext: AuthRouteContext<Record<string, string>>,
-) {
-  void routeContext;
-  return withRoutePerformance(req, async () => {
+export const POST = withAuthContext(
+  async (req, ctx) => {
     try {
-      return withSensitiveNoStore(await authenticatedPOST(req));
+      const payload = await readJsonObjectRequestBody(req);
+      if (!payload) return validationError('リクエストボディが不正です');
+
+      const parsed = createTracingReportSchema.safeParse(payload);
+      if (!parsed.success) {
+        return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
+      }
+
+      const { patient_id, case_id, issue_id, content, sent_to_physician } = parsed.data;
+      if (
+        !(await canAccessCaseScopedPatientResource({
+          db: prisma,
+          orgId: ctx.orgId,
+          patientId: patient_id,
+          caseId: case_id,
+          accessContext: ctx,
+        }))
+      ) {
+        return validationError('患者またはケースの指定が不正です');
+      }
+      if (
+        issue_id &&
+        !(await canAttachMedicationIssue({
+          orgId: ctx.orgId,
+          patientId: patient_id,
+          caseId: case_id,
+          issueId: issue_id,
+        }))
+      ) {
+        return validationError('薬学的課題の指定が不正です');
+      }
+
+      const report = await withOrgContext(ctx.orgId, async (tx) => {
+        return tx.tracingReport.create({
+          data: {
+            org_id: ctx.orgId,
+            patient_id,
+            case_id,
+            issue_id,
+            content: toPrismaJsonInput(content),
+            sent_to_physician,
+          },
+        });
+      });
+
+      return success({ data: report }, 201);
     } catch (err) {
       unstable_rethrow(err);
       logUnhandledRouteError('POST', err);
       return withSensitiveNoStore(internalError());
     }
-  });
-}
+  },
+  {
+    permission: 'canAuthorReport',
+    message: 'トレーシングレポートの作成権限がありません',
+  },
+);

@@ -735,7 +735,7 @@
       },
       {
         "path": "Plans.md",
-        "sha256": "87214def9cbe5006451f11307691be7e839b3d8386bee85be3eafeaa872ecb00"
+        "sha256": "d1529f36c1f9bf1a610ff48c73ab605c36b937ac07209a4289eda17c4e6e13e4"
       },
       {
         "path": "README.md",
@@ -903,7 +903,7 @@
       },
       {
         "path": "ops/refactor/STATE.md",
-        "sha256": "b505c6cd6f70c801f7551d82267f687138b5b87865a4d509496d10a471969113"
+        "sha256": "8e51e7fc884437652cf4633fcb85a1c7ebe872640032b38b7b874e01829823d5"
       },
       {
         "path": "ops/refactor/archive/PERF_FINDINGS.md",
@@ -6516,30 +6516,6 @@
       "reprojection_or_removal": "owner_review_required_before_cutover:src/app/api/templates/route.ts",
       "binding_profile": "p_a38944584b60",
       "capability_profile": "p_0f0e0a961fcf"
-    },
-    {
-      "id": "mapping_precedence:src/app/api/tracing-reports/route.ts",
-      "detector": "mapping_precedence",
-      "path": "src/app/api/tracing-reports/route.ts",
-      "evidence_sha256": "5a35c6ed0eb4b06c51df00c960c3e8a38e37f4e4de10dac1c8e80c859126bea2",
-      "principal": "human",
-      "lifecycles": ["request"],
-      "surfaces": ["rls", "writer"],
-      "exact_values_or_scopes": [
-        "not_applicable:mapping_precedence:no-enumerated-value:src/app/api/tracing-reports/route.ts"
-      ],
-      "route_method_purpose": "GET,POST /api/tracing-reports purpose=legacy_unspecified_pending_review",
-      "precedence_selection": "legacy_observed_requires_human_review",
-      "synthetic_derived_mapping": "not_applicable:no-synthetic-mapping-observed:src/app/api/tracing-reports/route.ts",
-      "persistence_contract": "not_applicable:no-persistence-observed:src/app/api/tracing-reports/route.ts",
-      "ttl_contract": "not_applicable:no-ttl-observed:src/app/api/tracing-reports/route.ts",
-      "mapping_disposition": "candidate_requires_human",
-      "owner": "Identity / Authz",
-      "approval_status": "pending_owner_review",
-      "test_refs": ["src/app/api/tracing-reports/route.test.ts"],
-      "reprojection_or_removal": "owner_review_required_before_cutover:src/app/api/tracing-reports/route.ts",
-      "binding_profile": "p_3c4ed93d9ed9",
-      "capability_profile": "p_a1a815ea837a"
     },
     {
       "id": "mapping_precedence:src/app/api/visit-billing-candidates/summary/route.ts",
@@ -32602,7 +32578,7 @@
       "path": "src/app/api/tracing-reports/route.test.ts",
       "classes": ["test"],
       "detectors": ["raw_role_semantics"],
-      "sha256": "d93b7b404f9dc5d5314f725b86aaa6e835de3ec1904c245e1020ae204c76deae"
+      "sha256": "d67b4f6b86c59617bbbd535bc0ad9297364174837532b69b0de06276d8fa38cd"
     },
     {
       "path": "src/app/api/visit-billing-candidates/route.test.ts",
