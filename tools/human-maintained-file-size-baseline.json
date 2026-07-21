@@ -513,11 +513,6 @@
       "task_id": "MAINT-FILE-SIZE-1000-001"
     },
     {
-      "path": "src/app/api/patients/[id]/care-team/route.test.ts",
-      "max_lines": 1029,
-      "task_id": "MAINT-FILE-SIZE-1000-001"
-    },
-    {
       "path": "src/app/api/patients/[id]/route.test.ts",
       "max_lines": 2421,
       "task_id": "MAINT-FILE-SIZE-1000-001"
@@ -540,16 +535,6 @@
     {
       "path": "src/app/api/pharmacy-drug-stocks/bulk/route.test.ts",
       "max_lines": 1163,
-      "task_id": "MAINT-FILE-SIZE-1000-001"
-    },
-    {
-      "path": "src/app/api/prescription-intakes/[id]/route.test.ts",
-      "max_lines": 1047,
-      "task_id": "MAINT-FILE-SIZE-1000-001"
-    },
-    {
-      "path": "src/app/api/prescription-intakes/facility-batch/route.test.ts",
-      "max_lines": 1081,
       "task_id": "MAINT-FILE-SIZE-1000-001"
     },
     {
