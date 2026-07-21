@@ -423,11 +423,6 @@
       "task_id": "MAINT-FILE-SIZE-1000-001"
     },
     {
-      "path": "src/app/api/consent-records/route.test.ts",
-      "max_lines": 1020,
-      "task_id": "MAINT-FILE-SIZE-1000-001"
-    },
-    {
       "path": "src/app/api/dashboard/cockpit/route.test.ts",
       "max_lines": 3047,
       "task_id": "MAINT-FILE-SIZE-1000-001"
