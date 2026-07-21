@@ -1,12 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { unstable_rethrow } from 'next/navigation';
-import { requireAuthContext } from '@/lib/auth/context';
-import type { AuthRouteContext } from '@/lib/auth/context';
+import { withAuthContext, type AuthContext, type AuthRouteContext } from '@/lib/auth/context';
 import { runWithRequestAuthContext } from '@/lib/auth/request-context';
 import { withOrgContext } from '@/lib/db/rls';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { success, validationError, notFound, conflict, internalError } from '@/lib/api/response';
-import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import {
   buildSetBatchHistorySnapshot,
   createSetBatchChangeLog,
@@ -14,7 +12,6 @@ import {
 import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cache';
 import { buildSetBatchAssignmentWhere } from '@/server/services/prescription-access';
 import { logger } from '@/lib/utils/logger';
-import { withRoutePerformance } from '@/lib/utils/performance';
 import { z } from 'zod';
 
 const ROUTE = '/api/set-batches/[id]';
@@ -46,15 +43,11 @@ type DeleteSetBatchResult =
   | { success: true; planId: string; batchId: string }
   | { error: string; conflict: true };
 
-async function authenticatedGET(
+async function handleGET(
   req: NextRequest,
+  ctx: AuthContext,
   routeContext: AuthRouteContext<{ id: string }>,
 ): Promise<NextResponse> {
-  const auth = await requireAuthContext(req, { permission: 'canSet' });
-  if ('response' in auth) return auth.response;
-
-  const { ctx } = auth;
-
   return runWithRequestAuthContext(ctx, async () => {
     const { id } = await routeContext.params;
     const assignmentWhere = buildSetBatchAssignmentWhere(ctx);
@@ -95,10 +88,10 @@ async function authenticatedGET(
   });
 }
 
-export async function GET(req: NextRequest, routeContext: AuthRouteContext<{ id: string }>) {
-  return withRoutePerformance(req, async () => {
+export const GET = withAuthContext(
+  async (req, ctx, routeContext) => {
     try {
-      return withSensitiveNoStore(await authenticatedGET(req, routeContext));
+      return await handleGET(req, ctx, routeContext);
     } catch (err) {
       unstable_rethrow(err);
       logger.error(
@@ -110,20 +103,17 @@ export async function GET(req: NextRequest, routeContext: AuthRouteContext<{ id:
         },
         err,
       );
-      return withSensitiveNoStore(internalError());
+      return internalError();
     }
-  });
-}
+  },
+  { permission: 'canSet' },
+);
 
-async function authenticatedPATCH(
+async function handlePATCH(
   req: NextRequest,
+  ctx: AuthContext,
   routeContext: AuthRouteContext<{ id: string }>,
 ): Promise<NextResponse> {
-  const auth = await requireAuthContext(req, { permission: 'canSet' });
-  if ('response' in auth) return auth.response;
-
-  const { ctx } = auth;
-
   return runWithRequestAuthContext(ctx, async () => {
     const { id } = await routeContext.params;
 
@@ -256,10 +246,10 @@ async function authenticatedPATCH(
   });
 }
 
-export async function PATCH(req: NextRequest, routeContext: AuthRouteContext<{ id: string }>) {
-  return withRoutePerformance(req, async () => {
+export const PATCH = withAuthContext(
+  async (req, ctx, routeContext) => {
     try {
-      return withSensitiveNoStore(await authenticatedPATCH(req, routeContext));
+      return await handlePATCH(req, ctx, routeContext);
     } catch (err) {
       unstable_rethrow(err);
       logger.error(
@@ -271,20 +261,17 @@ export async function PATCH(req: NextRequest, routeContext: AuthRouteContext<{ i
         },
         err,
       );
-      return withSensitiveNoStore(internalError());
+      return internalError();
     }
-  });
-}
+  },
+  { permission: 'canSet' },
+);
 
-async function authenticatedDELETE(
+async function handleDELETE(
   req: NextRequest,
+  ctx: AuthContext,
   routeContext: AuthRouteContext<{ id: string }>,
 ): Promise<NextResponse> {
-  const auth = await requireAuthContext(req, { permission: 'canSet' });
-  if ('response' in auth) return auth.response;
-
-  const { ctx } = auth;
-
   return runWithRequestAuthContext(ctx, async () => {
     const { id } = await routeContext.params;
     const versionParam = new URL(req.url).searchParams.get('version');
@@ -373,10 +360,10 @@ async function authenticatedDELETE(
   });
 }
 
-export async function DELETE(req: NextRequest, routeContext: AuthRouteContext<{ id: string }>) {
-  return withRoutePerformance(req, async () => {
+export const DELETE = withAuthContext(
+  async (req, ctx, routeContext) => {
     try {
-      return withSensitiveNoStore(await authenticatedDELETE(req, routeContext));
+      return await handleDELETE(req, ctx, routeContext);
     } catch (err) {
       unstable_rethrow(err);
       logger.error(
@@ -388,7 +375,8 @@ export async function DELETE(req: NextRequest, routeContext: AuthRouteContext<{ 
         },
         err,
       );
-      return withSensitiveNoStore(internalError());
+      return internalError();
     }
-  });
-}
+  },
+  { permission: 'canSet' },
+);
