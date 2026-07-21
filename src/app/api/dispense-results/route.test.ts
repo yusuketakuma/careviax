@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 import { expectSensitiveNoStore } from '@/test/api-response-assertions';
+import { prescriptionQuantityConfirmed, safetyChecklist } from './route.test-helpers';
 
 const {
   loggerErrorMock,
@@ -13,7 +14,7 @@ const {
   dispatchNotificationEventMock,
   checkDispenseAlertsMock,
   notifyWorkflowMutationMock,
-  notifyWebhookEventForOrgMock,
+  enqueuePrescriptionDispensedWebhookMock,
 } = vi.hoisted(() => ({
   loggerErrorMock: vi.fn(),
   authMock: vi.fn(),
@@ -25,7 +26,7 @@ const {
   dispatchNotificationEventMock: vi.fn(),
   checkDispenseAlertsMock: vi.fn(),
   notifyWorkflowMutationMock: vi.fn().mockResolvedValue(undefined),
-  notifyWebhookEventForOrgMock: vi.fn().mockResolvedValue(undefined),
+  enqueuePrescriptionDispensedWebhookMock: vi.fn().mockResolvedValue(0),
 }));
 
 vi.mock('next/navigation', () => ({ unstable_rethrow: unstableRethrowMock }));
@@ -69,8 +70,8 @@ vi.mock('@/server/services/workflow-dashboard-cache', () => ({
   notifyWorkflowMutation: notifyWorkflowMutationMock,
 }));
 
-vi.mock('@/server/services/outbound-webhook', () => ({
-  notifyWebhookEventForOrg: notifyWebhookEventForOrgMock,
+vi.mock('@/server/services/outbound-webhook-queue', () => ({
+  enqueuePrescriptionDispensedWebhook: enqueuePrescriptionDispensedWebhookMock,
 }));
 
 const { upsertOperationalTaskMock } = vi.hoisted(() => ({
@@ -86,20 +87,6 @@ import { POST as rawPOST } from './route';
 
 const emptyRouteContext = { params: Promise.resolve({}) };
 const POST = (req: NextRequest) => rawPOST(req, emptyRouteContext);
-
-const safetyChecklist = {
-  patient_identity: true,
-  drug_name_strength: true,
-  quantity_days: true,
-  directions_route: true,
-  packaging_storage: true,
-  cds_alerts_reviewed: true,
-};
-
-const prescriptionQuantityConfirmed = {
-  actual_quantity_confirmed: true,
-  actual_quantity_source: 'prescription_quantity_confirmed' as const,
-};
 
 function createRequest(body: unknown) {
   const normalizedBody =
@@ -375,7 +362,7 @@ describe('/api/dispense-results POST', () => {
     expect(runWithRequestAuthContextMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
-    expect(notifyWebhookEventForOrgMock).not.toHaveBeenCalled();
+    expect(enqueuePrescriptionDispensedWebhookMock).not.toHaveBeenCalled();
   });
 
   it('requires expected_version before transaction or notification side effects', async () => {
@@ -445,7 +432,7 @@ describe('/api/dispense-results POST', () => {
     expect(checkDispenseAlertsMock).not.toHaveBeenCalled();
     expect(dispatchNotificationEventMock).not.toHaveBeenCalled();
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
-    expect(notifyWebhookEventForOrgMock).not.toHaveBeenCalled();
+    expect(enqueuePrescriptionDispensedWebhookMock).not.toHaveBeenCalled();
     expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
   });
 
@@ -500,7 +487,7 @@ describe('/api/dispense-results POST', () => {
     expect(checkDispenseAlertsMock).not.toHaveBeenCalled();
     expect(dispatchNotificationEventMock).not.toHaveBeenCalled();
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
-    expect(notifyWebhookEventForOrgMock).not.toHaveBeenCalled();
+    expect(enqueuePrescriptionDispensedWebhookMock).not.toHaveBeenCalled();
     expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
   });
 
@@ -532,7 +519,7 @@ describe('/api/dispense-results POST', () => {
 
     expect(loggerErrorMock).not.toHaveBeenCalled();
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
-    expect(notifyWebhookEventForOrgMock).not.toHaveBeenCalled();
+    expect(enqueuePrescriptionDispensedWebhookMock).not.toHaveBeenCalled();
     expect(dispatchNotificationEventMock).not.toHaveBeenCalled();
     expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
   });
@@ -717,7 +704,7 @@ describe('/api/dispense-results POST', () => {
     expect(checkDispenseAlertsMock).not.toHaveBeenCalled();
     expect(dispatchNotificationEventMock).not.toHaveBeenCalled();
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
-    expect(notifyWebhookEventForOrgMock).not.toHaveBeenCalled();
+    expect(enqueuePrescriptionDispensedWebhookMock).not.toHaveBeenCalled();
     expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
   });
 
@@ -909,7 +896,7 @@ describe('/api/dispense-results POST', () => {
     expect(checkDispenseAlertsMock).not.toHaveBeenCalled();
     expect(dispatchNotificationEventMock).not.toHaveBeenCalled();
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
-    expect(notifyWebhookEventForOrgMock).not.toHaveBeenCalled();
+    expect(enqueuePrescriptionDispensedWebhookMock).not.toHaveBeenCalled();
     expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
   });
 
@@ -1108,7 +1095,7 @@ describe('/api/dispense-results POST', () => {
     expect(checkDispenseAlertsMock).not.toHaveBeenCalled();
     expect(dispatchNotificationEventMock).not.toHaveBeenCalled();
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
-    expect(notifyWebhookEventForOrgMock).not.toHaveBeenCalled();
+    expect(enqueuePrescriptionDispensedWebhookMock).not.toHaveBeenCalled();
   });
 
   it('keeps stale dispense result conflicts when persisted content differs from the replay payload', async () => {
@@ -1201,7 +1188,7 @@ describe('/api/dispense-results POST', () => {
     expect(dispenseTaskUpdateMock).not.toHaveBeenCalled();
     expect(checkDispenseAlertsMock).not.toHaveBeenCalled();
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
-    expect(notifyWebhookEventForOrgMock).not.toHaveBeenCalled();
+    expect(enqueuePrescriptionDispensedWebhookMock).not.toHaveBeenCalled();
   });
 
   it('proceeds when expected_version matches the current cycle version', async () => {
@@ -1335,6 +1322,11 @@ describe('/api/dispense-results POST', () => {
         partial: false,
         results: [{ id: 'result_1', line_id: 'line_1' }],
       },
+    });
+    expect(enqueuePrescriptionDispensedWebhookMock).toHaveBeenCalledWith(expect.any(Object), {
+      orgId: 'org_1',
+      taskId: 'task_1',
+      resultCount: 1,
     });
     expect(withOrgContextMock).toHaveBeenCalledWith(
       'org_1',
@@ -1678,7 +1670,7 @@ describe('/api/dispense-results POST', () => {
     expect(checkDispenseAlertsMock).not.toHaveBeenCalled();
     expect(dispatchNotificationEventMock).not.toHaveBeenCalled();
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
-    expect(notifyWebhookEventForOrgMock).not.toHaveBeenCalled();
+    expect(enqueuePrescriptionDispensedWebhookMock).not.toHaveBeenCalled();
   });
 
   it('rejects barcode evidence when both the master YJ code and line drug code are missing', async () => {

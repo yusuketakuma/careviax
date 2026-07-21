@@ -9,7 +9,7 @@ import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { toPrismaJsonInput } from '@/lib/db/json';
 import { success, validationError, notFound, conflict } from '@/lib/api/response';
 import { dispatchNotificationEvent } from '@/server/services/notifications';
-import { notifyWebhookEventForOrg } from '@/server/services/outbound-webhook';
+import { enqueuePrescriptionDispensedWebhook } from '@/server/services/outbound-webhook-queue';
 import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cache';
 import { upsertOperationalTask } from '@/server/services/operational-tasks';
 import { checkDispenseAlerts } from '@/server/cds/checker';
@@ -1048,6 +1048,12 @@ async function authenticatedPOST(req: NextRequest, ctx: AuthContext) {
           });
         }
 
+        await enqueuePrescriptionDispensedWebhook(tx, {
+          orgId: ctx.orgId,
+          taskId: task_id,
+          resultCount: results.length,
+        });
+
         return { results, task_id, partial: false };
       },
       { requestContext: ctx },
@@ -1136,13 +1142,6 @@ async function authenticatedPOST(req: NextRequest, ctx: AuthContext) {
         eventType: 'cycle_transition',
         payload: { source: 'dispense_results', task_id },
       });
-
-      if (!result.partial) {
-        await notifyWebhookEventForOrg(ctx.orgId, 'prescription.dispensed', {
-          taskId: result.task_id,
-          resultCount: result.results.length,
-        });
-      }
     }
 
     return success({ data: result }, 'idempotent' in result ? 200 : 201);

@@ -735,7 +735,7 @@
       },
       {
         "path": "Plans.md",
-        "sha256": "0bfab762697196c676d858a92b22c9c240c3d95f7b52b90c7dcf8e559a5fd5f1"
+        "sha256": "f21179a13501627a4f6929e316181f98147e2147734821117d116032de65c5bd"
       },
       {
         "path": "README.md",
@@ -903,7 +903,7 @@
       },
       {
         "path": "ops/refactor/STATE.md",
-        "sha256": "186e4ef0746b71a58b3dd34b81ed4d80925e174f29f1e90bb3528870a85bc972"
+        "sha256": "f79b64f8e216512339616995fa40001765526a6b1d81882f00bdf500598473ee"
       },
       {
         "path": "ops/refactor/archive/PERF_FINDINGS.md",
@@ -31472,7 +31472,7 @@
       "path": "src/app/api/dispense-results/route.test.ts",
       "classes": ["test"],
       "detectors": ["mapping_precedence", "override_flag", "raw_role_semantics"],
-      "sha256": "2380ca66712ec956aab8a5e93ab88cd912e7a19ef53541b270ff9f2a970cb33f"
+      "sha256": "b2456d64c198e29e3ef560f15c13426cad18f3e6acba16eac88d2b81424e1961"
     },
     {
       "path": "src/app/api/dispense-tasks/[id]/groups/route.test.ts",

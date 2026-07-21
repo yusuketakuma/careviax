@@ -89,3 +89,15 @@ export function enqueuePrescriptionCreatedWebhook(
     data,
   });
 }
+
+export function enqueuePrescriptionDispensedWebhook(
+  tx: WebhookEnqueueTx,
+  input: { orgId: string; taskId: string; resultCount: number },
+) {
+  const { orgId, ...data } = input;
+  return enqueueWebhookEvent(tx, {
+    orgId,
+    event: 'prescription.dispensed',
+    data,
+  });
+}
