@@ -19,16 +19,6 @@ export function createMalformedJsonRequest(url: string) {
   });
 }
 
-export const authCtx = {
-  ctx: {
-    orgId: 'org_1',
-    userId: 'user_1',
-    role: 'pharmacist',
-    ipAddress: '127.0.0.1',
-    userAgent: 'test',
-  },
-};
-
 export const accessibleSchedule = {
   pharmacist_id: 'user_1',
   case_: {

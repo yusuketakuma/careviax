@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest, NextResponse } from 'next/server';
 import {
-  authCtx,
   accessibleSchedule,
   buildVisitRecord,
   confirmableHandoff,
@@ -114,6 +113,16 @@ import {
   VisitHandoffStaleRecordError,
 } from '@/server/services/visit-handoff';
 import { expectSensitiveNoStore } from '@/test/api-response-assertions';
+
+const authCtx = {
+  ctx: {
+    orgId: 'org_1',
+    userId: 'user_1',
+    role: 'pharmacist',
+    ipAddress: '127.0.0.1',
+    userAgent: 'test',
+  },
+};
 
 describe('/api/visit-records/[id]/handoff', () => {
   beforeEach(() => {

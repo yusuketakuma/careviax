@@ -903,7 +903,7 @@
       },
       {
         "path": "ops/refactor/STATE.md",
-        "sha256": "b781b0f5b203df7dd06c851fc6e712403a0c711ec21679585761ebe6b83d55b5"
+        "sha256": "0aa1f4e7c5ecb11fc124be28978cb6b88d98c31b4baed761f944bd67978ce454"
       },
       {
         "path": "ops/refactor/archive/PERF_FINDINGS.md",
@@ -32554,7 +32554,7 @@
       "path": "src/app/api/visit-records/[id]/handoff/route.test.ts",
       "classes": ["test"],
       "detectors": ["mapping_precedence", "raw_role_semantics", "tenant_role"],
-      "sha256": "40b14db1a1a56cf35923057d49013cec953e7dda57f138a124a97da29dc2093b"
+      "sha256": "c69588a33aa3eda25c93198f18561bf5e03771c5fa4584d77332a09bedcbd7c4"
     },
     {
       "path": "src/app/api/visit-records/[id]/handoff/supervision-confirm/route.test.ts",
