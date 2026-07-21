@@ -6,6 +6,7 @@ import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { withOrgContext } from '@/lib/db/rls';
 import { prisma } from '@/lib/db/client';
+import { enqueueHandoffCreatedWebhook } from '@/server/services/outbound-webhook-queue';
 import { z } from 'zod';
 
 /**
@@ -200,6 +201,13 @@ const authenticatedPOST = withAuthContext(
             },
           });
         }
+
+        await enqueueHandoffCreatedWebhook(tx, {
+          orgId: ctx.orgId,
+          handoffItemId: item.id,
+          boardId: item.board_id,
+          handoffKind: isMessage ? 'message' : isConsult ? 'consult' : 'transfer',
+        });
 
         return item;
       },

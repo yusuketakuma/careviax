@@ -8,12 +8,14 @@ const {
   handoffBoardFindFirstMock,
   userFindFirstMock,
   withOrgContextMock,
+  enqueueHandoffCreatedWebhookMock,
 } = vi.hoisted(() => ({
   authMock: vi.fn(),
   membershipFindFirstMock: vi.fn(),
   handoffBoardFindFirstMock: vi.fn(),
   userFindFirstMock: vi.fn(),
   withOrgContextMock: vi.fn(),
+  enqueueHandoffCreatedWebhookMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/config', () => ({ auth: authMock }));
@@ -28,6 +30,10 @@ vi.mock('@/lib/db/client', () => ({
 
 vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
+}));
+
+vi.mock('@/server/services/outbound-webhook-queue', () => ({
+  enqueueHandoffCreatedWebhook: enqueueHandoffCreatedWebhookMock,
 }));
 
 import { POST } from './route';
@@ -60,6 +66,7 @@ describe('/api/handoff-board/items', () => {
     authMock.mockResolvedValue({ user: { id: 'user_1' } });
     membershipFindFirstMock.mockResolvedValue({ role: 'pharmacist' });
     userFindFirstMock.mockResolvedValue({ id: 'user_2' });
+    enqueueHandoffCreatedWebhookMock.mockResolvedValue(1);
   });
 
   it('returns 201 on valid transfer creation', async () => {
@@ -121,6 +128,42 @@ describe('/api/handoff-board/items', () => {
     expect(bodyText).not.toContain('鈴木 一郎');
     expect(bodyText).not.toContain('14時の鈴木様');
     expect(bodyText).not.toContain('raw handoff create failure');
+  });
+
+  it('does not return success when the durable handoff intent cannot be queued', async () => {
+    handoffBoardFindFirstMock.mockResolvedValue({ id: 'board_1' });
+    const created = {
+      id: 'item_1',
+      board_id: 'board_1',
+      recipient_user_id: 'user_2',
+      recipient_label: '担当者',
+      lifecycle_status: null,
+      consult_status: null,
+    };
+    const itemCreateMock = vi.fn().mockResolvedValue(created);
+    const auditCreateMock = vi.fn().mockResolvedValue({ id: 'audit_1' });
+    withOrgContextMock.mockImplementation(async (_orgId: string, fn: (tx: unknown) => unknown) =>
+      fn({
+        handoffItem: { create: itemCreateMock },
+        auditLog: { create: auditCreateMock },
+      }),
+    );
+    enqueueHandoffCreatedWebhookMock.mockRejectedValueOnce(new Error('queue unavailable'));
+
+    const req = createRequest('http://localhost/api/handoff-board/items', {
+      board_id: 'board_1',
+      kind: 'message',
+      content: '連絡事項',
+      recipient_user_id: 'user_2',
+      recipient_label: '担当者',
+    });
+    const res = await POST(req, { params: Promise.resolve({}) });
+
+    expect(res!.status).toBe(500);
+    expectSensitiveNoStore(res!);
+    expect(itemCreateMock).toHaveBeenCalledTimes(1);
+    expect(auditCreateMock).toHaveBeenCalledTimes(1);
+    expect(enqueueHandoffCreatedWebhookMock).toHaveBeenCalledTimes(1);
   });
 
   it('returns 404 when board not found', async () => {
@@ -261,6 +304,12 @@ describe('/api/handoff-board/items', () => {
         }),
       }),
     );
+    expect(enqueueHandoffCreatedWebhookMock).toHaveBeenCalledWith(expect.any(Object), {
+      orgId: 'org_1',
+      handoffItemId: 'item_transfer',
+      boardId: 'board_1',
+      handoffKind: 'transfer',
+    });
   });
 
   it.each([
@@ -370,6 +419,10 @@ describe('/api/handoff-board/items', () => {
         }),
       }),
     );
+    expect(enqueueHandoffCreatedWebhookMock).toHaveBeenCalledWith(
+      expect.any(Object),
+      expect.objectContaining({ handoffItemId: 'item_message', handoffKind: 'message' }),
+    );
   });
 
   it('rejects a message (kind=message) without a recipient', async () => {
@@ -435,6 +488,10 @@ describe('/api/handoff-board/items', () => {
           target_id: 'item_consult',
         }),
       }),
+    );
+    expect(enqueueHandoffCreatedWebhookMock).toHaveBeenCalledWith(
+      expect.any(Object),
+      expect.objectContaining({ handoffItemId: 'item_consult', handoffKind: 'consult' }),
     );
   });
 });

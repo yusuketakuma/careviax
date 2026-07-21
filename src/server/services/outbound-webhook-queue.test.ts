@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
-import { enqueueQualificationCheckedWebhook, enqueueWebhookEvent } from './outbound-webhook-queue';
+import {
+  enqueueHandoffCreatedWebhook,
+  enqueueQualificationCheckedWebhook,
+  enqueueWebhookEvent,
+} from './outbound-webhook-queue';
 
 describe('outbound webhook queue', () => {
   it('queues reference-only webhook deliveries inside the caller transaction', async () => {
@@ -106,6 +110,43 @@ describe('outbound webhook queue', () => {
               checkedAt: checkedAt.toISOString(),
               insuranceNumberPresent: true,
               identityMatch: 'matched',
+            },
+          }),
+        }),
+      ],
+      skipDuplicates: true,
+    });
+  });
+
+  it('queues handoff references without persisting content or recipient details', async () => {
+    const tx = {
+      webhookRegistration: {
+        findMany: vi
+          .fn()
+          .mockResolvedValue([{ id: 'webhook_1', url: 'https://partner.example.com/handoffs' }]),
+      },
+      webhookDelivery: { createMany: vi.fn().mockResolvedValue({ count: 1 }) },
+    };
+
+    await expect(
+      enqueueHandoffCreatedWebhook(tx as never, {
+        orgId: 'org_1',
+        handoffItemId: 'item_1',
+        boardId: 'board_1',
+        handoffKind: 'transfer',
+      }),
+    ).resolves.toBe(1);
+
+    expect(tx.webhookDelivery.createMany).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({
+          event: 'handoff.created',
+          payload: expect.objectContaining({
+            event: 'handoff.created',
+            data: {
+              handoffItemId: 'item_1',
+              boardId: 'board_1',
+              handoffKind: 'transfer',
             },
           }),
         }),

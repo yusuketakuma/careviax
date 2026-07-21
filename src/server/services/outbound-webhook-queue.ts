@@ -120,3 +120,20 @@ export function enqueueQualificationCheckedWebhook(
     data: { ...data, checkedAt: checkedAt.toISOString() },
   });
 }
+
+export function enqueueHandoffCreatedWebhook(
+  tx: WebhookEnqueueTx,
+  input: {
+    orgId: string;
+    handoffItemId: string;
+    boardId: string;
+    handoffKind: 'transfer' | 'consult' | 'message';
+  },
+) {
+  const { orgId, ...data } = input;
+  return enqueueWebhookEvent(tx, {
+    orgId,
+    event: 'handoff.created',
+    data,
+  });
+}

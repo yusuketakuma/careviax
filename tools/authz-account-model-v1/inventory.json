@@ -735,7 +735,7 @@
       },
       {
         "path": "Plans.md",
-        "sha256": "3d8ea25c76eadf86b2ed0f35dae01b8a3036cf5ff9375dc8a88272f57f11a8ec"
+        "sha256": "4dd771843a60e3b8c7070b6ee527130a2883c9a2e1bc0b2706960e5f4bfa0729"
       },
       {
         "path": "README.md",
@@ -903,7 +903,7 @@
       },
       {
         "path": "ops/refactor/STATE.md",
-        "sha256": "c0775b0ac1e3ea7d990067337a08cf1d526a376a00df104d1e24049d28d2c55a"
+        "sha256": "472eb69f90ca9bf1254c407a353daf6b59c617ff16653de749c7f88cac3c5ab2"
       },
       {
         "path": "ops/refactor/archive/PERF_FINDINGS.md",
@@ -1991,7 +1991,7 @@
       },
       {
         "path": "src/server/services/outbound-webhook.ts",
-        "sha256": "d9cb1bf7d72b8d2da41dad5ce7188e21c99aa0886586c616ca5e6612594f0a51"
+        "sha256": "0fc798d03751c7416e44cfb98ca9278c79a3b555b793d8ea8682a91eabb204b3"
       },
       {
         "path": "src/server/services/pdf-documents.test.tsx",
@@ -31746,7 +31746,7 @@
       "path": "src/app/api/handoff-board/items/route.test.ts",
       "classes": ["test"],
       "detectors": ["mapping_precedence", "raw_role_semantics"],
-      "sha256": "34a7c28bfcbe6b412e921ec9e6036d864c7a6f4a2c9867e21a936eaf007573c2"
+      "sha256": "efd41cf2b7c63665e8f737676628f2467bc1e3b20fee2977a67a812d34d60b93"
     },
     {
       "path": "src/app/api/handoff-board/route.test.ts",
