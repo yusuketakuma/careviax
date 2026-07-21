@@ -735,7 +735,7 @@
       },
       {
         "path": "Plans.md",
-        "sha256": "0d9743be4998bf2b99711730437439830b9a2343deb6c8fe6e8dc04287dad9cf"
+        "sha256": "19c54f4512778751b1ff1f89ef7e72f465e764898c52304220625cec5b963091"
       },
       {
         "path": "README.md",
@@ -903,7 +903,7 @@
       },
       {
         "path": "ops/refactor/STATE.md",
-        "sha256": "21f517175ef89a635dacfc7fc9bebaba742443c2b202d2b0a624aa1e0fc2c9d2"
+        "sha256": "4c2e62773eb0ca801b735dc0b2266829bfe8b7293dd97ca26eb1feae71951c1f"
       },
       {
         "path": "ops/refactor/archive/PERF_FINDINGS.md",

@@ -648,11 +648,6 @@
       "task_id": "MAINT-FILE-SIZE-1000-001"
     },
     {
-      "path": "src/modules/pharmacy/medication-stock/application/apply-prescription-supply.ts",
-      "max_lines": 1356,
-      "task_id": "MAINT-FILE-SIZE-1000-001"
-    },
-    {
       "path": "src/phos/api/client.test.ts",
       "max_lines": 1668,
       "task_id": "MAINT-FILE-SIZE-1000-001"
