@@ -18,15 +18,23 @@ const {
 }));
 
 vi.mock('@/lib/auth/context', () => ({
-  requireAuthContext: requireAuthContextMock,
-}));
-
-vi.mock('@/lib/db/client', () => ({
-  prisma: {
-    prescriberInstitution: {
-      findFirst: prescriberInstitutionFindFirstMock,
+  withAuthContext:
+    (
+      handler: (
+        req: NextRequest,
+        ctx: Record<string, unknown>,
+        routeContext: { params: Promise<{ id: string }> },
+      ) => Promise<Response>,
+      options?: unknown,
+    ) =>
+    async (req: NextRequest, routeContext: { params: Promise<{ id: string }> }) => {
+      const authResult = await requireAuthContextMock(req, options);
+      if ('response' in authResult) return authResult.response;
+      const response = await handler(req, authResult.ctx, routeContext);
+      response.headers.set('Cache-Control', 'private, no-store, max-age=0');
+      response.headers.set('Pragma', 'no-cache');
+      return response;
     },
-  },
 }));
 
 vi.mock('@/lib/db/rls', () => ({
@@ -68,7 +76,13 @@ describe('/api/prescriber-institutions/[id]', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     requireAuthContextMock.mockResolvedValue({
-      ctx: { orgId: 'org_1', userId: 'user_1', role: 'admin' },
+      ctx: {
+        orgId: 'org_1',
+        userId: 'user_1',
+        role: 'admin',
+        requestId: 'request_1',
+        correlationId: 'correlation_1',
+      },
     });
     prescriberInstitutionFindFirstMock.mockResolvedValue({
       id: 'institution_1',
@@ -114,6 +128,7 @@ describe('/api/prescriber-institutions/[id]', () => {
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
         prescriberInstitution: {
+          findFirst: prescriberInstitutionFindFirstMock,
           update: prescriberInstitutionUpdateMock,
           delete: prescriberInstitutionDeleteMock,
         },
@@ -213,6 +228,23 @@ describe('/api/prescriber-institutions/[id]', () => {
     });
   });
 
+  it('does not update an institution outside the authenticated organization', async () => {
+    prescriberInstitutionFindFirstMock.mockResolvedValueOnce(null);
+
+    const response = await PATCH(createRequest({ notes: '更新' }), {
+      params: Promise.resolve({ id: 'institution_other_org' }),
+    });
+    if (!response) throw new Error('response is required');
+
+    expect(response.status).toBe(404);
+    expect(withOrgContextMock).toHaveBeenCalledWith(
+      'org_1',
+      expect.any(Function),
+      expect.objectContaining({ requestContext: expect.objectContaining({ orgId: 'org_1' }) }),
+    );
+    expect(prescriberInstitutionUpdateMock).not.toHaveBeenCalled();
+  });
+
   it('rejects malformed contact numbers before loading the institution', async () => {
     const response = await PATCH(
       createRequest({
@@ -300,6 +332,24 @@ describe('/api/prescriber-institutions/[id]', () => {
     expect(prescriberInstitutionDeleteMock).toHaveBeenCalledWith({
       where: { id: 'institution_1' },
     });
+  });
+
+  it('does not clear references for an institution outside the authenticated organization', async () => {
+    prescriberInstitutionFindFirstMock.mockResolvedValueOnce(null);
+
+    const response = await DELETE(createDeleteRequest(), {
+      params: Promise.resolve({ id: 'institution_other_org' }),
+    });
+    if (!response) throw new Error('response is required');
+
+    expect(response.status).toBe(404);
+    expect(withOrgContextMock).toHaveBeenCalledWith(
+      'org_1',
+      expect.any(Function),
+      expect.objectContaining({ requestContext: expect.objectContaining({ orgId: 'org_1' }) }),
+    );
+    expect(prescriptionIntakeUpdateManyMock).not.toHaveBeenCalled();
+    expect(prescriberInstitutionDeleteMock).not.toHaveBeenCalled();
   });
 
   it('rejects blank institution ids before clearing intake references or deleting', async () => {

@@ -1,12 +1,8 @@
-import { NextRequest } from 'next/server';
-import { unstable_rethrow } from 'next/navigation';
-import { requireAuthContext } from '@/lib/auth/context';
+import { withAuthContext } from '@/lib/auth/context';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { withOrgContext } from '@/lib/db/rls';
-import { internalError, success, validationError, notFound } from '@/lib/api/response';
-import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
-import { prisma } from '@/lib/db/client';
+import { success, validationError, notFound } from '@/lib/api/response';
 import { updatePrescriberInstitutionSchema } from '@/lib/validations/prescriber-institution';
 
 function toResponse(item: {
@@ -54,152 +50,153 @@ function toResponse(item: {
   };
 }
 
-async function authenticatedGET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canReport',
-    message: '医療機関マスターの閲覧権限がありません',
-  });
-  if ('response' in authResult) return authResult.response;
-  const ctx = authResult.ctx;
-  const { id: rawId } = await params;
-  const id = normalizeRequiredRouteParam(rawId);
-  if (!id) return validationError('医療機関IDが不正です');
+const authenticatedGET = withAuthContext(
+  async (_req, ctx, { params }) => {
+    const { id: rawId } = await params;
+    const id = normalizeRequiredRouteParam(rawId);
+    if (!id) return validationError('医療機関IDが不正です');
 
-  const item = await prisma.prescriberInstitution.findFirst({
-    where: {
-      id,
-      org_id: ctx.orgId,
-    },
-    include: {
-      _count: {
-        select: {
-          prescription_intakes: true,
-        },
-      },
-      prescription_intakes: {
-        orderBy: [{ prescribed_date: 'desc' }, { created_at: 'desc' }],
-        take: 10,
-        select: {
-          id: true,
-          prescribed_date: true,
-          cycle_id: true,
-          cycle: {
-            select: {
-              patient_id: true,
-              case_id: true,
-              case_: {
-                select: {
-                  patient: {
-                    select: {
-                      name: true,
+    const item = await withOrgContext(
+      ctx.orgId,
+      (tx) =>
+        tx.prescriberInstitution.findFirst({
+          where: {
+            id,
+            org_id: ctx.orgId,
+          },
+          include: {
+            _count: {
+              select: {
+                prescription_intakes: true,
+              },
+            },
+            prescription_intakes: {
+              orderBy: [{ prescribed_date: 'desc' }, { created_at: 'desc' }],
+              take: 10,
+              select: {
+                id: true,
+                prescribed_date: true,
+                cycle_id: true,
+                cycle: {
+                  select: {
+                    patient_id: true,
+                    case_id: true,
+                    case_: {
+                      select: {
+                        patient: {
+                          select: {
+                            name: true,
+                          },
+                        },
+                      },
                     },
                   },
                 },
               },
             },
           },
-        },
+        }),
+      { requestContext: ctx },
+    );
+
+    if (!item) return notFound('医療機関が見つかりません');
+    return success({ data: toResponse(item) });
+  },
+  {
+    permission: 'canReport',
+    message: '医療機関マスターの閲覧権限がありません',
+  },
+);
+
+export const GET = authenticatedGET;
+
+export const PATCH = withAuthContext(
+  async (req, ctx, { params }) => {
+    const { id: rawId } = await params;
+    const id = normalizeRequiredRouteParam(rawId);
+    if (!id) return validationError('医療機関IDが不正です');
+
+    const payload = await readJsonObjectRequestBody(req);
+    if (!payload) return validationError('リクエストボディが不正です');
+
+    const parsed = updatePrescriberInstitutionSchema.safeParse(payload);
+    if (!parsed.success) {
+      return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
+    }
+
+    const updated = await withOrgContext(
+      ctx.orgId,
+      async (tx) => {
+        const existing = await tx.prescriberInstitution.findFirst({
+          where: { id, org_id: ctx.orgId },
+          select: { id: true },
+        });
+        if (!existing) return null;
+
+        return tx.prescriberInstitution.update({
+          where: { id },
+          data: {
+            ...(parsed.data.name !== undefined ? { name: parsed.data.name } : {}),
+            ...(parsed.data.institution_code !== undefined
+              ? { institution_code: parsed.data.institution_code || null }
+              : {}),
+            ...(parsed.data.address !== undefined ? { address: parsed.data.address || null } : {}),
+            ...(parsed.data.phone !== undefined ? { phone: parsed.data.phone || null } : {}),
+            ...(parsed.data.fax !== undefined ? { fax: parsed.data.fax || null } : {}),
+            ...(parsed.data.notes !== undefined ? { notes: parsed.data.notes || null } : {}),
+          },
+        });
       },
-    },
-  });
+      { requestContext: ctx },
+    );
 
-  if (!item) return notFound('医療機関が見つかりません');
-  return success({ data: toResponse(item) });
-}
-
-export async function GET(req: NextRequest, routeContext: { params: Promise<{ id: string }> }) {
-  try {
-    return withSensitiveNoStore(await authenticatedGET(req, routeContext));
-  } catch (err) {
-    unstable_rethrow(err);
-    return withSensitiveNoStore(internalError());
-  }
-}
-
-export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const authResult = await requireAuthContext(req, {
+    if (!updated) return notFound('医療機関が見つかりません');
+    return success({ data: toResponse(updated) });
+  },
+  {
     permission: 'canAdmin',
     message: '医療機関マスターの更新権限がありません',
-  });
-  if ('response' in authResult) return authResult.response;
-  const ctx = authResult.ctx;
-  const { id: rawId } = await params;
-  const id = normalizeRequiredRouteParam(rawId);
-  if (!id) return validationError('医療機関IDが不正です');
+  },
+);
 
-  const payload = await readJsonObjectRequestBody(req);
-  if (!payload) return validationError('リクエストボディが不正です');
+export const DELETE = withAuthContext(
+  async (_req, ctx, { params }) => {
+    const { id: rawId } = await params;
+    const id = normalizeRequiredRouteParam(rawId);
+    if (!id) return validationError('医療機関IDが不正です');
 
-  const parsed = updatePrescriberInstitutionSchema.safeParse(payload);
-  if (!parsed.success) {
-    return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
-  }
+    const deleted = await withOrgContext(
+      ctx.orgId,
+      async (tx) => {
+        const existing = await tx.prescriberInstitution.findFirst({
+          where: { id, org_id: ctx.orgId },
+          select: { id: true },
+        });
+        if (!existing) return false;
 
-  const existing = await prisma.prescriberInstitution.findFirst({
-    where: { id, org_id: ctx.orgId },
-    select: { id: true },
-  });
-  if (!existing) return notFound('医療機関が見つかりません');
+        await tx.prescriptionIntake.updateMany({
+          where: {
+            org_id: ctx.orgId,
+            prescriber_institution_id: id,
+          },
+          data: {
+            prescriber_institution_id: null,
+          },
+        });
 
-  const updated = await withOrgContext(
-    ctx.orgId,
-    async (tx) => {
-      return tx.prescriberInstitution.update({
-        where: { id },
-        data: {
-          ...(parsed.data.name !== undefined ? { name: parsed.data.name } : {}),
-          ...(parsed.data.institution_code !== undefined
-            ? { institution_code: parsed.data.institution_code || null }
-            : {}),
-          ...(parsed.data.address !== undefined ? { address: parsed.data.address || null } : {}),
-          ...(parsed.data.phone !== undefined ? { phone: parsed.data.phone || null } : {}),
-          ...(parsed.data.fax !== undefined ? { fax: parsed.data.fax || null } : {}),
-          ...(parsed.data.notes !== undefined ? { notes: parsed.data.notes || null } : {}),
-        },
-      });
-    },
-    { requestContext: ctx },
-  );
+        await tx.prescriberInstitution.delete({
+          where: { id },
+        });
+        return true;
+      },
+      { requestContext: ctx },
+    );
 
-  return success({ data: toResponse(updated) });
-}
-
-export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const authResult = await requireAuthContext(req, {
+    if (!deleted) return notFound('医療機関が見つかりません');
+    return success({ data: { id } });
+  },
+  {
     permission: 'canAdmin',
     message: '医療機関マスターの削除権限がありません',
-  });
-  if ('response' in authResult) return authResult.response;
-  const ctx = authResult.ctx;
-  const { id: rawId } = await params;
-  const id = normalizeRequiredRouteParam(rawId);
-  if (!id) return validationError('医療機関IDが不正です');
-
-  const existing = await prisma.prescriberInstitution.findFirst({
-    where: { id, org_id: ctx.orgId },
-    select: { id: true },
-  });
-  if (!existing) return notFound('医療機関が見つかりません');
-
-  await withOrgContext(
-    ctx.orgId,
-    async (tx) => {
-      await tx.prescriptionIntake.updateMany({
-        where: {
-          org_id: ctx.orgId,
-          prescriber_institution_id: id,
-        },
-        data: {
-          prescriber_institution_id: null,
-        },
-      });
-
-      await tx.prescriberInstitution.delete({
-        where: { id },
-      });
-    },
-    { requestContext: ctx },
-  );
-
-  return success({ data: { id } });
-}
+  },
+);
