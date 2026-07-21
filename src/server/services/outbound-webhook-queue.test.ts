@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  enqueueAuditExportedWebhook,
   enqueueHandoffCreatedWebhook,
   enqueueQualificationCheckedWebhook,
   enqueueReportDeliveryUpdatedWebhook,
@@ -193,6 +194,47 @@ describe('outbound webhook queue', () => {
               status: 'response_waiting',
               sentCount: 1,
               failedCount: 1,
+            },
+          }),
+        }),
+      ],
+      skipDuplicates: true,
+    });
+  });
+
+  it('queues audit export metadata without actor, filters, or exported rows', async () => {
+    const tx = {
+      webhookRegistration: {
+        findMany: vi
+          .fn()
+          .mockResolvedValue([
+            { id: 'webhook_1', url: 'https://partner.example.com/audit-events' },
+          ]),
+      },
+      webhookDelivery: { createMany: vi.fn().mockResolvedValue({ count: 1 }) },
+    };
+
+    await expect(
+      enqueueAuditExportedWebhook(tx as never, {
+        orgId: 'org_1',
+        exportType: 'audit_log',
+        format: 'csv',
+        recordCount: 10000,
+        truncated: true,
+      }),
+    ).resolves.toBe(1);
+
+    expect(tx.webhookDelivery.createMany).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({
+          event: 'audit.exported',
+          payload: expect.objectContaining({
+            event: 'audit.exported',
+            data: {
+              exportType: 'audit_log',
+              format: 'csv',
+              recordCount: 10000,
+              truncated: true,
             },
           }),
         }),

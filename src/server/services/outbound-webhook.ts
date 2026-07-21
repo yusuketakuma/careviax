@@ -23,6 +23,7 @@ export const WEBHOOK_EVENT_TYPES = [
   'qualification.checked',
   'handoff.created',
   'report.delivery_updated',
+  'audit.exported',
 ] as const;
 
 export type WebhookEventType = (typeof WEBHOOK_EVENT_TYPES)[number];
@@ -76,6 +77,7 @@ const WEBHOOK_REFERENCE_DATA_KEYS: Record<WebhookEventType, ReadonlySet<string>>
     'sentCount',
     'failedCount',
   ]),
+  'audit.exported': new Set(['exportType', 'format', 'recordCount', 'truncated']),
 };
 
 export function assertReferenceOnlyWebhookData(

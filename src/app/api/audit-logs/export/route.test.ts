@@ -8,12 +8,16 @@ const {
   findManyMock,
   auditLogReviewFindManyMock,
   recordDataExportAuditMock,
+  withOrgContextMock,
+  enqueueAuditExportedWebhookMock,
 } = vi.hoisted(() => ({
   authMock: vi.fn(),
   membershipFindFirstMock: vi.fn(),
   findManyMock: vi.fn(),
   auditLogReviewFindManyMock: vi.fn(),
   recordDataExportAuditMock: vi.fn(),
+  withOrgContextMock: vi.fn(),
+  enqueueAuditExportedWebhookMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/config', () => ({
@@ -36,6 +40,14 @@ vi.mock('@/lib/db/client', () => ({
 
 vi.mock('@/server/services/export-audit', () => ({
   recordDataExportAudit: recordDataExportAuditMock,
+}));
+
+vi.mock('@/lib/db/rls', () => ({
+  withOrgContext: withOrgContextMock,
+}));
+
+vi.mock('@/server/services/outbound-webhook-queue', () => ({
+  enqueueAuditExportedWebhook: enqueueAuditExportedWebhookMock,
 }));
 
 import { GET } from './route';
@@ -96,6 +108,11 @@ describe('/api/audit-logs/export GET', () => {
       },
     ]);
     auditLogReviewFindManyMock.mockResolvedValue([]);
+    recordDataExportAuditMock.mockResolvedValue(undefined);
+    enqueueAuditExportedWebhookMock.mockResolvedValue(1);
+    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
+      callback({ auditLog: { create: vi.fn() } }),
+    );
   });
 
   it('returns csv payload with UI-compatible filters', async () => {
@@ -163,6 +180,39 @@ describe('/api/audit-logs/export GET', () => {
         correlationId: 'audit_export_trace',
       }),
     );
+    expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
+      requestContext: expect.objectContaining({ orgId: 'org_1', userId: 'user_1' }),
+    });
+    expect(enqueueAuditExportedWebhookMock).toHaveBeenCalledWith(expect.any(Object), {
+      orgId: 'org_1',
+      exportType: 'audit_log',
+      format: 'csv',
+      recordCount: 1,
+      truncated: false,
+    });
+    expect(recordDataExportAuditMock.mock.calls[0]?.[0]).toBe(
+      enqueueAuditExportedWebhookMock.mock.calls[0]?.[0],
+    );
+  });
+
+  it('does not return an export when the durable audit event cannot be queued', async () => {
+    authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
+    enqueueAuditExportedWebhookMock.mockRejectedValueOnce(new Error('queue unavailable'));
+
+    const response = (await GET(
+      createRequest({ 'x-org-id': 'org_1' }, 'format=json'),
+      emptyRouteContext,
+    )) as Response;
+
+    expect(response.status).toBe(500);
+    expectNoStore(response);
+    await expect(response.json()).resolves.toEqual({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    expect(recordDataExportAuditMock).toHaveBeenCalledTimes(1);
+    expect(enqueueAuditExportedWebhookMock).toHaveBeenCalledTimes(1);
   });
 
   it('returns json payload when requested', async () => {

@@ -15,6 +15,8 @@ import {
 import { recordDataExportAudit } from '@/server/services/export-audit';
 import { quotedCsvRow as toCsvRow } from '@/lib/csv/safe-csv';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
+import { withOrgContext } from '@/lib/db/rls';
+import { enqueueAuditExportedWebhook } from '@/server/services/outbound-webhook-queue';
 
 const querySchema = z.object({
   format: z.enum(['csv', 'json']).default('csv'),
@@ -89,30 +91,43 @@ const authenticatedGET = withAuthContext(
     const truncated = logs.length === EXPORT_LIMIT;
     const exportLogs = enrichAuditLogsForReview(redactAuditLogsForResponse(logs), reviewRows);
 
-    await recordDataExportAudit(prisma, {
-      orgId: ctx.orgId,
-      actorId: ctx.userId,
-      targetType: 'audit_log',
-      format,
-      recordCount: logs.length,
-      filters: {
-        actor: filters.actor ?? null,
-        actorPharmacy: filters.actorPharmacy ?? null,
-        actorSite: filters.actorSite ?? null,
-        patient: filters.patient ?? null,
-        targetType: filters.targetType ?? null,
-        action: filters.action ?? null,
-        riskTier: filters.riskTier ?? null,
-        reviewState: filters.reviewState ?? null,
-        reviewedBy: filters.reviewedBy ?? null,
-        from: filters.from?.toISOString() ?? null,
-        to: filters.to?.toISOString() ?? null,
+    await withOrgContext(
+      ctx.orgId,
+      async (tx) => {
+        await recordDataExportAudit(tx, {
+          orgId: ctx.orgId,
+          actorId: ctx.userId,
+          targetType: 'audit_log',
+          format,
+          recordCount: logs.length,
+          filters: {
+            actor: filters.actor ?? null,
+            actorPharmacy: filters.actorPharmacy ?? null,
+            actorSite: filters.actorSite ?? null,
+            patient: filters.patient ?? null,
+            targetType: filters.targetType ?? null,
+            action: filters.action ?? null,
+            riskTier: filters.riskTier ?? null,
+            reviewState: filters.reviewState ?? null,
+            reviewedBy: filters.reviewedBy ?? null,
+            from: filters.from?.toISOString() ?? null,
+            to: filters.to?.toISOString() ?? null,
+          },
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          requestId: ctx.requestId,
+          correlationId: ctx.correlationId,
+        });
+        await enqueueAuditExportedWebhook(tx, {
+          orgId: ctx.orgId,
+          exportType: 'audit_log',
+          format,
+          recordCount: logs.length,
+          truncated,
+        });
       },
-      ipAddress: ctx.ipAddress,
-      userAgent: ctx.userAgent,
-      requestId: ctx.requestId,
-      correlationId: ctx.correlationId,
-    });
+      { requestContext: ctx },
+    );
 
     if (format === 'json') {
       const encoder = new TextEncoder();

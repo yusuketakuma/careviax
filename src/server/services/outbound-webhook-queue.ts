@@ -159,3 +159,21 @@ export function enqueueReportDeliveryUpdatedWebhook(
     data,
   });
 }
+
+export function enqueueAuditExportedWebhook(
+  tx: WebhookEnqueueTx,
+  input: {
+    orgId: string;
+    exportType: 'audit_log';
+    format: 'csv' | 'json';
+    recordCount: number;
+    truncated: boolean;
+  },
+) {
+  const { orgId, ...data } = input;
+  return enqueueWebhookEvent(tx, {
+    orgId,
+    event: 'audit.exported',
+    data,
+  });
+}

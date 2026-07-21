@@ -735,7 +735,7 @@
       },
       {
         "path": "Plans.md",
-        "sha256": "45e981a89b1c54bb86c7560f0bdd0ecc1a086db71b8ca9580b5b6c64ecd748ed"
+        "sha256": "604a23f0d48eb8056c053c8c92b6524124c881d864fd65de2424b4ffab949118"
       },
       {
         "path": "README.md",
@@ -903,7 +903,7 @@
       },
       {
         "path": "ops/refactor/STATE.md",
-        "sha256": "409b6cb59633f7701763b31842eececd98914b655fc234c1879d0e263d05162e"
+        "sha256": "54014f4d14e93b40840a5e77bcd286883c5f7b2788776e1248807986ca416493"
       },
       {
         "path": "ops/refactor/archive/PERF_FINDINGS.md",
@@ -1991,7 +1991,7 @@
       },
       {
         "path": "src/server/services/outbound-webhook.ts",
-        "sha256": "919def48efe8e0491def669fc9dd645a52f69fe5f6dbed1be9f44efa23825c10"
+        "sha256": "643fbaaa9e778e86da3baa37ad925a1cb918a47bf493338e36bfcf58ec1e0e1a"
       },
       {
         "path": "src/server/services/pdf-documents.test.tsx",
@@ -30997,7 +30997,7 @@
       "path": "src/app/api/audit-logs/export/route.test.ts",
       "classes": ["test"],
       "detectors": ["mapping_precedence", "raw_role_semantics"],
-      "sha256": "29ec9b80b252e52837ec36e2249e03161ea4f49d3b2adf8c2410c9ad2caff650"
+      "sha256": "129c11d7bb819c821ef413edcd1f60aaaf23589367e6af956e45d632be4bd5c6"
     },
     {
       "path": "src/app/api/audit-logs/route.test.ts",
