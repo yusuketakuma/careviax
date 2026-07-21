@@ -538,12 +538,13 @@ describe('/api/pharmacists GET', () => {
     expect(bodyText).not.toContain('raw pharmacist staff secret');
     expect(loggerErrorMock).toHaveBeenCalledTimes(1);
     expect(loggerErrorMock).toHaveBeenCalledWith(
-      {
-        event: 'pharmacists_get_unhandled_error',
+      expect.objectContaining({
+        event: 'route_handler_unhandled_error',
         route: '/api/pharmacists',
         method: 'GET',
-        status: 500,
-      },
+        requestId: expect.any(String),
+        correlationId: expect.any(String),
+      }),
       unsafeError,
     );
     const loggedContext = loggerErrorMock.mock.calls[0]?.[0] as Record<string, unknown>;
@@ -688,12 +689,13 @@ describe('/api/pharmacists POST', () => {
     expect(userCreateMock).not.toHaveBeenCalled();
     expect(loggerErrorMock).toHaveBeenCalledTimes(1);
     expect(loggerErrorMock).toHaveBeenCalledWith(
-      {
-        event: 'pharmacists_post_unhandled_error',
+      expect.objectContaining({
+        event: 'route_handler_unhandled_error',
         route: '/api/pharmacists',
         method: 'POST',
-        status: 500,
-      },
+        requestId: expect.any(String),
+        correlationId: expect.any(String),
+      }),
       unsafeError,
     );
     const loggedContext = loggerErrorMock.mock.calls[0]?.[0] as Record<string, unknown>;

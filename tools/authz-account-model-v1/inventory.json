@@ -735,7 +735,7 @@
       },
       {
         "path": "Plans.md",
-        "sha256": "dc25dfc4f59aab2cd8f52af57d26f683e6ca587b7028acb2d23b34eddae5c53e"
+        "sha256": "fc76e68025123f5ce770f32e3806703d23557c04a8c115c201836cd11cf236d7"
       },
       {
         "path": "README.md",
@@ -903,7 +903,7 @@
       },
       {
         "path": "ops/refactor/STATE.md",
-        "sha256": "907a93be6a91fc8712d1859529689a8be83c33ab1d3e07349e1ea0c32d9b8dde"
+        "sha256": "6562b7fb978bdc4f46d019bb20d5e404785449218a9df7e46e1fd9f360a4ef16"
       },
       {
         "path": "ops/refactor/archive/PERF_FINDINGS.md",
@@ -6444,7 +6444,7 @@
       "id": "mapping_precedence:src/app/api/pharmacists/route.ts",
       "detector": "mapping_precedence",
       "path": "src/app/api/pharmacists/route.ts",
-      "evidence_sha256": "a90cc508273f1d145a45d95cc9c286f408e9943ad064d4abe82bbc563c836f60",
+      "evidence_sha256": "ab66bb0e89f0440076c6d3ce631d5fa62eed16ff3a37a54e52ad23c9ecccea87",
       "principal": "human",
       "lifecycles": ["request"],
       "surfaces": ["rls", "writer"],
@@ -32345,7 +32345,7 @@
       "path": "src/app/api/pharmacists/route.test.ts",
       "classes": ["test"],
       "detectors": ["mapping_precedence", "override_flag", "raw_role_semantics", "tenant_role"],
-      "sha256": "f9e4febd358ae36d04a4927cecc9c16d3de68208f9e77b80652257cca2ffce36"
+      "sha256": "700f42f0405c34c132042106813224ec38d85a3c6d499eb34adb1399146a945b"
     },
     {
       "path": "src/app/api/pharmacy-contracts/[id]/documents/route.test.ts",
