@@ -1,12 +1,8 @@
 import { prisma } from '@/lib/db/client';
-import { mapWithConcurrency, normalizeConcurrencyLimit } from '@/lib/utils/concurrency';
+import { mapWithConcurrency } from '@/lib/utils/concurrency';
 import {
   getBillingCadencePreview,
   validateBillingRequirements,
-  type BillingCadencePreview,
-  type BillingCadenceProposalRow,
-  type BillingCadenceScheduleRow,
-  type BillingRequirementAlert,
   type BillingRequirementWorkflowSnapshot,
 } from './billing-requirement-validator';
 import { resolveBillingPayerBasis } from './billing-payer-basis';
@@ -15,137 +11,35 @@ import {
   findLatestBillingPrescriptionClassification,
   findLatestBillingPrescriptionClassificationsByCaseIds,
 } from './billing-prescription-classification';
-import type { InsuranceApplicationStatus, InsuranceType, PrismaClient } from '@prisma/client';
-import type {
-  BillingRuntimeHomeComprehensive,
-  BillingRuntimeSiteConfigStatus,
-} from './billing-runtime-context';
 import { resolveBillingRuntimeContext } from './billing-runtime-context';
 import { getHomeVisitSpecialMedicalProcedures } from '@/lib/patient/home-visit-intake';
 import { formatUtcDateKey } from '@/lib/date-key';
 import { addUtcDays, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 import { OPEN_VISIT_SCHEDULE_PROPOSAL_STATUSES } from '@/lib/visit-schedule-proposals/route-order';
 import { ACTIVE_BILLING_SCHEDULE_STATUSES, startOfBillingMonth } from './billing-cadence';
+import type {
+  BillingPreviewCadenceProposalRows,
+  BillingPreviewCadenceScheduleRows,
+  BillingPreviewCareCase,
+  BillingPreviewConsentRecord,
+  BillingPreviewInsurancePrefetch,
+  BillingPreviewInsuranceRecord,
+  BillingPreviewManagementPlanRecord,
+  BillingPreviewPharmacistWeeklyCapById,
+  BillingPreviewRuntimeContextCache,
+  BillingRuntimeContextResult,
+  CareInsuranceApplicationPreview,
+  LatestPrescriptionIntakeClassification,
+  PublicSubsidyApplicationPreview,
+  VisitScheduleBillingPreview,
+  VisitScheduleBillingPreviewDb,
+} from './visit-schedule-billing-preview.types';
+import { resolveBillingPreviewBatchConcurrency } from './visit-schedule-billing-preview.config';
 
-export type VisitScheduleBillingPreview = {
-  alerts: BillingRequirementAlert[];
-  cadence: BillingCadencePreview;
-  recommended_visit_type: string;
-  recommended_priority: 'normal' | 'urgent' | 'emergency';
-  suggested_schedule_slot_count: number;
-  effective_revision_code: string;
-  effective_revision_label: string;
-  site_config_status: BillingRuntimeSiteConfigStatus;
-  site_config_revision_code: string | null;
-  warnings: string[];
-  home_comprehensive_preview: BillingRuntimeHomeComprehensive | null;
-};
-
-export type VisitScheduleBillingPreviewDb = Pick<
-  PrismaClient,
-  | 'careCase'
-  | 'patientInsurance'
-  | 'prescriptionIntake'
-  | 'visitSchedule'
-  | 'visitScheduleProposal'
-  | 'user'
-  | 'consentRecord'
-  | 'managementPlan'
-  | 'pharmacySiteInsuranceConfig'
->;
-
-const DEFAULT_BILLING_PREVIEW_BATCH_CONCURRENCY = 8;
-const MAX_BILLING_PREVIEW_BATCH_CONCURRENCY = 16;
-
-function resolveBillingPreviewBatchConcurrency() {
-  return normalizeConcurrencyLimit(process.env.BILLING_PREVIEW_BATCH_CONCURRENCY, {
-    defaultValue: DEFAULT_BILLING_PREVIEW_BATCH_CONCURRENCY,
-    max: MAX_BILLING_PREVIEW_BATCH_CONCURRENCY,
-  });
-}
-
-type CareInsuranceApplicationPreview = {
-  application_status: InsuranceApplicationStatus;
-  previous_care_level: string | null;
-  provisional_care_level: string | null;
-  confirmed_care_level: string | null;
-  number?: string | null;
-} | null;
-
-type PublicSubsidyApplicationPreview = {
-  application_status: InsuranceApplicationStatus;
-  public_program_code: string | null;
-  insurer_number: string | null;
-  number: string | null;
-  application_submitted_at: Date | null;
-  valid_from: Date | null;
-} | null;
-
-type BillingPreviewCareCase = {
-  id: string;
-  patient_id: string;
-  primary_pharmacist_id: string | null;
-  required_visit_support: unknown;
-  patient: {
-    id: string;
-  };
-};
-
-type LatestPrescriptionIntakeClassification = Awaited<
-  ReturnType<typeof findLatestBillingPrescriptionClassification>
->;
-
-type BillingRuntimeContextResult = Awaited<ReturnType<typeof resolveBillingRuntimeContext>>;
-
-type BillingPreviewInsuranceType = Extract<InsuranceType, 'medical' | 'care'>;
-
-type BillingPreviewInsuranceRecord = {
-  patient_id: string;
-  insurance_type: InsuranceType;
-  application_status: InsuranceApplicationStatus;
-  number: string | null;
-  public_program_code: string | null;
-  insurer_number: string | null;
-  previous_care_level: string | null;
-  provisional_care_level: string | null;
-  confirmed_care_level: string | null;
-  application_submitted_at: Date | null;
-  valid_from: Date | null;
-  valid_until: Date | null;
-  created_at: Date;
-};
-
-type BillingPreviewInsurancePrefetch = {
-  resolveInsurance(args: {
-    patientId: string;
-    type: BillingPreviewInsuranceType;
-    asOf: Date;
-  }): CareInsuranceApplicationPreview;
-  resolvePendingPublicSubsidy(args: {
-    patientId: string;
-    asOf: Date;
-  }): PublicSubsidyApplicationPreview;
-};
-
-type BillingPreviewRuntimeContextCache = Map<string, Promise<BillingRuntimeContextResult>>;
-type BillingPreviewPharmacistWeeklyCapById = Map<string, number | null>;
-type BillingPreviewCadenceScheduleRows = BillingCadenceScheduleRow[];
-type BillingPreviewCadenceProposalRows = BillingCadenceProposalRow[];
-type BillingPreviewConsentRecord = {
-  id: string;
-  patient_id: string;
-  expiry_date: Date | null;
-  obtained_date: Date | null;
-};
-type BillingPreviewManagementPlanRecord = {
-  id: string;
-  case_id: string;
-  status: string;
-  next_review_date: Date | null;
-  effective_from: Date | null;
-  version: number | null;
-  approved_at: Date | null;
-};
+export type {
+  VisitScheduleBillingPreview,
+  VisitScheduleBillingPreviewDb,
+} from './visit-schedule-billing-preview.types';
 
 const BILLING_PREVIEW_CADENCE_SEARCH_DAYS = 120;
 
