@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { Pool } from 'pg';
 
 const prismaMocks = vi.hoisted(() => ({
-  PrismaPg: vi.fn(function PrismaPg(args: unknown) {
-    return { adapterArgs: args };
+  PrismaPg: vi.fn(function PrismaPg(args: unknown, options?: unknown) {
+    return { adapterArgs: args, adapterOptions: options };
   }),
   PrismaClient: vi.fn(function PrismaClient(args: unknown) {
     return { clientArgs: args };
@@ -34,9 +35,10 @@ async function loadClientWithPool(poolSize: string | undefined) {
   const { prisma } = await import('./client');
   void (prisma as unknown as { clientArgs: unknown }).clientArgs;
 
-  return prismaMocks.PrismaPg.mock.calls.at(-1)?.[0] as {
-    connectionString: string;
-    max: number;
+  const call = prismaMocks.PrismaPg.mock.calls.at(-1);
+  return {
+    pool: call?.[0] as Pool,
+    adapterOptions: call?.[1] as { disposeExternalPool?: boolean } | undefined,
   };
 }
 
@@ -74,8 +76,13 @@ describe('db client', () => {
     ['1000', 100],
   ])('normalizes DATABASE_POOL_SIZE=%p to %p', async (value, expected) => {
     await expect(loadClientWithPool(value)).resolves.toMatchObject({
-      connectionString: 'postgresql://user:pass@localhost:5432/careviax',
-      max: expected,
+      pool: {
+        options: {
+          connectionString: 'postgresql://user:pass@localhost:5432/careviax',
+          max: expected,
+        },
+      },
+      adapterOptions: { disposeExternalPool: true },
     });
     expect(prismaMocks.PrismaClient).toHaveBeenCalledOnce();
   });

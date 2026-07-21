@@ -1,5 +1,8 @@
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '@prisma/client';
+import { Pool } from 'pg';
+
+import { instrumentDatabasePool } from './query-metrics';
 
 // Staging/production secrets are resolved by the awaited Node instrumentation
 // startup barrier before Next.js accepts requests. Prisma remains synchronous
@@ -36,7 +39,9 @@ function getDatabaseConnectionString() {
 function createPrismaClient() {
   const connectionString = getDatabaseConnectionString();
   const poolMax = resolveDatabasePoolSize(process.env.DATABASE_POOL_SIZE);
-  const adapter = new PrismaPg({ connectionString, max: poolMax });
+  const pool = new Pool({ connectionString, max: poolMax });
+  instrumentDatabasePool(pool);
+  const adapter = new PrismaPg(pool, { disposeExternalPool: true });
   return new PrismaClient({ adapter });
 }
 
