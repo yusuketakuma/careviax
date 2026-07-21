@@ -363,11 +363,6 @@
       "task_id": "MAINT-FILE-SIZE-1000-001"
     },
     {
-      "path": "src/app/api/care-reports/route.ts",
-      "max_lines": 1136,
-      "task_id": "MAINT-FILE-SIZE-1000-001"
-    },
-    {
       "path": "src/app/api/care-reports/today-workspace/route.test.ts",
       "max_lines": 2438,
       "task_id": "MAINT-FILE-SIZE-1000-001"

@@ -11,14 +11,9 @@ import {
   validationError,
 } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
-import {
-  buildCursorPage,
-  parseOptionalBoundedIntegerParam,
-  parsePaginationParams,
-} from '@/lib/api/pagination';
+import { buildCursorPage, parsePaginationParams } from '@/lib/api/pagination';
 import { prisma } from '@/lib/db/client';
-import { readJsonObject, readJsonObjectString, toPrismaJsonInput } from '@/lib/db/json';
-import { dateKeySchema } from '@/lib/validations/date-key';
+import { toPrismaJsonInput } from '@/lib/db/json';
 import { trimStringOrUndefined } from '@/lib/validations/string';
 import { Prisma, ReportStatus, ReportType, type CareReport } from '@prisma/client';
 import { z } from 'zod';
@@ -36,6 +31,30 @@ import {
 import { getCareReportSourceBillingEvidence } from '@/server/services/care-report-source-readers';
 import { canOutputCareReport } from '@/server/services/care-report-output-policy';
 import { japanDayInstantRangeFromDateKey } from '@/lib/utils/date-boundary';
+import {
+  CARE_REPORT_KEYWORD_SCAN_LIMIT,
+  CARE_REPORT_KEYWORD_SCAN_READ_LIMIT,
+  CARE_REPORT_PALETTE_QUERY_SCAN_LIMIT,
+  CARE_REPORT_PALETTE_QUERY_SCAN_READ_LIMIT,
+  CARE_REPORT_PATIENT_SEARCH_CANDIDATE_LIMIT,
+  DEFAULT_CARE_REPORT_PALETTE_LIMIT,
+  careReportPatientSearchOrderBy,
+  careReportQuerySchema,
+  findUnsupportedPaletteCareReportFilters,
+  parseCareReportPaletteLimit,
+  readPresentOptionalSearchParams,
+} from './route.filters';
+import {
+  appendCareReportWhereAnd,
+  buildCareReportContentSummary,
+  buildCareReportCursorWhere,
+  buildCareReportListSelect,
+  buildDeliverySummary,
+  careReportListOrderBy,
+  readSearchableReportText,
+  readSelectedReportContent,
+  type CareReportListRow,
+} from './route.list';
 
 const requiredTrimmedStringSchema = (message: string) => z.string().trim().min(1, message);
 const optionalTrimmedStringSchema = z.preprocess(
@@ -59,276 +78,12 @@ const createCareReportSchema = z.object({
   template_id: optionalTrimmedStringSchema,
 });
 
-const CARE_REPORT_DELIVERY_RECORDS_PER_REPORT_LIMIT = 10;
-
-const careReportBaseSelect = {
-  id: true,
-  org_id: true,
-  patient_id: true,
-  case_id: true,
-  visit_record_id: true,
-  report_type: true,
-  status: true,
-  template_id: true,
-  created_by: true,
-  created_at: true,
-  updated_at: true,
-  delivery_records: {
-    select: {
-      status: true,
-      sent_at: true,
-    },
-    orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
-    take: CARE_REPORT_DELIVERY_RECORDS_PER_REPORT_LIMIT,
-  },
-} satisfies Prisma.CareReportSelect;
-
-const careReportContentSelect = {
-  ...careReportBaseSelect,
-  content: true,
-} satisfies Prisma.CareReportSelect;
-
-type CareReportListRow = Prisma.CareReportGetPayload<{
-  select: typeof careReportBaseSelect;
-}> & {
-  content?: Prisma.JsonValue;
-};
 type CareReportSourceDb = Pick<Prisma.TransactionClient, 'careCase' | 'patient' | 'visitRecord'>;
 type CareReportVisitLockDb = Pick<Prisma.TransactionClient, '$queryRaw'>;
 type CareReportBillingContextDb = Pick<Prisma.TransactionClient, 'billingEvidence'>;
 type CareReportCreateResult =
   | { kind: 'source_error'; response: Response }
   | { kind: 'created'; report: CareReport };
-
-function buildCareReportListSelect(args: {
-  orgId: string;
-  includeContent: boolean;
-}): Prisma.CareReportSelect {
-  return {
-    ...(args.includeContent ? careReportContentSelect : careReportBaseSelect),
-    delivery_records: {
-      ...careReportBaseSelect.delivery_records,
-      where: { org_id: args.orgId },
-    },
-  };
-}
-
-const careReportListOrderBy = [
-  { created_at: 'desc' },
-  { id: 'desc' },
-] satisfies Prisma.CareReportOrderByWithRelationInput[];
-const CARE_REPORT_KEYWORD_SCAN_LIMIT = 500;
-const CARE_REPORT_KEYWORD_SCAN_READ_LIMIT = CARE_REPORT_KEYWORD_SCAN_LIMIT + 1;
-const CARE_REPORT_PATIENT_SEARCH_CANDIDATE_LIMIT = 100;
-const DEFAULT_CARE_REPORT_PALETTE_LIMIT = 8;
-const MAX_CARE_REPORT_PALETTE_LIMIT = 50;
-const CARE_REPORT_PALETTE_QUERY_SCAN_LIMIT = 500;
-const CARE_REPORT_PALETTE_QUERY_SCAN_READ_LIMIT = CARE_REPORT_PALETTE_QUERY_SCAN_LIMIT + 1;
-const careReportPatientSearchOrderBy = [
-  { name_kana: 'asc' },
-  { name: 'asc' },
-  { id: 'asc' },
-] satisfies Prisma.PatientOrderByWithRelationInput[];
-
-const reportStatusSchema = z.nativeEnum(ReportStatus);
-const reportTypeSchema = z.nativeEnum(ReportType);
-const optionalDateParamSchema = dateKeySchema('日付形式が不正です（YYYY-MM-DD）').optional();
-const careReportQuerySchema = z.object({
-  view: z.enum(['palette']).optional(),
-  patient_id: z.string().trim().min(1).optional(),
-  visit_record_id: z.string().trim().min(1).optional(),
-  include_content: z.enum(['1', 'true']).optional(),
-  status: reportStatusSchema.optional(),
-  report_type: reportTypeSchema.optional(),
-  delivery_status: reportStatusSchema.optional(),
-  recipient: z.string().min(1).optional(),
-  q: z.string().min(1).optional(),
-  keyword: z.string().min(1).optional(),
-  date_from: optionalDateParamSchema,
-  date_to: optionalDateParamSchema,
-  sent_from: optionalDateParamSchema,
-  sent_to: optionalDateParamSchema,
-});
-
-function optionalTrimmedSearchParam(value: string | null) {
-  return value?.trim() || undefined;
-}
-
-const careReportPresentQueryFields = [
-  ['view', '表示形式を指定してください'],
-  ['patient_id', '患者IDを指定してください'],
-  ['visit_record_id', '訪問記録IDを指定してください'],
-  ['include_content', '本文取得指定を指定してください'],
-  ['status', 'ステータスを指定してください'],
-  ['report_type', '報告書種別を指定してください'],
-  ['delivery_status', '送付ステータスを指定してください'],
-  ['recipient', '送付先を指定してください'],
-  ['q', '検索語を指定してください'],
-  ['keyword', '本文検索語を指定してください'],
-  ['date_from', '開始日を指定してください'],
-  ['date_to', '終了日を指定してください'],
-  ['sent_from', '送付開始日を指定してください'],
-  ['sent_to', '送付終了日を指定してください'],
-] as const;
-
-function readPresentOptionalSearchParams(searchParams: URLSearchParams) {
-  const values: Record<string, string | undefined> = {};
-  const fieldErrors: Record<string, string[]> = {};
-
-  for (const [name, message] of careReportPresentQueryFields) {
-    const value = optionalTrimmedSearchParam(searchParams.get(name));
-    if (searchParams.has(name) && !value) {
-      fieldErrors[name] = [message];
-    }
-    values[name] = value;
-  }
-
-  if (Object.keys(fieldErrors).length > 0) {
-    return {
-      ok: false as const,
-      response: validationError('検索条件が不正です', fieldErrors),
-    };
-  }
-
-  return { ok: true as const, values };
-}
-
-function parseCareReportPaletteLimit(value: string | null) {
-  const parsed = parseOptionalBoundedIntegerParam(value, 1, MAX_CARE_REPORT_PALETTE_LIMIT);
-  if (!parsed.ok) {
-    return {
-      ok: false as const,
-      response: validationError('limit は 1〜50 の整数で指定してください', {
-        limit: ['limit は 1〜50 の整数で指定してください'],
-      }),
-    };
-  }
-
-  return {
-    ok: true as const,
-    value: parsed.value ?? DEFAULT_CARE_REPORT_PALETTE_LIMIT,
-  };
-}
-
-function findUnsupportedPaletteCareReportFilters(args: {
-  cursor?: string;
-  visitRecordId?: string;
-  includeContent?: string;
-  deliveryStatus?: ReportStatus;
-  recipient?: string;
-  keyword?: string;
-  sentFrom?: string;
-  sentTo?: string;
-}) {
-  const entries = [
-    ['cursor', args.cursor],
-    ['visit_record_id', args.visitRecordId],
-    ['include_content', args.includeContent],
-    ['delivery_status', args.deliveryStatus],
-    ['recipient', args.recipient],
-    ['keyword', args.keyword],
-    ['sent_from', args.sentFrom],
-    ['sent_to', args.sentTo],
-  ] as const;
-
-  return entries.filter(([, value]) => value !== undefined).map(([key]) => key);
-}
-
-function readSearchableReportText(contentValue: Prisma.JsonValue) {
-  const content = readJsonObject(contentValue);
-  const safeTextValues = [
-    readJsonObjectString(content, 'title'),
-    readJsonObjectString(content, 'summary'),
-    readJsonObjectString(content, 'body'),
-    readJsonObjectString(content, 'assessment'),
-    readJsonObjectString(content, 'plan'),
-  ];
-  return safeTextValues.filter(Boolean).join('\n').toLowerCase();
-}
-
-function readSelectedReportContent(report: CareReportListRow, shouldReadContent: boolean) {
-  if (!shouldReadContent || !('content' in report)) return null;
-  return report.content ?? null;
-}
-
-function buildCareReportContentSummary(contentValue: Prisma.JsonValue) {
-  const content = readJsonObject(contentValue);
-  if (!content) {
-    return {
-      title: null,
-      summary: null,
-      assessment: null,
-      plan: null,
-    };
-  }
-
-  return {
-    title: readJsonObjectString(content, 'title'),
-    summary: readJsonObjectString(content, 'summary'),
-    assessment: readJsonObjectString(content, 'assessment'),
-    plan: readJsonObjectString(content, 'plan'),
-  };
-}
-
-function appendCareReportWhereAnd(
-  where: Prisma.CareReportWhereInput,
-  clause: Prisma.CareReportWhereInput,
-): Prisma.CareReportWhereInput {
-  const existingAnd = where.AND ? (Array.isArray(where.AND) ? where.AND : [where.AND]) : [];
-  return { ...where, AND: [...existingAnd, clause] };
-}
-
-function buildCareReportCursorWhere(cursorReport: {
-  id: string;
-  created_at: Date;
-}): Prisma.CareReportWhereInput {
-  return {
-    OR: [
-      { created_at: { lt: cursorReport.created_at } },
-      {
-        created_at: { equals: cursorReport.created_at },
-        id: { lt: cursorReport.id },
-      },
-    ],
-  };
-}
-
-function buildDeliverySummary(
-  reports: Array<{
-    delivery_records: Array<{
-      status: ReportStatus | string;
-    }>;
-    failed_delivery_count?: number;
-  }>,
-  basis: 'page' | 'bounded_keyword_scan_result' = 'page',
-) {
-  return reports.reduce(
-    (summary, report) => {
-      const latestDeliveryStatus = report.delivery_records[0]?.status ?? null;
-      if (latestDeliveryStatus) {
-        summary.by_status[latestDeliveryStatus] =
-          (summary.by_status[latestDeliveryStatus] ?? 0) + 1;
-        if (latestDeliveryStatus === 'response_waiting') {
-          summary.pending_delivery_count += 1;
-        }
-      }
-      summary.failed_delivery_count +=
-        report.failed_delivery_count ??
-        report.delivery_records.filter((record) => record.status === 'failed').length;
-      return summary;
-    },
-    {
-      basis,
-      delivery_records_basis: 'loaded_latest_per_report' as const,
-      delivery_records_per_report_limit: CARE_REPORT_DELIVERY_RECORDS_PER_REPORT_LIMIT,
-      failed_delivery_count_basis: 'loaded_delivery_records' as const,
-      by_status_basis: 'latest_delivery_record_per_report' as const,
-      pending_delivery_count: 0,
-      failed_delivery_count: 0,
-      by_status: {} as Record<string, number>,
-    },
-  );
-}
 
 function isCareReportVisitTypeUniqueConflict(error: unknown) {
   return (

@@ -735,7 +735,7 @@
       },
       {
         "path": "Plans.md",
-        "sha256": "94173e9461dfe657e17964be28fd9719c9d4f989584514bc08778c69dc393d3d"
+        "sha256": "33188a00c7d911e9576b74fd84f862f87b47fef393da73cf0b4366cb578f1310"
       },
       {
         "path": "README.md",
@@ -903,7 +903,7 @@
       },
       {
         "path": "ops/refactor/STATE.md",
-        "sha256": "faf0453c76eb8866b7d6d2538223cc5451cc3d9c8d3d5f5afb5ce80e330d55b3"
+        "sha256": "0ad620f1e5d4e232eb8a4392d204a58a7d04628262f00a4f517b2bc4cbad14e1"
       },
       {
         "path": "ops/refactor/archive/PERF_FINDINGS.md",
@@ -1306,8 +1306,16 @@
         "sha256": "fee94cc64a4e5269f47443f8a14d316ea3616c231a20f721b643cf76e36c079b"
       },
       {
+        "path": "src/app/api/care-reports/route.filters.ts",
+        "sha256": "eed089586805051a0b5aa64e5637ae5c813a663d69d74a10394e53e8e7384999"
+      },
+      {
+        "path": "src/app/api/care-reports/route.list.ts",
+        "sha256": "d6fe6cc4f0775b555dcc5ec1baebce8b749e698a4b6d76761ddfc718af2ba450"
+      },
+      {
         "path": "src/app/api/care-reports/route.ts",
-        "sha256": "03b58998dfafb3436272062ddd24716bc88bfa90e84033d61f5dba963b12cc8c"
+        "sha256": "e67703406b7d104ef6fa53861c513f142f9955e4751e09e6d25e6654d042ed9c"
       },
       {
         "path": "src/app/api/dispense-audits/route.ts",
