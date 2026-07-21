@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAuthContext } from '@/lib/auth/context';
+import { withAuthContext, type AuthContext } from '@/lib/auth/context';
 import { hasPermission } from '@/lib/auth/permissions';
 import { prisma } from '@/lib/db/client';
 import {
@@ -9,8 +9,6 @@ import {
 import { recordDataExportAudit } from '@/server/services/export-audit';
 import { CASE_STATUSES } from '@/lib/patient/case-status';
 import { validationError } from '@/lib/api/response';
-import { withRequestTraceHeaders } from '@/lib/api/request-correlation';
-import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { formatDateKey } from '@/lib/date-key';
 import { maskAddressDetail, maskInsuranceNumber, maskPhoneNumber } from '@/lib/patient/privacy';
 import { minimalCsvRow as buildCsvRow } from '@/lib/csv/safe-csv';
@@ -25,27 +23,14 @@ const caseStatusSchema = z.enum(CASE_STATUSES);
  *
  * 患者一覧を CSV 形式でエクスポートする（BOM 付き UTF-8、Excel 対応）。
  */
-export async function GET(req: NextRequest) {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canVisit',
-    message: '患者情報のエクスポート権限がありません',
-  });
-  if ('response' in authResult) return authResult.response;
-  const ctx = authResult.ctx;
-  const tracedResponse = <TResponse extends Response>(response: TResponse) =>
-    withRequestTraceHeaders(response, ctx);
-
+async function authenticatedGET(req: NextRequest, ctx: AuthContext) {
   const { searchParams } = new URL(req.url);
   const caseStatusParam = searchParams.get('case_status') ?? undefined;
   const caseStatus = caseStatusParam ? caseStatusSchema.safeParse(caseStatusParam) : null;
   if (caseStatus && !caseStatus.success) {
-    return tracedResponse(
-      withSensitiveNoStore(
-        validationError('ケースステータスが不正です', {
-          case_status: ['対応していないステータスです'],
-        }),
-      ),
-    );
+    return validationError('ケースステータスが不正です', {
+      case_status: ['対応していないステータスです'],
+    });
   }
 
   const EXPORT_LIMIT = 10000;
@@ -151,16 +136,17 @@ export async function GET(req: NextRequest) {
     correlationId: ctx.correlationId,
   });
 
-  return tracedResponse(
-    withSensitiveNoStore(
-      new NextResponse(csv, {
-        status: 200,
-        headers: {
-          'Content-Type': 'text/csv; charset=utf-8',
-          'Content-Disposition': `attachment; filename="patients_${formatDateKey(new Date())}.csv"`,
-          ...(truncated ? { 'X-Export-Truncated': 'true' } : {}),
-        },
-      }),
-    ),
-  );
+  return new NextResponse(csv, {
+    status: 200,
+    headers: {
+      'Content-Type': 'text/csv; charset=utf-8',
+      'Content-Disposition': `attachment; filename="patients_${formatDateKey(new Date())}.csv"`,
+      ...(truncated ? { 'X-Export-Truncated': 'true' } : {}),
+    },
+  });
 }
+
+export const GET = withAuthContext(authenticatedGET, {
+  permission: 'canVisit',
+  message: '患者情報のエクスポート権限がありません',
+});

@@ -11,7 +11,33 @@ const { requireAuthContextMock, patientFindManyMock, recordDataExportAuditMock }
 );
 
 vi.mock('@/lib/auth/context', () => ({
-  requireAuthContext: requireAuthContextMock,
+  withAuthContext:
+    (
+      handler: (req: NextRequest, ctx: Record<string, unknown>) => Promise<Response>,
+      options?: unknown,
+    ) =>
+    async (req: NextRequest) => {
+      const noStore = (response: Response) => {
+        response.headers.set('Cache-Control', 'private, no-store, max-age=0');
+        response.headers.set('Pragma', 'no-cache');
+        return response;
+      };
+      try {
+        const authResult = await requireAuthContextMock(req, options);
+        if ('response' in authResult) return noStore(authResult.response);
+        const response = noStore(await handler(req, authResult.ctx));
+        response.headers.set('x-request-id', authResult.ctx.requestId);
+        response.headers.set('x-correlation-id', authResult.ctx.correlationId);
+        return response;
+      } catch {
+        return noStore(
+          Response.json(
+            { code: 'INTERNAL_ERROR', message: 'サーバー内部でエラーが発生しました' },
+            { status: 500 },
+          ),
+        );
+      }
+    },
 }));
 
 vi.mock('@/lib/db/client', () => ({
@@ -27,6 +53,12 @@ vi.mock('@/server/services/export-audit', () => ({
 }));
 
 import { GET } from './route';
+
+const emptyRouteContext = { params: Promise.resolve({}) };
+
+function callGET(request: NextRequest) {
+  return GET(request, emptyRouteContext);
+}
 
 function createRequest(url: string) {
   return new NextRequest(url);
@@ -79,7 +111,7 @@ describe('/api/patients/export GET', () => {
   });
 
   it('selects the filtered case status when exporting with case_status', async () => {
-    const response = await GET(
+    const response = await callGET(
       createRequest('http://localhost/api/patients/export?case_status=active'),
     );
 
@@ -149,7 +181,7 @@ describe('/api/patients/export GET', () => {
       },
     ]);
 
-    const response = await GET(createRequest('http://localhost/api/patients/export'));
+    const response = await callGET(createRequest('http://localhost/api/patients/export'));
 
     expect(response.status).toBe(200);
     const csv = await response.text();
@@ -175,7 +207,7 @@ describe('/api/patients/export GET', () => {
       },
     });
 
-    const response = await GET(createRequest('http://localhost/api/patients/export'));
+    const response = await callGET(createRequest('http://localhost/api/patients/export'));
 
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
@@ -194,7 +226,7 @@ describe('/api/patients/export GET', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-04-01T15:30:00.000Z'));
 
-    const response = await GET(createRequest('http://localhost/api/patients/export'));
+    const response = await callGET(createRequest('http://localhost/api/patients/export'));
 
     expect(response.status).toBe(200);
     expect(response.headers.get('content-disposition')).toBe(
@@ -213,7 +245,7 @@ describe('/api/patients/export GET', () => {
       },
     });
 
-    const response = await GET(createRequest('http://localhost/api/patients/export'));
+    const response = await callGET(createRequest('http://localhost/api/patients/export'));
 
     expect(response.status).toBe(200);
     expect(patientFindManyMock).toHaveBeenCalledWith(
@@ -226,7 +258,7 @@ describe('/api/patients/export GET', () => {
   });
 
   it('rejects an invalid case status before exporting patients', async () => {
-    const response = await GET(
+    const response = await callGET(
       createRequest('http://localhost/api/patients/export?case_status=archived'),
     );
 
@@ -241,6 +273,22 @@ describe('/api/patients/export GET', () => {
       },
     });
     expect(patientFindManyMock).not.toHaveBeenCalled();
+    expect(recordDataExportAuditMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a sanitized no-store 500 when patient export loading fails', async () => {
+    const rawError = '患者 青葉花子 insurance=12345678 export failure';
+    patientFindManyMock.mockRejectedValueOnce(new Error(rawError));
+
+    const response = await callGET(createRequest('http://localhost/api/patients/export'));
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.text();
+    expect(body).toContain('INTERNAL_ERROR');
+    expect(body).not.toContain(rawError);
+    expect(body).not.toContain('青葉花子');
+    expect(body).not.toContain('12345678');
     expect(recordDataExportAuditMock).not.toHaveBeenCalled();
   });
 });
