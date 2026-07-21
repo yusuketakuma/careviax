@@ -153,11 +153,6 @@
       "task_id": "MAINT-FILE-SIZE-1000-001"
     },
     {
-      "path": "src/app/(dashboard)/patients/[id]/mcs/mcs-content.test.tsx",
-      "max_lines": 1093,
-      "task_id": "MAINT-FILE-SIZE-1000-001"
-    },
-    {
       "path": "src/app/(dashboard)/patients/[id]/mcs/mcs-content.tsx",
       "max_lines": 1196,
       "task_id": "MAINT-FILE-SIZE-1000-001"
