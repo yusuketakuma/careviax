@@ -1,424 +1,54 @@
-import { createHash } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import { zipSync } from 'fflate';
-import { z } from 'zod';
 import { withOrgContext } from '@/lib/db/rls';
 import type { RequestAuthContext } from '@/lib/auth/request-context';
 import { hasPermission } from '@/lib/auth/permissions';
 import { buildFileDownloadHref } from '@/lib/files/navigation';
 import { mapWithConcurrency } from '@/lib/utils/concurrency';
 import { logger } from '@/lib/utils/logger';
-import {
-  buildVisitScheduleAssignmentWhere,
-  canAccessVisitScheduleAssignment,
-  canBypassVisitScheduleAssignmentAccess,
-  type VisitScheduleAccessContext,
-} from '@/lib/auth/visit-schedule-access';
 import { buildMedicationHistoryPdf } from '@/server/services/pdf-documents';
 import { PdfNotFoundError } from '@/server/services/pdf-errors';
 import { deleteGeneratedFile, storeGeneratedFile } from '@/server/services/file-storage';
 import { recordDataExportAudit } from '@/server/services/export-audit';
-import { isValidRequestTraceId, type RequestTraceContext } from '@/lib/api/request-correlation';
+import {
+  BulkExportLockLostError,
+  MAX_PATIENTS_PER_EXPORT,
+  MedicationHistoryBulkExportError,
+  assertBulkExportTotalPdfBytes,
+  buildInvalidTerminalBulkExportInput,
+  buildPatientSelectionHash,
+  buildPersistedRequestTrace,
+  buildTerminalBulkExportInput,
+  buildTimeoutTerminalBulkExportInput,
+  bulkExportInputSchema,
+  bulkExportPatientIdsSchema,
+  formatTimestampForFileName,
+  getSafeBulkExportFailureMessage,
+  readPersistedRequestTrace,
+  summarizeBulkExportRenderErrors,
+  validateRequestTracePair,
+  withOrgSerializableRetry,
+  type BulkExportRenderError,
+  type MedicationHistoryBulkExportResult,
+  type PdfRenderResult,
+  type QueueMedicationHistoryBulkExportArgs,
+} from './pdf-bulk-export-contract';
+
+export { MedicationHistoryBulkExportError } from './pdf-bulk-export-contract';
+import {
+  assertBulkExportPatientAccess,
+  assertPatientsExist,
+  getRequesterAccessContext,
+  type BulkExportJobRecoveryDb,
+} from './pdf-bulk-export-access';
 
 const BULK_EXPORT_JOB_TYPE = 'medication-history-bulk-export';
-const MAX_PATIENTS_PER_EXPORT = 500;
 const MAX_QUEUED_JOBS_PER_ORG = 3;
 const PDF_RENDER_CONCURRENCY = 4;
 const MAX_REPORTED_ERRORS = 20;
 const MAX_DRAIN_ITERATIONS = 50;
-const SERIALIZABLE_RETRY_LIMIT = 3;
 const RUNNING_JOB_LOCK_TIMEOUT_MS = 30 * 60_000;
 const BULK_EXPORT_HEARTBEAT_INTERVAL_MS = 5 * 60_000;
-const BYTES_PER_MIB = 1024 * 1024;
-const DEFAULT_MAX_TOTAL_PDF_BYTES = 128 * BYTES_PER_MIB;
-const MAX_TOTAL_PDF_BYTES_ENV = 'MEDICATION_HISTORY_BULK_EXPORT_MAX_TOTAL_PDF_BYTES';
-const GENERIC_BULK_EXPORT_FAILURE_MESSAGE = '薬歴 PDF ZIP の生成に失敗しました';
-
-const bulkExportPatientIdsSchema = z
-  .array(z.string().trim().min(1))
-  .min(1)
-  .max(MAX_PATIENTS_PER_EXPORT)
-  .transform((values) => uniqueStrings(values));
-
-const bulkExportInputSchema = z.object({
-  version: z.literal(1).default(1),
-  requestedBy: z.string().trim().min(1),
-  patientIds: bulkExportPatientIdsSchema,
-});
-
-type QueueMedicationHistoryBulkExportArgs = {
-  orgId: string;
-  requestedBy: string;
-  patientIds: string[];
-  accessContext: VisitScheduleAccessContext;
-  auditContext?: {
-    ipAddress?: string;
-    userAgent?: string;
-  };
-  requestTrace?: {
-    requestId?: unknown;
-    correlationId?: unknown;
-  };
-};
-
-type MedicationHistoryBulkExportResult = {
-  jobId: string;
-  fileId: string;
-  patientCount: number;
-  errors?: string[];
-};
-
-type BulkExportRenderErrorCode = 'pdf_not_found' | 'render_failed';
-
-type BulkExportRenderError = {
-  code: BulkExportRenderErrorCode;
-  message: string;
-};
-
-type PdfRenderResult =
-  | {
-      patientId: string;
-      fileName: string;
-      buffer: Buffer;
-    }
-  | {
-      patientId: string;
-      error: string;
-      errorCode: BulkExportRenderErrorCode;
-    };
-
-export class MedicationHistoryBulkExportError extends Error {
-  constructor(
-    readonly code:
-      | 'WORKFLOW_CONFLICT'
-      | 'VALIDATION_ERROR'
-      | 'WORKFLOW_NOT_FOUND'
-      | 'AUTHORIZATION_ERROR',
-    message: string,
-    readonly status: number,
-  ) {
-    super(message);
-    this.name = 'MedicationHistoryBulkExportError';
-  }
-}
-
-class BulkExportLockLostError extends Error {
-  constructor(readonly jobId: string) {
-    super('bulk export job lock was lost');
-    this.name = 'BulkExportLockLostError';
-  }
-}
-
-function getSafeBulkExportFailureMessage(cause: unknown) {
-  return cause instanceof MedicationHistoryBulkExportError
-    ? cause.message
-    : GENERIC_BULK_EXPORT_FAILURE_MESSAGE;
-}
-
-function uniqueStrings(values: string[]) {
-  return Array.from(new Set(values));
-}
-
-function buildPatientSelectionHash(orgId: string, patientIds: string[]) {
-  return createHash('sha256')
-    .update(orgId)
-    .update('\0')
-    .update([...patientIds].sort().join('\0'))
-    .digest('hex');
-}
-
-function validateRequestTracePair(
-  requestId: unknown,
-  correlationId: unknown,
-): RequestTraceContext | undefined {
-  if (!isValidRequestTraceId(requestId) || !isValidRequestTraceId(correlationId)) {
-    return undefined;
-  }
-
-  return { requestId, correlationId };
-}
-
-function readPersistedRequestTrace(input: Prisma.JsonValue): RequestTraceContext | undefined {
-  if (!input || typeof input !== 'object' || Array.isArray(input)) return undefined;
-
-  const requestTrace = (input as Record<string, unknown>).request_trace;
-  if (!requestTrace || typeof requestTrace !== 'object' || Array.isArray(requestTrace)) {
-    return undefined;
-  }
-
-  const traceRecord = requestTrace as Record<string, unknown>;
-  return validateRequestTracePair(traceRecord.request_id, traceRecord.correlation_id);
-}
-
-function buildPersistedRequestTrace(requestTrace: RequestTraceContext | undefined) {
-  return requestTrace
-    ? {
-        request_trace: {
-          request_id: requestTrace.requestId,
-          correlation_id: requestTrace.correlationId,
-        },
-      }
-    : {};
-}
-
-function buildTerminalBulkExportInput(args: {
-  orgId: string;
-  requestedBy: string;
-  patientIds: string[];
-  requestTrace?: RequestTraceContext;
-}) {
-  return {
-    version: 1,
-    requestedBy: args.requestedBy,
-    patient_count: args.patientIds.length,
-    patient_selection_hash: buildPatientSelectionHash(args.orgId, args.patientIds),
-    ...buildPersistedRequestTrace(args.requestTrace),
-  } satisfies Prisma.InputJsonValue;
-}
-
-function buildInvalidTerminalBulkExportInput(
-  input: Prisma.JsonValue,
-  requestTrace: RequestTraceContext | undefined,
-) {
-  const requestedBy =
-    input && typeof input === 'object' && !Array.isArray(input) && 'requestedBy' in input
-      ? (input as Record<string, unknown>).requestedBy
-      : null;
-
-  return {
-    version: 1,
-    requestedBy:
-      typeof requestedBy === 'string' && requestedBy.trim() ? requestedBy.trim() : 'unknown',
-    invalid_input: true,
-    ...buildPersistedRequestTrace(requestTrace),
-  } satisfies Prisma.InputJsonValue;
-}
-
-function buildTimeoutTerminalBulkExportInput() {
-  return {
-    version: 1,
-    terminal_reason: 'timeout',
-    input_redacted: true,
-  } satisfies Prisma.InputJsonValue;
-}
-
-function summarizeBulkExportRenderErrors(errors: BulkExportRenderError[]) {
-  return errors.reduce<Record<BulkExportRenderErrorCode, number>>(
-    (summary, error) => {
-      summary[error.code] += 1;
-      return summary;
-    },
-    { pdf_not_found: 0, render_failed: 0 },
-  );
-}
-
-function formatTimestampForFileName(date = new Date()) {
-  const parts = [
-    date.getFullYear(),
-    String(date.getMonth() + 1).padStart(2, '0'),
-    String(date.getDate()).padStart(2, '0'),
-    '-',
-    String(date.getHours()).padStart(2, '0'),
-    String(date.getMinutes()).padStart(2, '0'),
-    String(date.getSeconds()).padStart(2, '0'),
-  ];
-
-  return parts.join('');
-}
-
-function getMaxTotalPdfBytes() {
-  const value = Number(process.env[MAX_TOTAL_PDF_BYTES_ENV]);
-  if (!Number.isFinite(value) || value <= 0) {
-    return DEFAULT_MAX_TOTAL_PDF_BYTES;
-  }
-
-  const normalized = Math.floor(value);
-  return Number.isSafeInteger(normalized) && normalized > 0
-    ? normalized
-    : DEFAULT_MAX_TOTAL_PDF_BYTES;
-}
-
-function getZipEntriesTotalBytes(zipEntries: Record<string, Uint8Array>) {
-  return Object.values(zipEntries).reduce((total, entry) => total + entry.byteLength, 0);
-}
-
-function assertBulkExportTotalPdfBytes(zipEntries: Record<string, Uint8Array>) {
-  const totalPdfBytes = getZipEntriesTotalBytes(zipEntries);
-  const maxTotalPdfBytes = getMaxTotalPdfBytes();
-  if (totalPdfBytes > maxTotalPdfBytes) {
-    throw new MedicationHistoryBulkExportError(
-      'WORKFLOW_CONFLICT',
-      '薬歴 PDF 一括出力の合計サイズが上限を超えました。対象患者を分割して再実行してください。',
-      409,
-    );
-  }
-}
-
-async function withOrgSerializableRetry<TValue>(args: {
-  orgId: string;
-  requestContext?: RequestAuthContext;
-  work: (tx: Prisma.TransactionClient) => Promise<TValue>;
-}): Promise<TValue> {
-  for (let attempt = 0; attempt < SERIALIZABLE_RETRY_LIMIT; attempt += 1) {
-    try {
-      return await withOrgContext(args.orgId, args.work, {
-        requestContext: args.requestContext,
-        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
-      });
-    } catch (cause) {
-      const isRetryableConflict =
-        cause instanceof Prisma.PrismaClientKnownRequestError && cause.code === 'P2034';
-
-      if (!isRetryableConflict || attempt === SERIALIZABLE_RETRY_LIMIT - 1) {
-        throw cause;
-      }
-    }
-  }
-
-  throw new Error('org-scoped bulk export transaction could not be completed');
-}
-
-type BulkExportAccessDb = Pick<Prisma.TransactionClient, 'careCase' | 'patient' | 'visitSchedule'>;
-type BulkExportJobRecoveryDb = Pick<Prisma.TransactionClient, 'integrationJob'>;
-
-async function assertPatientsExist(args: {
-  db: BulkExportAccessDb;
-  orgId: string;
-  patientIds: string[];
-}) {
-  const existingPatientCount = await args.db.patient.count({
-    where: {
-      org_id: args.orgId,
-      id: {
-        in: args.patientIds,
-      },
-    },
-  });
-
-  if (existingPatientCount !== args.patientIds.length) {
-    throw new MedicationHistoryBulkExportError(
-      'WORKFLOW_NOT_FOUND',
-      '指定された患者の一部が見つかりません',
-      404,
-    );
-  }
-}
-
-async function assertBulkExportPatientAccess(args: {
-  db: BulkExportAccessDb;
-  orgId: string;
-  patientIds: string[];
-  accessContext: VisitScheduleAccessContext;
-}) {
-  if (canBypassVisitScheduleAssignmentAccess(args.accessContext)) {
-    return;
-  }
-
-  const scheduleAssignmentWhere = buildVisitScheduleAssignmentWhere(args.accessContext);
-  const accessiblePatientIds = new Set<string>();
-
-  if (scheduleAssignmentWhere) {
-    const accessibleSchedules = await args.db.visitSchedule.findMany({
-      where: {
-        org_id: args.orgId,
-        case_: {
-          patient_id: {
-            in: args.patientIds,
-          },
-        },
-        AND: [scheduleAssignmentWhere],
-      },
-      select: {
-        case_: {
-          select: {
-            patient_id: true,
-          },
-        },
-      },
-    });
-
-    for (const schedule of accessibleSchedules) {
-      accessiblePatientIds.add(schedule.case_.patient_id);
-    }
-  }
-
-  const unresolvedPatientIds = args.patientIds.filter(
-    (patientId) => !accessiblePatientIds.has(patientId),
-  );
-
-  if (unresolvedPatientIds.length > 0) {
-    const accessibleCases = await args.db.careCase.findMany({
-      where: {
-        org_id: args.orgId,
-        patient_id: {
-          in: unresolvedPatientIds,
-        },
-        OR: [
-          { primary_pharmacist_id: args.accessContext.userId },
-          { backup_pharmacist_id: args.accessContext.userId },
-        ],
-      },
-      select: {
-        patient_id: true,
-        primary_pharmacist_id: true,
-        backup_pharmacist_id: true,
-      },
-    });
-
-    for (const careCase of accessibleCases) {
-      if (
-        canAccessVisitScheduleAssignment(args.accessContext, {
-          pharmacist_id: null,
-          case_: careCase,
-        })
-      ) {
-        accessiblePatientIds.add(careCase.patient_id);
-      }
-    }
-  }
-
-  const forbiddenPatientIds = args.patientIds.filter(
-    (patientId) => !accessiblePatientIds.has(patientId),
-  );
-
-  if (forbiddenPatientIds.length > 0) {
-    throw new MedicationHistoryBulkExportError(
-      'AUTHORIZATION_ERROR',
-      '一括出力対象にアクセス権限のない患者が含まれています',
-      403,
-    );
-  }
-}
-
-async function getRequesterAccessContext(args: {
-  db: Pick<Prisma.TransactionClient, 'membership'>;
-  orgId: string;
-  requestedBy: string;
-}): Promise<VisitScheduleAccessContext> {
-  const membership = await args.db.membership.findFirst({
-    where: {
-      org_id: args.orgId,
-      user_id: args.requestedBy,
-      is_active: true,
-    },
-    select: {
-      role: true,
-    },
-  });
-
-  if (!membership || !hasPermission(membership.role, 'canVisit')) {
-    throw new MedicationHistoryBulkExportError(
-      'AUTHORIZATION_ERROR',
-      '薬歴 PDF 一括出力の実行権限がありません',
-      403,
-    );
-  }
-
-  return {
-    userId: args.requestedBy,
-    role: membership.role,
-  };
-}
 
 async function recoverStaleBulkExportRunningJobs(args: {
   db: BulkExportJobRecoveryDb;

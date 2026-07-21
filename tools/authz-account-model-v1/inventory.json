@@ -735,7 +735,7 @@
       },
       {
         "path": "Plans.md",
-        "sha256": "e5e737c7b5171ace7c356f1a421783a0d223d28cbe6f9de1220f31a8cc733eb4"
+        "sha256": "e992d12100b84672293116f0968d4c0f2c4bc578a58bec35c09eb310198ca498"
       },
       {
         "path": "README.md",
@@ -903,7 +903,7 @@
       },
       {
         "path": "ops/refactor/STATE.md",
-        "sha256": "8802bb720ab7f8b026f6b152e6a1849bff2e4a0236d717273dcd08c2fb4abfef"
+        "sha256": "d61051dfa638bbb4e60948b35241fc1d1761ca0bb30304f06ba51d82ab0bba70"
       },
       {
         "path": "ops/refactor/archive/PERF_FINDINGS.md",
@@ -7550,10 +7550,58 @@
       "capability_profile": "p_cfef3207a7e3"
     },
     {
+      "id": "mapping_precedence:src/server/services/pdf-bulk-export-access.ts",
+      "detector": "mapping_precedence",
+      "path": "src/server/services/pdf-bulk-export-access.ts",
+      "evidence_sha256": "840013a5e0f24eec26bea105a3a31f42a0b8e4919aaf06601e777e7b252e21db",
+      "principal": "human",
+      "lifecycles": ["request"],
+      "surfaces": ["reader_evaluator"],
+      "exact_values_or_scopes": [
+        "not_applicable:mapping_precedence:no-enumerated-value:src/server/services/pdf-bulk-export-access.ts"
+      ],
+      "route_method_purpose": "not_applicable:non-route-source:src/server/services/pdf-bulk-export-access.ts",
+      "precedence_selection": "legacy_observed_requires_human_review",
+      "synthetic_derived_mapping": "not_applicable:no-synthetic-mapping-observed:src/server/services/pdf-bulk-export-access.ts",
+      "persistence_contract": "not_applicable:no-persistence-observed:src/server/services/pdf-bulk-export-access.ts",
+      "ttl_contract": "not_applicable:no-ttl-observed:src/server/services/pdf-bulk-export-access.ts",
+      "mapping_disposition": "candidate_requires_human",
+      "owner": "Identity / Authz",
+      "approval_status": "pending_owner_review",
+      "test_refs": ["uncovered:no-focused-test:src/server/services/pdf-bulk-export-access.ts"],
+      "reprojection_or_removal": "owner_review_required_before_cutover:src/server/services/pdf-bulk-export-access.ts",
+      "binding_profile": "p_c581c0280869",
+      "capability_profile": "p_25e54dcf8b32"
+    },
+    {
+      "id": "mapping_precedence:src/server/services/pdf-bulk-export-contract.ts",
+      "detector": "mapping_precedence",
+      "path": "src/server/services/pdf-bulk-export-contract.ts",
+      "evidence_sha256": "e8cc8a8a7c7d7932e328b9585b4fa9e2b72a9397be27ff9fad3040fe4908b6e4",
+      "principal": "human",
+      "lifecycles": ["request"],
+      "surfaces": ["reader_evaluator"],
+      "exact_values_or_scopes": [
+        "not_applicable:mapping_precedence:no-enumerated-value:src/server/services/pdf-bulk-export-contract.ts"
+      ],
+      "route_method_purpose": "not_applicable:non-route-source:src/server/services/pdf-bulk-export-contract.ts",
+      "precedence_selection": "legacy_observed_requires_human_review",
+      "synthetic_derived_mapping": "not_applicable:no-synthetic-mapping-observed:src/server/services/pdf-bulk-export-contract.ts",
+      "persistence_contract": "not_applicable:no-persistence-observed:src/server/services/pdf-bulk-export-contract.ts",
+      "ttl_contract": "not_applicable:no-ttl-observed:src/server/services/pdf-bulk-export-contract.ts",
+      "mapping_disposition": "candidate_requires_human",
+      "owner": "Identity / Authz",
+      "approval_status": "pending_owner_review",
+      "test_refs": ["uncovered:no-focused-test:src/server/services/pdf-bulk-export-contract.ts"],
+      "reprojection_or_removal": "owner_review_required_before_cutover:src/server/services/pdf-bulk-export-contract.ts",
+      "binding_profile": "p_c581c0280869",
+      "capability_profile": "p_25e54dcf8b32"
+    },
+    {
       "id": "mapping_precedence:src/server/services/pdf-bulk-export.ts",
       "detector": "mapping_precedence",
       "path": "src/server/services/pdf-bulk-export.ts",
-      "evidence_sha256": "b80885a3db0dacfa27b674362cdb2ec5185ad2c1ce5adfaa21ea8eb537f4473f",
+      "evidence_sha256": "2385d11c12208797309bb0f3031bcc58a84be10e4a8932349f904cc359db8461",
       "principal": "human",
       "lifecycles": ["request"],
       "surfaces": ["rls"],
@@ -16849,6 +16897,28 @@
       "reprojection_or_removal": "owner_review_required_before_cutover:src/server/services/patient-detail.ts",
       "binding_profile": "p_d30ff6d0cd63",
       "capability_profile": "p_d89f555cccec"
+    },
+    {
+      "id": "permission_capability:src/server/services/pdf-bulk-export-access.ts",
+      "detector": "permission_capability",
+      "path": "src/server/services/pdf-bulk-export-access.ts",
+      "evidence_sha256": "cba90fdf8260ba14f49aebaa0aa3a17ca1d7256a97c10f6a5ac466f5437a93b1",
+      "principal": "human",
+      "lifecycles": ["request"],
+      "surfaces": ["reader_evaluator"],
+      "exact_values_or_scopes": ["supporting_literal:canVisit"],
+      "route_method_purpose": "not_applicable:non-route-source:src/server/services/pdf-bulk-export-access.ts",
+      "precedence_selection": "legacy_observed_requires_human_review",
+      "synthetic_derived_mapping": "not_applicable:no-synthetic-mapping-observed:src/server/services/pdf-bulk-export-access.ts",
+      "persistence_contract": "not_applicable:no-persistence-observed:src/server/services/pdf-bulk-export-access.ts",
+      "ttl_contract": "not_applicable:no-ttl-observed:src/server/services/pdf-bulk-export-access.ts",
+      "mapping_disposition": "inventory_only",
+      "owner": "Permission matrix",
+      "approval_status": "pending_owner_review",
+      "test_refs": ["uncovered:no-focused-test:src/server/services/pdf-bulk-export-access.ts"],
+      "reprojection_or_removal": "owner_review_required_before_cutover:src/server/services/pdf-bulk-export-access.ts",
+      "binding_profile": "p_c581c0280869",
+      "capability_profile": "p_25e54dcf8b32"
     },
     {
       "id": "permission_capability:src/server/services/pdf-bulk-export.ts",

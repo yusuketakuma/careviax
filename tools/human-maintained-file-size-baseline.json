@@ -798,11 +798,6 @@
       "task_id": "MAINT-FILE-SIZE-1000-001"
     },
     {
-      "path": "src/server/services/pdf-bulk-export.ts",
-      "max_lines": 1242,
-      "task_id": "MAINT-FILE-SIZE-1000-001"
-    },
-    {
       "path": "src/server/services/pdf-documents.tsx",
       "max_lines": 1737,
       "task_id": "MAINT-FILE-SIZE-1000-001"
