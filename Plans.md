@@ -575,13 +575,13 @@ Wave 4 acceptance merge: `AUTHZ-PRIVILEGED-ACCOUNT-LIFECYCLE-001`のsession/offl
 
 > FHIRは上の`FHIR child dependency order`だけを使う。ここでは親roll-upとHuman gateを順位付けせず、継続中または依存を満たした非FHIR sliceだけを上から評価する。
 
-1. `API-CONTRACT-001`: live allowlistの残り4 route / 7 direct auth callを標準`withAuthContext`へ移行し、route固有のstatus/error/authz semanticsを維持したままdebtを0にする。
-2. `MAINT-FILE-SIZE-1000-001`: 現在groupと、実装中に触れる1,000行超過を責務単位で分割し、baselineを増やさず順次減らす。
-3. `MEDSAFE-CYCLE-TRANSITION-OCC-001`: 残るfresh authorizationを独立sliceで閉じる。`MEDSAFE-INCIDENT-REVIEW-OCC-001`はHuman gateのため批准前に実行拡張しない。
-4. `DB-EVENT-001` / `STABILITY-DELIVERY-PROVIDER-READINESS-001` / `STABILITY-WORKFLOW-CACHE-COHERENCE-001`: durable outbox/ack/reconcile、authoritative recovery、cache epochへ収束する。
-5. `JOB-TENANT-EXECUTION-001` / `STABILITY-JOB-PARTIAL-OUTCOME-001`: RLS-bound job、cursor/epochを揃え、bounded subsetを空・全件・成功に見せない。`EXP-SURFACE-REGISTRY-001`はHuman gateの解除まで実装順へ入れない。
-6. `PERF-RTE-001A`: process-local metricをbounded aggregateへ分離する。`PERF-REFERENCE-MASTER-TENANT-FANOUT-001`はHuman gateの解除まで実装順へ入れない。
-7. `FE-SCHEDULE-001`: authoritative totalとloaded subset、empty/partial/error/staleをUIで分離し、mutation対象をlocal first pageへ限定しない。
+1. `MAINT-FILE-SIZE-1000-001`: 現在groupと、実装中に触れる1,000行超過を責務単位で分割し、baselineを増やさず順次減らす。
+2. `MEDSAFE-CYCLE-TRANSITION-OCC-001`: 残るfresh authorizationを独立sliceで閉じる。`MEDSAFE-INCIDENT-REVIEW-OCC-001`はHuman gateのため批准前に実行拡張しない。
+3. `DB-EVENT-001` / `STABILITY-DELIVERY-PROVIDER-READINESS-001` / `STABILITY-WORKFLOW-CACHE-COHERENCE-001`: durable outbox/ack/reconcile、authoritative recovery、cache epochへ収束する。
+4. `JOB-TENANT-EXECUTION-001` / `STABILITY-JOB-PARTIAL-OUTCOME-001`: RLS-bound job、cursor/epochを揃え、bounded subsetを空・全件・成功に見せない。`EXP-SURFACE-REGISTRY-001`はHuman gateの解除まで実装順へ入れない。
+5. `PERF-RTE-001A`: process-local metricをbounded aggregateへ分離する。`PERF-REFERENCE-MASTER-TENANT-FANOUT-001`はHuman gateの解除まで実装順へ入れない。
+6. `FE-SCHEDULE-001`: authoritative totalとloaded subset、empty/partial/error/staleをUIで分離し、mutation対象をlocal first pageへ限定しない。
+7. `API-CONTRACT-001`: route-auth debtは`20ae42d92`で0。full typecheck/build/CIだけを最終統合境界へ送り、focused failureがなければ次の実装をブロックしない。
 8. `DB-TX-SERIALIZATION-AUDIT-001`: code実装は完了済み。full test/no-unused/buildは全実装後の最終統合境界で閉じる。
 
 **Program backlog — 長期プログラム残スコープ（sprint queue に数えない。着手時に小IDで queue へ昇格）**:
