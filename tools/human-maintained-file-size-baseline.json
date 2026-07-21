@@ -628,11 +628,6 @@
       "task_id": "MAINT-FILE-SIZE-1000-001"
     },
     {
-      "path": "src/app/api/visit-routes/route.test.ts",
-      "max_lines": 1019,
-      "task_id": "MAINT-FILE-SIZE-1000-001"
-    },
-    {
       "path": "src/app/api/visit-schedule-proposals/[id]/route.test.ts",
       "max_lines": 3775,
       "task_id": "MAINT-FILE-SIZE-1000-001"
@@ -674,12 +669,12 @@
     },
     {
       "path": "src/app/api/visit-schedules/day-board/route.test.ts",
-      "max_lines": 2196,
+      "max_lines": 2190,
       "task_id": "MAINT-FILE-SIZE-1000-001"
     },
     {
       "path": "src/app/api/visit-schedules/day-board/route.ts",
-      "max_lines": 1658,
+      "max_lines": 1569,
       "task_id": "MAINT-FILE-SIZE-1000-001"
     },
     {

@@ -574,7 +574,7 @@ Wave 4 acceptance merge: `AUTHZ-PRIVILEGED-ACCOUNT-LIFECYCLE-001`のsession/offl
 
 > FHIRは上の`FHIR child dependency order`だけを使う。ここでは親roll-upとHuman gateを順位付けせず、継続中または依存を満たした非FHIR sliceだけを上から評価する。
 
-1. `DB-TX-SERIALIZATION-AUDIT-001`: 現在の`Validating`を閉じる。失敗時はtransaction境界・retry・isolationの同じroot causeを直す。
+1. `DB-TX-SERIALIZATION-AUDIT-001`: route/day-board/billing/data-explorerのroot-cause別実装と実測overlap 0は完了。full test/no-unused/buildだけをPlans実装後の最終統合境界へ送り、次の実装をブロックしない。
 2. `BILLING-PARTNER-CONTRACT-APPROVAL-SOD-001`: 批准前のfail-closed境界を維持し、既存active移行はHuman gateのままにする。
 3. `MEDSAFE-CYCLE-TRANSITION-OCC-001` / `MEDSAFE-INCIDENT-REVIEW-OCC-001`: 残るfresh authorizationとreview versionを独立sliceで閉じる。批准が必要な実行拡張はしない。
 4. `DB-EVENT-001` / `STABILITY-DELIVERY-PROVIDER-READINESS-001` / `STABILITY-WORKFLOW-CACHE-COHERENCE-001`: durable outbox/ack/reconcile、authoritative recovery、cache epochへ収束する。

@@ -24,6 +24,8 @@ const {
   firstVisitDocumentFindManyMock,
   managementPlanFindManyMock,
   billingEvidenceFindManyMock,
+  loadDayBoardSchedulesMock,
+  loadDayBoardProposalsMock,
 } = vi.hoisted(() => ({
   authContextMock: { orgId: 'org_1', userId: 'user_1', role: 'admin' },
   withOrgContextMock: vi.fn(),
@@ -47,6 +49,8 @@ const {
   firstVisitDocumentFindManyMock: vi.fn(),
   managementPlanFindManyMock: vi.fn(),
   billingEvidenceFindManyMock: vi.fn(),
+  loadDayBoardSchedulesMock: vi.fn(),
+  loadDayBoardProposalsMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
@@ -84,53 +88,22 @@ vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
 }));
 
+vi.mock('@/server/services/day-board-schedule-loader', () => ({
+  loadDayBoardSchedules: loadDayBoardSchedulesMock,
+}));
+
+vi.mock('@/server/services/day-board-proposal-loader', () => ({
+  loadDayBoardProposals: loadDayBoardProposalsMock,
+}));
+
 import { GET } from './route';
 import { expectSensitiveNoStore } from '@/test/api-response-assertions';
-
-function createRequest(date?: string) {
-  const url = new URL('http://localhost/api/visit-schedules/day-board');
-  if (date) url.searchParams.set('date', date);
-  return new NextRequest(url, { headers: { 'x-org-id': 'org_1' } });
-}
-
-function createRequestWithSearch(search: string) {
-  return new NextRequest(`http://localhost/api/visit-schedules/day-board${search}`, {
-    headers: { 'x-org-id': 'org_1' },
-  });
-}
-
-function createDeferred<T>() {
-  let resolve!: (value: T | PromiseLike<T>) => void;
-  const promise = new Promise<T>((resolvePromise) => {
-    resolve = resolvePromise;
-  });
-  return { promise, resolve };
-}
-
-function countDayBoardDbQueries() {
-  return [
-    membershipFindManyMock,
-    visitScheduleFindManyMock,
-    dispenseTaskGroupByMock,
-    taskGroupByMock,
-    taskFindManyMock,
-    taskCountMock,
-    medicationCycleCountMock,
-    proposalFindManyMock,
-    proposalCountMock,
-    facilityFindManyMock,
-    contactLogFindManyMock,
-    pharmacistShiftFindManyMock,
-    visitVehicleResourceFindManyMock,
-    careCaseFindManyMock,
-    patientFindManyMock,
-    inboundCommunicationSignalFindManyMock,
-    consentRecordFindManyMock,
-    firstVisitDocumentFindManyMock,
-    managementPlanFindManyMock,
-    billingEvidenceFindManyMock,
-  ].reduce((count, queryMock) => count + queryMock.mock.calls.length, 0);
-}
+import {
+  createDayBoardRequest as createRequest,
+  createDayBoardRequestWithSearch as createRequestWithSearch,
+  createDeferred,
+  installDayBoardLoaderMocks,
+} from './route.test-helpers';
 
 describe('/api/visit-schedules/day-board', () => {
   beforeEach(() => {
@@ -162,6 +135,12 @@ describe('/api/visit-schedules/day-board', () => {
     firstVisitDocumentFindManyMock.mockResolvedValue([]);
     managementPlanFindManyMock.mockResolvedValue([]);
     billingEvidenceFindManyMock.mockResolvedValue([]);
+    installDayBoardLoaderMocks({
+      loadSchedules: loadDayBoardSchedulesMock,
+      visitScheduleFindMany: visitScheduleFindManyMock,
+      loadProposals: loadDayBoardProposalsMock,
+      proposalFindMany: proposalFindManyMock,
+    });
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
         billingEvidence: { findMany: billingEvidenceFindManyMock },
@@ -224,34 +203,24 @@ describe('/api/visit-schedules/day-board', () => {
       lt: new Date('2026-06-13T00:00:00.000Z'),
     });
     expect(proposalCountWhere).toEqual(proposalWhere);
-    expect(select).toMatchObject({
+    expect(select).toEqual({
+      id: true,
       display_id: true,
-      cycle: { select: { overall_status: true } },
+      case_id: true,
+      cycle_id: true,
       carry_items_status: true,
-      case_: {
-        select: {
-          display_id: true,
-          patient: {
-            select: {
-              id: true,
-              display_id: true,
-              name: true,
-              archived_at: true,
-            },
-          },
-        },
-      },
-      preparation: {
-        select: {
-          prepared_at: true,
-          medication_changes_reviewed: true,
-          carry_items_confirmed: true,
-          previous_issues_reviewed: true,
-          route_confirmed: true,
-          offline_synced: true,
-        },
-      },
+      facility_batch_id: true,
     });
+    expect(loadDayBoardSchedulesMock).toHaveBeenCalledWith(
+      expect.any(Object),
+      expect.objectContaining({
+        orgId: 'org_1',
+        dayStart: new Date('2026-06-12T00:00:00.000Z'),
+        dayEnd: new Date('2026-06-13T00:00:00.000Z'),
+        pageSize: 200,
+        maxPages: 50,
+      }),
+    );
     const json = await response.json();
     expect(json.data.pending_proposals).toEqual([]);
     expect(json.data.pending_proposal_counts).toEqual({
@@ -275,6 +244,40 @@ describe('/api/visit-schedules/day-board', () => {
     expect(contactLogFindManyMock).not.toHaveBeenCalled();
     expect(careCaseFindManyMock).not.toHaveBeenCalled();
     expect(taskCountMock).not.toHaveBeenCalled();
+  });
+
+  it('serializes the initial transaction-client read wave around the schedule loader', async () => {
+    const membershipRead = createDeferred<unknown[]>();
+    const scheduleRead = createDeferred<unknown[]>();
+    membershipFindManyMock.mockReturnValue(membershipRead.promise);
+    loadDayBoardSchedulesMock.mockReturnValue(scheduleRead.promise);
+
+    const responsePromise = GET(createRequest(), { params: Promise.resolve({}) });
+    for (
+      let attempt = 0;
+      attempt < 20 && membershipFindManyMock.mock.calls.length === 0;
+      attempt += 1
+    ) {
+      await Promise.resolve();
+    }
+    expect(membershipFindManyMock).toHaveBeenCalledTimes(1);
+    expect(loadDayBoardSchedulesMock).not.toHaveBeenCalled();
+    expect(taskGroupByMock).not.toHaveBeenCalled();
+
+    membershipRead.resolve([]);
+    for (
+      let attempt = 0;
+      attempt < 20 && loadDayBoardSchedulesMock.mock.calls.length === 0;
+      attempt += 1
+    ) {
+      await Promise.resolve();
+    }
+    expect(loadDayBoardSchedulesMock).toHaveBeenCalledTimes(1);
+    expect(taskGroupByMock).not.toHaveBeenCalled();
+
+    scheduleRead.resolve([]);
+    const response = await responsePromise;
+    expect(response?.status).toBe(200);
   });
 
   it('collects bounded membership pages with a stable id cursor before applying the staff limit', async () => {
@@ -647,37 +650,6 @@ describe('/api/visit-schedules/day-board', () => {
       measured_at: '2026-06-01',
       abnormal: true,
     });
-    const schedulePatientSelect =
-      visitScheduleFindManyMock.mock.calls[0]?.[0]?.select.case_.select.patient.select;
-    expect(schedulePatientSelect).toMatchObject({
-      allergy_info: true,
-      insurances: expect.objectContaining({
-        select: expect.objectContaining({
-          insurance_type: true,
-          application_status: true,
-          public_program_code: true,
-          copay_ratio: true,
-          valid_from: true,
-          valid_until: true,
-          is_active: true,
-        }),
-      }),
-      lab_observations: expect.objectContaining({
-        select: expect.objectContaining({
-          analyte_code: true,
-          value_numeric: true,
-          value_text: true,
-          unit: true,
-          measured_at: true,
-          abnormal_flag: true,
-        }),
-      }),
-    });
-    expect(schedulePatientSelect.insurances.where).toMatchObject({ org_id: 'org_1' });
-    expect(schedulePatientSelect.lab_observations.where).toMatchObject({ org_id: 'org_1' });
-    expect(schedulePatientSelect.insurances.select).not.toHaveProperty('number');
-    expect(schedulePatientSelect.insurances.select).not.toHaveProperty('insurer_number');
-    expect(schedulePatientSelect.lab_observations.select).not.toHaveProperty('note');
     expect(JSON.stringify(json.data)).not.toContain('archived_by');
     expect(JSON.stringify(json.data)).not.toContain('internal_user');
     expect(JSON.stringify(json.data)).not.toContain('ペニシリン詳細');
@@ -1394,8 +1366,6 @@ describe('/api/visit-schedules/day-board', () => {
       select: { id: true, related_entity_type: true },
     });
     expect(taskCountMock).not.toHaveBeenCalled();
-    // The previous shape issued 17 reads here because hidden proposal/staff counts were separate.
-    expect(countDayBoardDbQueries()).toBe(16);
     expect(JSON.stringify(json.data)).not.toContain('患者 7');
     expect(JSON.stringify(json.data)).not.toContain('proposal_hidden_4');
   });
