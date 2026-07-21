@@ -4,7 +4,7 @@ import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { withOrgContext } from '@/lib/db/rls';
 import { error, success, validationError } from '@/lib/api/response';
 import { closeBillingCandidatesForMonth } from '@/server/services/billing-evidence';
-import { notifyWebhookEventForOrg } from '@/server/services/outbound-webhook';
+import { enqueueWebhookEvent } from '@/server/services/outbound-webhook';
 import { BILLING_DOMAIN_ERROR_MESSAGE, parseBillingDomainOrDefault } from '../billing-domain';
 import { BILLING_MONTH_FORMAT_MESSAGE, parseStrictBillingMonth } from '../billing-month';
 
@@ -30,14 +30,26 @@ async function closeBillingMonth(req: NextRequest, ctx: AuthContext) {
 
   let result;
   try {
-    result = await withOrgContext(ctx.orgId, (tx) =>
-      closeBillingCandidatesForMonth(tx, {
+    result = await withOrgContext(ctx.orgId, async (tx) => {
+      const closeResult = await closeBillingCandidatesForMonth(tx, {
         orgId: ctx.orgId,
         billingMonth: parsedBillingMonth.start,
         actorId: ctx.userId,
         billingDomain,
-      }),
-    );
+      });
+      if (!closeResult.blocked) {
+        await enqueueWebhookEvent(tx, {
+          orgId: ctx.orgId,
+          event: 'billing.exported',
+          data: {
+            billingMonth: parsedBillingMonth.start.toISOString(),
+            billingDomain,
+            exportedCount: closeResult.exported_count,
+          },
+        });
+      }
+      return closeResult;
+    });
   } catch (cause) {
     if (isBillingCloseStaleCandidatesError(cause)) {
       return error(
@@ -65,12 +77,6 @@ async function closeBillingMonth(req: NextRequest, ctx: AuthContext) {
       },
     );
   }
-
-  await notifyWebhookEventForOrg(ctx.orgId, 'billing.exported', {
-    billingMonth: parsedBillingMonth.start.toISOString(),
-    billingDomain,
-    exportedCount: result.exported_count,
-  });
 
   return success({
     data: {

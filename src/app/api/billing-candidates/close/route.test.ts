@@ -5,12 +5,12 @@ const {
   requireAuthContextMock,
   withOrgContextMock,
   closeBillingCandidatesForMonthMock,
-  notifyWebhookEventForOrgMock,
+  enqueueWebhookEventMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
   withOrgContextMock: vi.fn(),
   closeBillingCandidatesForMonthMock: vi.fn(),
-  notifyWebhookEventForOrgMock: vi.fn(),
+  enqueueWebhookEventMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
@@ -33,7 +33,7 @@ vi.mock('@/server/services/billing-evidence', () => ({
 }));
 
 vi.mock('@/server/services/outbound-webhook', () => ({
-  notifyWebhookEventForOrg: notifyWebhookEventForOrgMock,
+  enqueueWebhookEvent: enqueueWebhookEventMock,
 }));
 
 import { POST } from './route';
@@ -97,7 +97,7 @@ describe('/api/billing-candidates/close POST', () => {
     });
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(closeBillingCandidatesForMonthMock).not.toHaveBeenCalled();
-    expect(notifyWebhookEventForOrgMock).not.toHaveBeenCalled();
+    expect(enqueueWebhookEventMock).not.toHaveBeenCalled();
   });
 
   it('closes the month when no review blockers remain', async () => {
@@ -134,11 +134,18 @@ describe('/api/billing-candidates/close POST', () => {
         billingDomain: 'home_care',
       },
     );
-    expect(notifyWebhookEventForOrgMock).toHaveBeenCalledWith('org_1', 'billing.exported', {
-      billingMonth: '2026-03-01T00:00:00.000Z',
-      billingDomain: 'home_care',
-      exportedCount: 12,
-    });
+    expect(enqueueWebhookEventMock).toHaveBeenCalledWith(
+      {},
+      {
+        orgId: 'org_1',
+        event: 'billing.exported',
+        data: {
+          billingMonth: '2026-03-01T00:00:00.000Z',
+          billingDomain: 'home_care',
+          exportedCount: 12,
+        },
+      },
+    );
     const body = await response.json();
     expect(body).toMatchObject({
       data: {
@@ -188,11 +195,18 @@ describe('/api/billing-candidates/close POST', () => {
         billingDomain: 'pca_rental',
       },
     );
-    expect(notifyWebhookEventForOrgMock).toHaveBeenCalledWith('org_1', 'billing.exported', {
-      billingMonth: '2026-06-01T00:00:00.000Z',
-      billingDomain: 'pca_rental',
-      exportedCount: 2,
-    });
+    expect(enqueueWebhookEventMock).toHaveBeenCalledWith(
+      {},
+      {
+        orgId: 'org_1',
+        event: 'billing.exported',
+        data: {
+          billingMonth: '2026-06-01T00:00:00.000Z',
+          billingDomain: 'pca_rental',
+          exportedCount: 2,
+        },
+      },
+    );
     await expect(response.json()).resolves.toMatchObject({
       data: {
         billing_domain: 'pca_rental',
@@ -222,7 +236,31 @@ describe('/api/billing-candidates/close POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(409);
-    expect(notifyWebhookEventForOrgMock).not.toHaveBeenCalled();
+    expect(enqueueWebhookEventMock).not.toHaveBeenCalled();
+  });
+
+  it('does not report a successful close when durable event enqueue fails', async () => {
+    closeBillingCandidatesForMonthMock.mockResolvedValue({
+      blocked: false,
+      exported_count: 1,
+      summary: {
+        total: 1,
+        pending_review: 0,
+        confirmed: 1,
+        excluded: 0,
+        exported: 1,
+        reviewed: 1,
+        ready_to_close: 0,
+        blocked_from_close: 0,
+        blocker_reasons: [],
+      },
+    });
+    enqueueWebhookEventMock.mockRejectedValueOnce(new Error('outbox unavailable'));
+
+    await expect(invokePOST(createRequest({ billing_month: '2026-03-01' }))).rejects.toThrow(
+      'outbox unavailable',
+    );
+    expect(withOrgContextMock).toHaveBeenCalledTimes(1);
   });
 
   it('closes without implicit claims transmission or claims metadata', async () => {
@@ -267,7 +305,7 @@ describe('/api/billing-candidates/close POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(409);
-    expect(notifyWebhookEventForOrgMock).not.toHaveBeenCalled();
+    expect(enqueueWebhookEventMock).not.toHaveBeenCalled();
     await expect(response.json()).resolves.toMatchObject({
       code: 'BILLING_CLOSE_STALE_CANDIDATES',
       message:
@@ -297,7 +335,7 @@ describe('/api/billing-candidates/close POST', () => {
     expect(response.status).toBe(400);
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(closeBillingCandidatesForMonthMock).not.toHaveBeenCalled();
-    expect(notifyWebhookEventForOrgMock).not.toHaveBeenCalled();
+    expect(enqueueWebhookEventMock).not.toHaveBeenCalled();
   });
 
   it('rejects invalid billing_domain before transaction work', async () => {
@@ -309,7 +347,7 @@ describe('/api/billing-candidates/close POST', () => {
     expect(response.status).toBe(400);
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(closeBillingCandidatesForMonthMock).not.toHaveBeenCalled();
-    expect(notifyWebhookEventForOrgMock).not.toHaveBeenCalled();
+    expect(enqueueWebhookEventMock).not.toHaveBeenCalled();
   });
 
   it('rejects malformed JSON before closing or webhook side effects', async () => {
@@ -323,6 +361,6 @@ describe('/api/billing-candidates/close POST', () => {
     });
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(closeBillingCandidatesForMonthMock).not.toHaveBeenCalled();
-    expect(notifyWebhookEventForOrgMock).not.toHaveBeenCalled();
+    expect(enqueueWebhookEventMock).not.toHaveBeenCalled();
   });
 });
