@@ -1,8 +1,7 @@
-import { unstable_rethrow } from 'next/navigation';
 import { NextRequest } from 'next/server';
 import { batchResolveNames } from '@/lib/utils/name-resolver';
 import { Prisma } from '@prisma/client';
-import { requireAuthContext } from '@/lib/auth/context';
+import { withAuthContext, type AuthContext, type AuthRouteContext } from '@/lib/auth/context';
 import { canFinalizeClinicalState } from '@/lib/auth/clinical-finalization';
 import {
   canAccessVisitScheduleAssignment,
@@ -13,12 +12,10 @@ import { normalizeJsonInput, readJsonObject } from '@/lib/db/json';
 import {
   conflict,
   forbiddenResponse,
-  internalError,
   notFound,
   success,
   validationError,
 } from '@/lib/api/response';
-import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { recordPhiReadAuditForRequest } from '@/lib/audit/phi-read-audit';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
@@ -138,14 +135,11 @@ async function resolveVisitRecordAttachments(
   return resolved;
 }
 
-async function authenticatedGET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canViewDashboard',
-    message: '訪問記録の閲覧権限がありません',
-  });
-  if ('response' in authResult) return authResult.response;
-  const ctx = authResult.ctx;
-
+async function authenticatedGET(
+  _req: NextRequest,
+  ctx: AuthContext,
+  { params }: AuthRouteContext<{ id: string }>,
+) {
   const { id: rawId } = await params;
   const id = normalizeRequiredRouteParam(rawId);
   if (!id) return validationError('訪問記録IDが不正です');
@@ -272,26 +266,16 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
   return result.response;
 }
 
-export async function GET(req: NextRequest, routeContext: { params: Promise<{ id: string }> }) {
-  try {
-    return withSensitiveNoStore(await authenticatedGET(req, routeContext));
-  } catch (err) {
-    unstable_rethrow(err);
-    return withSensitiveNoStore(internalError());
-  }
-}
+export const GET = withAuthContext(authenticatedGET, {
+  permission: 'canViewDashboard',
+  message: '訪問記録の閲覧権限がありません',
+});
 
 async function authenticatedPATCH(
   req: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
+  ctx: AuthContext,
+  { params }: AuthRouteContext<{ id: string }>,
 ) {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canVisit',
-    message: '訪問記録の更新権限がありません',
-  });
-  if ('response' in authResult) return authResult.response;
-  const ctx = authResult.ctx;
-
   const { id: rawId } = await params;
   const id = normalizeRequiredRouteParam(rawId);
   if (!id) return validationError('訪問記録IDが不正です');
@@ -581,11 +565,7 @@ async function authenticatedPATCH(
   return success({ data: updated });
 }
 
-export async function PATCH(req: NextRequest, routeContext: { params: Promise<{ id: string }> }) {
-  try {
-    return withSensitiveNoStore(await authenticatedPATCH(req, routeContext));
-  } catch (err) {
-    unstable_rethrow(err);
-    return withSensitiveNoStore(internalError());
-  }
-}
+export const PATCH = withAuthContext(authenticatedPATCH, {
+  permission: 'canVisit',
+  message: '訪問記録の更新権限がありません',
+});

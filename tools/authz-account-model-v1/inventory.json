@@ -735,7 +735,7 @@
       },
       {
         "path": "Plans.md",
-        "sha256": "f5fb866a55cafb725ee65947a079677645407950a85d9c71700d32c9046c1d9c"
+        "sha256": "a1962fa4bccc099f07728d620dddc062e8063dd12565ed0245b0c9ea9f0c01bc"
       },
       {
         "path": "README.md",
@@ -903,7 +903,7 @@
       },
       {
         "path": "ops/refactor/STATE.md",
-        "sha256": "6a5862689b4f3df2ea9bfaffe407094741b8a813c937d4db3f4759ff830765e1"
+        "sha256": "4d79e7f59b7ccd43fbff412e031935a473583715ff67ccc549d3e227c45841a5"
       },
       {
         "path": "ops/refactor/archive/PERF_FINDINGS.md",
@@ -32643,7 +32643,7 @@
       "path": "src/app/api/visit-records/[id]/route.test.ts",
       "classes": ["test"],
       "detectors": ["permission_capability", "raw_role_semantics", "tenant_role"],
-      "sha256": "b2df6f078bdc5d198db4b5d96e44c884aa882451f0bd3a74330a387dea6f595c"
+      "sha256": "a5dfe9c1e9f990f29adc0942e568e25d43f6cac423bde037d46d1b5dbc2cb115"
     },
     {
       "path": "src/app/api/visit-records/route.test.ts",
