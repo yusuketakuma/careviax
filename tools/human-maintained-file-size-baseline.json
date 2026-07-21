@@ -843,11 +843,6 @@
       "task_id": "MAINT-FILE-SIZE-1000-001"
     },
     {
-      "path": "tools/scripts/backfill-display-ids.ts",
-      "max_lines": 1191,
-      "task_id": "MAINT-FILE-SIZE-1000-001"
-    },
-    {
       "path": "tools/scripts/check-fhir-native-legacy-inventory.mjs",
       "max_lines": 1469,
       "task_id": "MAINT-FILE-SIZE-1000-001"
