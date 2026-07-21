@@ -1,14 +1,10 @@
-import { unstable_rethrow } from 'next/navigation';
 import { type NextRequest } from 'next/server';
 import type { Prisma } from '@prisma/client';
 import { z } from 'zod';
-import { internalError, success, validationError } from '@/lib/api/response';
-import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
-import { requireAuthContext } from '@/lib/auth/context';
+import { success, validationError } from '@/lib/api/response';
+import { withAuthContext, type AuthContext } from '@/lib/auth/context';
 import { prisma } from '@/lib/db/client';
 import { withOrgContext } from '@/lib/db/rls';
-import { logger } from '@/lib/utils/logger';
-import { withRoutePerformance } from '@/lib/utils/performance';
 import { RISK_DOMAIN_ORDER } from '@/lib/risk/risk-finding';
 import { RISK_TASK_REGISTRY } from '@/lib/tasks/task-registry';
 import {
@@ -20,7 +16,6 @@ import {
   normalizeOperationalTaskHealthLimit,
 } from '@/server/services/operational-task-health';
 
-const ROUTE = '/api/tasks/health-board';
 const RISK_TASK_TYPES = Object.values(RISK_TASK_REGISTRY).map((entry) => entry.task_type);
 
 const healthBoardQuerySchema = z
@@ -36,11 +31,29 @@ const healthBoardQuerySchema = z
   });
 
 function parseQuery(req: NextRequest) {
+  const searchParams = req.nextUrl.searchParams;
+  const fieldErrors: Record<string, string[]> = {};
+  for (const name of ['scope', 'limit', 'task_type', 'risk_domain'] as const) {
+    if (searchParams.getAll(name).length > 1) {
+      fieldErrors[name] = [`${name} は1つだけ指定してください`];
+    }
+  }
+  const rawTaskType = searchParams.get('task_type');
+  if (rawTaskType != null && rawTaskType !== rawTaskType.trim()) {
+    fieldErrors.task_type = ['task_type の前後に空白は指定できません'];
+  }
+  if (Object.keys(fieldErrors).length > 0) {
+    return {
+      ok: false as const,
+      response: validationError('検索条件が不正です', fieldErrors),
+    };
+  }
+
   const parsed = healthBoardQuerySchema.safeParse({
-    scope: req.nextUrl.searchParams.get('scope') ?? undefined,
-    limit: req.nextUrl.searchParams.get('limit') ?? undefined,
-    task_type: req.nextUrl.searchParams.get('task_type') ?? undefined,
-    risk_domain: req.nextUrl.searchParams.get('risk_domain') ?? undefined,
+    scope: searchParams.get('scope') ?? undefined,
+    limit: searchParams.get('limit') ?? undefined,
+    task_type: rawTaskType ?? undefined,
+    risk_domain: searchParams.get('risk_domain') ?? undefined,
   });
   if (!parsed.success) {
     return {
@@ -131,14 +144,7 @@ function andTaskWhere(...wheres: Prisma.TaskWhereInput[]): Prisma.TaskWhereInput
   return { AND: active };
 }
 
-async function authenticatedGET(req: NextRequest) {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canManageOperationalTasks',
-    message: 'タスクヘルスボードの閲覧権限がありません',
-  });
-  if ('response' in authResult) return authResult.response;
-  const { ctx } = authResult;
-
+async function authenticatedGET(req: NextRequest, ctx: AuthContext) {
   const parsed = parseQuery(req);
   if (!parsed.ok) return parsed.response;
 
@@ -174,22 +180,7 @@ async function authenticatedGET(req: NextRequest) {
   });
 }
 
-export async function GET(req: NextRequest) {
-  return withRoutePerformance(req, async () => {
-    try {
-      return withSensitiveNoStore(await authenticatedGET(req));
-    } catch (err) {
-      unstable_rethrow(err);
-      logger.error(
-        {
-          event: 'tasks_health_board_unhandled_error',
-          route: ROUTE,
-          method: req.method,
-          code: err instanceof Error ? err.name : typeof err,
-        },
-        err,
-      );
-      return withSensitiveNoStore(internalError());
-    }
-  });
-}
+export const GET = withAuthContext(authenticatedGET, {
+  permission: 'canManageOperationalTasks',
+  message: 'タスクヘルスボードの閲覧権限がありません',
+});
