@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   enqueueHandoffCreatedWebhook,
   enqueueQualificationCheckedWebhook,
+  enqueueReportDeliveryUpdatedWebhook,
   enqueueWebhookEvent,
 } from './outbound-webhook-queue';
 
@@ -147,6 +148,51 @@ describe('outbound webhook queue', () => {
               handoffItemId: 'item_1',
               boardId: 'board_1',
               handoffKind: 'transfer',
+            },
+          }),
+        }),
+      ],
+      skipDuplicates: true,
+    });
+  });
+
+  it('queues report delivery status without recipient or report content', async () => {
+    const tx = {
+      webhookRegistration: {
+        findMany: vi
+          .fn()
+          .mockResolvedValue([{ id: 'webhook_1', url: 'https://partner.example.com/reports' }]),
+      },
+      webhookDelivery: { createMany: vi.fn().mockResolvedValue({ count: 1 }) },
+    };
+
+    await expect(
+      enqueueReportDeliveryUpdatedWebhook(tx as never, {
+        orgId: 'org_1',
+        eventId: 'report-delivery:event_1',
+        reportId: 'report_1',
+        patientId: 'patient_1',
+        reportType: 'physician_report',
+        status: 'response_waiting',
+        sentCount: 1,
+        failedCount: 1,
+      }),
+    ).resolves.toBe(1);
+
+    expect(tx.webhookDelivery.createMany).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({
+          delivery_id: 'report-delivery:event_1',
+          event: 'report.delivery_updated',
+          payload: expect.objectContaining({
+            event: 'report.delivery_updated',
+            data: {
+              reportId: 'report_1',
+              patientId: 'patient_1',
+              reportType: 'physician_report',
+              status: 'response_waiting',
+              sentCount: 1,
+              failedCount: 1,
             },
           }),
         }),

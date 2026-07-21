@@ -137,3 +137,25 @@ export function enqueueHandoffCreatedWebhook(
     data,
   });
 }
+
+export function enqueueReportDeliveryUpdatedWebhook(
+  tx: WebhookEnqueueTx,
+  input: {
+    orgId: string;
+    eventId: string;
+    reportId: string;
+    patientId: string;
+    reportType: string;
+    status: 'sent' | 'response_waiting' | 'failed';
+    sentCount: number;
+    failedCount: number;
+  },
+) {
+  const { orgId, eventId, ...data } = input;
+  return enqueueWebhookEvent(tx, {
+    orgId,
+    eventId,
+    event: 'report.delivery_updated',
+    data,
+  });
+}

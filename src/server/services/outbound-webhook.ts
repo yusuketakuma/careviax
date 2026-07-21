@@ -22,6 +22,7 @@ export const WEBHOOK_EVENT_TYPES = [
   'billing.exported',
   'qualification.checked',
   'handoff.created',
+  'report.delivery_updated',
 ] as const;
 
 export type WebhookEventType = (typeof WEBHOOK_EVENT_TYPES)[number];
@@ -67,6 +68,14 @@ const WEBHOOK_REFERENCE_DATA_KEYS: Record<WebhookEventType, ReadonlySet<string>>
     'identityMatch',
   ]),
   'handoff.created': new Set(['handoffItemId', 'boardId', 'handoffKind']),
+  'report.delivery_updated': new Set([
+    'reportId',
+    'patientId',
+    'reportType',
+    'status',
+    'sentCount',
+    'failedCount',
+  ]),
 };
 
 export function assertReferenceOnlyWebhookData(

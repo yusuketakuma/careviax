@@ -49,6 +49,7 @@ import {
   type CareReportSendRecipient as SendRecipient,
 } from '@/lib/reports/care-report-send-validation';
 import { logCareReportEmailDeliveryFailure } from '@/server/services/care-report-send-observability';
+import { enqueueCareReportDeliveryWebhook } from '@/server/services/care-report-delivery-webhook';
 
 function toPrimaryCommunicationEventType(reportType: string) {
   switch (reportType) {
@@ -1159,11 +1160,7 @@ async function persistDeliveryBlockedByPartnerVisitSource(
   if (!persisted) throw new DeliveryInProgressConflict();
 }
 
-/**
- * 1 件の送付先について、送達レコード作成・監査ログ・(必要なら)メール送信・
- * 状態更新・連携イベント・連絡先プロファイル学習までを実行する。
- * メール送信は外部 I/O のためトランザクション外で行い、結果に応じて記録する。
- */
+/** 送付先単位のDB intentを確定後、外部I/Oと結果記録をtransaction外/内へ分離する。 */
 async function processRecipient(args: {
   ctx: AuthContext;
   reportId: string;
@@ -1533,10 +1530,7 @@ async function processRecipient(args: {
   return { recipient, deliveryRecordId: attemptedDeliveryRecord.id, failureReason: null };
 }
 
-/**
- * すべての送付先処理後、報告書状態・服薬サイクル遷移・算定エビデンスを 1 回だけ更新する。
- * 単一送付はこの処理の n=1 サブセットとして同じ挙動になる。
- */
+/** 全送付先の処理後、報告書・cycle・算定・webhookを1 transactionで確定する。 */
 async function finalizeReportDelivery(args: {
   ctx: AuthContext;
   reportId: string;
@@ -1700,6 +1694,8 @@ async function finalizeReportDelivery(args: {
         }
       }
 
+      await enqueueCareReportDeliveryWebhook(tx, ctx.orgId, report, nextStatus, outcomes);
+
       return { id: reportId, status: nextStatus };
     },
     { requestContext: ctx },
@@ -1710,8 +1706,9 @@ async function markCareReportSendFailed(args: {
   ctx: AuthContext;
   reportId: string;
   report: ReportRecord;
+  outcomes: DeliveryOutcome[];
 }) {
-  const { ctx, reportId, report } = args;
+  const { ctx, reportId, report, outcomes } = args;
   await withOrgContext(
     ctx.orgId,
     async (tx) => {
@@ -1727,6 +1724,7 @@ async function markCareReportSendFailed(args: {
       if (updatedReport.count !== 1) {
         throw new CareReportFinalizationConflict(reportId);
       }
+      await enqueueCareReportDeliveryWebhook(tx, ctx.orgId, report, 'failed', outcomes);
     },
     { requestContext: ctx },
   );
@@ -1968,7 +1966,7 @@ async function careReportSendPOST(
   // 単一送付でメール送信が失敗した場合は、従来どおり報告書を failed にして 502 を返す。
   if (successes.length === 0) {
     try {
-      await markCareReportSendFailed({ ctx, reportId: id, report: existing });
+      await markCareReportSendFailed({ ctx, reportId: id, report: existing, outcomes });
     } catch (cause) {
       if (cause instanceof CareReportFinalizationConflict) {
         return respondCareReportFinalizationConflict({

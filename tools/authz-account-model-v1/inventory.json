@@ -735,7 +735,7 @@
       },
       {
         "path": "Plans.md",
-        "sha256": "4dd771843a60e3b8c7070b6ee527130a2883c9a2e1bc0b2706960e5f4bfa0729"
+        "sha256": "45e981a89b1c54bb86c7560f0bdd0ecc1a086db71b8ca9580b5b6c64ecd748ed"
       },
       {
         "path": "README.md",
@@ -903,7 +903,7 @@
       },
       {
         "path": "ops/refactor/STATE.md",
-        "sha256": "9fb909c023d2c0f4bf1a892f005bf51f4dff62a63cf1601f8e48fab7231aacd4"
+        "sha256": "d8fb8da4e3ddc2acb64eafc21e629aa9462c3783aa1996228e4649824e14343a"
       },
       {
         "path": "ops/refactor/archive/PERF_FINDINGS.md",
@@ -1991,7 +1991,7 @@
       },
       {
         "path": "src/server/services/outbound-webhook.ts",
-        "sha256": "0fc798d03751c7416e44cfb98ca9278c79a3b555b793d8ea8682a91eabb204b3"
+        "sha256": "919def48efe8e0491def669fc9dd645a52f69fe5f6dbed1be9f44efa23825c10"
       },
       {
         "path": "src/server/services/pdf-documents.test.tsx",
@@ -31132,7 +31132,7 @@
         "phos_role",
         "raw_role_semantics"
       ],
-      "sha256": "0123b8061ad1e78bce698f1a2ceef03617ee381b7e2bb079d73492e9adc583b7"
+      "sha256": "e1076c302d01abc36e0bc9aac3e5f2328f31a6c1b649dc99feadd8aace9bf193"
     },
     {
       "path": "src/app/api/care-reports/analytics/route.test.ts",

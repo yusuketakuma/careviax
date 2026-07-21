@@ -1,9 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest, NextResponse } from 'next/server';
-import { createHmac } from 'node:crypto';
-import { Prisma } from '@prisma/client';
 import { EMAIL_DELIVERY_FAILURE_REASON } from '@/lib/reports/delivery-failure-reasons';
 import { expectSensitiveNoStore } from '@/test/api-response-assertions';
+import {
+  buildExpectedSendRequestFingerprint,
+  buildUniqueConstraintError,
+  expectCareReportDeliveryWebhookCall,
+} from './route.test-helpers';
 
 const {
   authContext,
@@ -27,6 +30,7 @@ const {
   communicationEventCreateMock,
   loggerWarnMock,
   loggerErrorMock,
+  enqueueCareReportDeliveryWebhookMock,
   txMock,
 } = vi.hoisted(() => ({
   authContext: {
@@ -56,6 +60,7 @@ const {
   communicationEventCreateMock: vi.fn(),
   loggerWarnMock: vi.fn(),
   loggerErrorMock: vi.fn(),
+  enqueueCareReportDeliveryWebhookMock: vi.fn(),
   txMock: {
     deliveryRecord: {
       findFirst: vi.fn(),
@@ -220,6 +225,10 @@ vi.mock('@/server/services/operational-tasks', () => ({
   resolveOperationalTasks: resolveOperationalTasksMock,
 }));
 
+vi.mock('@/server/services/care-report-delivery-webhook', () => ({
+  enqueueCareReportDeliveryWebhook: enqueueCareReportDeliveryWebhookMock,
+}));
+
 vi.mock('@/lib/contact-profiles', () => ({
   learnContactProfileFromCommunication: learnContactProfileFromCommunicationMock,
 }));
@@ -238,14 +247,6 @@ import { POST } from './route';
 const REPORT_UPDATED_AT = new Date('2026-05-12T00:00:00.000Z');
 const REPORT_UPDATED_AT_ISO = REPORT_UPDATED_AT.toISOString();
 const TEST_IDEMPOTENCY_HASH_SECRET = 'ph-os-local-auth-secret';
-
-function buildUniqueConstraintError() {
-  return new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
-    code: 'P2002',
-    clientVersion: 'test',
-    meta: { target: ['org_id', 'delivery_intent_key'] },
-  });
-}
 
 function createRequest(body: unknown, headers: Record<string, string> = {}) {
   const effectiveBody =
@@ -279,30 +280,6 @@ function createMalformedRequest() {
     },
     body: '{"channel":',
   });
-}
-
-function buildExpectedSendRequestFingerprint(
-  recipients: unknown[],
-  expectedUpdatedAtOrSecret: Date | string = REPORT_UPDATED_AT,
-  secretMaybe?: string,
-) {
-  const expectedUpdatedAt =
-    expectedUpdatedAtOrSecret instanceof Date ? expectedUpdatedAtOrSecret : REPORT_UPDATED_AT;
-  const secret =
-    typeof expectedUpdatedAtOrSecret === 'string'
-      ? expectedUpdatedAtOrSecret
-      : (secretMaybe ?? 'ph-os-local-auth-secret');
-  return `care-report-send-request:v2:${createHmac('sha256', secret)
-    .update(
-      JSON.stringify({
-        action: 'care_report.send',
-        report_id: 'report_1',
-        expected_updated_at: expectedUpdatedAt.toISOString(),
-        recipients,
-        safety_ack: true,
-      }),
-    )
-    .digest('hex')}`;
 }
 
 describe('/api/care-reports/[id]/send POST', () => {
@@ -443,6 +420,7 @@ describe('/api/care-reports/[id]/send POST', () => {
     upsertBillingEvidenceForVisitMock.mockResolvedValue(undefined);
     resolveOperationalTasksMock.mockResolvedValue(undefined);
     learnContactProfileFromCommunicationMock.mockResolvedValue(undefined);
+    enqueueCareReportDeliveryWebhookMock.mockResolvedValue(1);
     withOrgContextMock.mockImplementation(async (_orgId, callback) => callback(txMock));
   });
 
@@ -1898,6 +1876,7 @@ describe('/api/care-reports/[id]/send POST', () => {
         }),
       }),
     );
+    expectCareReportDeliveryWebhookCall(enqueueCareReportDeliveryWebhookMock, txMock, 'sent', 1, 0);
     const json = await response.json();
     expect(json).toMatchObject({
       data: {
@@ -1948,6 +1927,7 @@ describe('/api/care-reports/[id]/send POST', () => {
         data: expect.objectContaining({ status: 'sent' }),
       }),
     );
+    expect(enqueueCareReportDeliveryWebhookMock).not.toHaveBeenCalled();
     expect(txMock.careReportSendRequest.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
@@ -3283,6 +3263,13 @@ describe('/api/care-reports/[id]/send POST', () => {
         },
         data: { status: 'failed' },
       }),
+    );
+    expectCareReportDeliveryWebhookCall(
+      enqueueCareReportDeliveryWebhookMock,
+      txMock,
+      'failed',
+      0,
+      1,
     );
     expect(loggerWarnMock).toHaveBeenCalledWith('care report email delivery failed', {
       event: 'care_report.email_delivery_failed',

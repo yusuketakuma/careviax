@@ -379,12 +379,12 @@
     },
     {
       "path": "src/app/api/care-reports/[id]/send/route.test.ts",
-      "max_lines": 3861,
+      "max_lines": 3848,
       "task_id": "MAINT-FILE-SIZE-1000-001"
     },
     {
       "path": "src/app/api/care-reports/[id]/send/route.ts",
-      "max_lines": 2051,
+      "max_lines": 2049,
       "task_id": "MAINT-FILE-SIZE-1000-001"
     },
     {
