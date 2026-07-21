@@ -735,7 +735,7 @@
       },
       {
         "path": "Plans.md",
-        "sha256": "d1529f36c1f9bf1a610ff48c73ab605c36b937ac07209a4289eda17c4e6e13e4"
+        "sha256": "82c1919a4978cb9eec89c159a7cb282bb98d0d98e9e8b04a6311a1617cff5cd7"
       },
       {
         "path": "README.md",
@@ -903,7 +903,7 @@
       },
       {
         "path": "ops/refactor/STATE.md",
-        "sha256": "25f3537f268e254a1933ba370d75636b9fda1a372173b211c89bab82b8368661"
+        "sha256": "0a52ce88cb3ce69ad49b35ef349501ae734df9628930107a00f58ff1c11d3315"
       },
       {
         "path": "ops/refactor/archive/PERF_FINDINGS.md",
@@ -6516,30 +6516,6 @@
       "reprojection_or_removal": "owner_review_required_before_cutover:src/app/api/templates/route.ts",
       "binding_profile": "p_a38944584b60",
       "capability_profile": "p_0f0e0a961fcf"
-    },
-    {
-      "id": "mapping_precedence:src/app/api/visit-billing-candidates/summary/route.ts",
-      "detector": "mapping_precedence",
-      "path": "src/app/api/visit-billing-candidates/summary/route.ts",
-      "evidence_sha256": "5a35c6ed0eb4b06c51df00c960c3e8a38e37f4e4de10dac1c8e80c859126bea2",
-      "principal": "human",
-      "lifecycles": ["request"],
-      "surfaces": ["rls", "writer"],
-      "exact_values_or_scopes": [
-        "not_applicable:mapping_precedence:no-enumerated-value:src/app/api/visit-billing-candidates/summary/route.ts"
-      ],
-      "route_method_purpose": "GET /api/visit-billing-candidates/summary purpose=legacy_unspecified_pending_review",
-      "precedence_selection": "legacy_observed_requires_human_review",
-      "synthetic_derived_mapping": "not_applicable:no-synthetic-mapping-observed:src/app/api/visit-billing-candidates/summary/route.ts",
-      "persistence_contract": "not_applicable:no-persistence-observed:src/app/api/visit-billing-candidates/summary/route.ts",
-      "ttl_contract": "not_applicable:no-ttl-observed:src/app/api/visit-billing-candidates/summary/route.ts",
-      "mapping_disposition": "candidate_requires_human",
-      "owner": "Identity / Authz",
-      "approval_status": "pending_owner_review",
-      "test_refs": ["src/app/api/visit-billing-candidates/summary/route.test.ts"],
-      "reprojection_or_removal": "owner_review_required_before_cutover:src/app/api/visit-billing-candidates/summary/route.ts",
-      "binding_profile": "p_5a1a5e55993d",
-      "capability_profile": "p_3b4681fef8aa"
     },
     {
       "id": "mapping_precedence:src/app/api/visit-preparations/[scheduleId]/route.ts",
@@ -32590,7 +32566,7 @@
       "path": "src/app/api/visit-billing-candidates/summary/route.test.ts",
       "classes": ["test"],
       "detectors": ["mapping_precedence", "permission_capability", "raw_role_semantics"],
-      "sha256": "514c170bc1354a0a23718360e41b032be4024624f9067802acba9acbb3b8134e"
+      "sha256": "768282bd421e19d6677479b80ca12f86f823825aa018443e6c2b62397a50176f"
     },
     {
       "path": "src/app/api/visit-brief-feedback/route.test.ts",

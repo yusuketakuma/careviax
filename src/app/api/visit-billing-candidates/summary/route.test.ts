@@ -31,10 +31,27 @@ const {
 
 vi.mock('@/lib/auth/context', () => ({
   requireAuthContext: requireAuthContextMock,
-}));
-
-vi.mock('@/lib/auth/request-context', () => ({
-  runWithRequestAuthContext: runWithRequestAuthContextMock,
+  withAuthContext:
+    (
+      handler: (
+        req: NextRequest,
+        ctx: typeof authContext,
+        routeContext: { params: Promise<Record<string, string>> },
+      ) => Promise<Response>,
+      options: { permission: string; message: string },
+    ) =>
+    async (req: NextRequest, routeContext: { params: Promise<Record<string, string>> }) =>
+      withRoutePerformanceMock(req, async () => {
+        const authResult = await requireAuthContextMock(req, options);
+        if ('response' in authResult) {
+          authResult.response.headers.set('Cache-Control', 'private, no-store, max-age=0');
+          authResult.response.headers.set('Pragma', 'no-cache');
+          return authResult.response;
+        }
+        return runWithRequestAuthContextMock(authResult.ctx, () =>
+          handler(req, authResult.ctx, routeContext),
+        );
+      }),
 }));
 
 vi.mock('@/lib/db/rls', () => ({
@@ -43,10 +60,6 @@ vi.mock('@/lib/db/rls', () => ({
 
 vi.mock('@/lib/utils/logger', () => ({
   logger: { error: loggerErrorMock, warn: vi.fn(), info: vi.fn(), debug: vi.fn() },
-}));
-
-vi.mock('@/lib/utils/performance', () => ({
-  withRoutePerformance: withRoutePerformanceMock,
 }));
 
 import { GET as rawGET } from './route';
