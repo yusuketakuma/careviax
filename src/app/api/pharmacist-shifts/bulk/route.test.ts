@@ -297,12 +297,13 @@ describe('/api/pharmacist-shifts/bulk POST', () => {
     expect(JSON.stringify(body)).not.toContain('bulk note secret');
     expect(loggerErrorMock).toHaveBeenCalledTimes(1);
     expect(loggerErrorMock).toHaveBeenCalledWith(
-      {
-        event: 'pharmacist_shifts_bulk_post_unhandled_error',
+      expect.objectContaining({
+        event: 'route_handler_unhandled_error',
         route: '/api/pharmacist-shifts/bulk',
         method: 'POST',
-        status: 500,
-      },
+        requestId: expect.any(String),
+        correlationId: expect.any(String),
+      }),
       unsafeError,
     );
     const loggedContext = loggerErrorMock.mock.calls[0]?.[0] as Record<string, unknown>;

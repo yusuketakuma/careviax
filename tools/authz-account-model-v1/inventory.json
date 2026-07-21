@@ -903,7 +903,7 @@
       },
       {
         "path": "ops/refactor/STATE.md",
-        "sha256": "603d710f80ee5ceb6afc3fae847f7a55653743377a87f44add0d438070870025"
+        "sha256": "859ca310b13776d4c5e4353bafc5a1168154fdbf3bc40577cae600ef73ff329a"
       },
       {
         "path": "ops/refactor/archive/PERF_FINDINGS.md",
@@ -6391,30 +6391,6 @@
       "reprojection_or_removal": "owner_review_required_before_cutover:src/app/api/pca-pumps/route.ts",
       "binding_profile": "p_5a1a5e55993d",
       "capability_profile": "p_a325f45c9b2a"
-    },
-    {
-      "id": "mapping_precedence:src/app/api/pharmacist-shifts/bulk/route.ts",
-      "detector": "mapping_precedence",
-      "path": "src/app/api/pharmacist-shifts/bulk/route.ts",
-      "evidence_sha256": "5a35c6ed0eb4b06c51df00c960c3e8a38e37f4e4de10dac1c8e80c859126bea2",
-      "principal": "human",
-      "lifecycles": ["request"],
-      "surfaces": ["rls", "writer"],
-      "exact_values_or_scopes": [
-        "not_applicable:mapping_precedence:no-enumerated-value:src/app/api/pharmacist-shifts/bulk/route.ts"
-      ],
-      "route_method_purpose": "POST /api/pharmacist-shifts/bulk purpose=legacy_unspecified_pending_review",
-      "precedence_selection": "legacy_observed_requires_human_review",
-      "synthetic_derived_mapping": "not_applicable:no-synthetic-mapping-observed:src/app/api/pharmacist-shifts/bulk/route.ts",
-      "persistence_contract": "not_applicable:no-persistence-observed:src/app/api/pharmacist-shifts/bulk/route.ts",
-      "ttl_contract": "not_applicable:no-ttl-observed:src/app/api/pharmacist-shifts/bulk/route.ts",
-      "mapping_disposition": "candidate_requires_human",
-      "owner": "Identity / Authz",
-      "approval_status": "pending_owner_review",
-      "test_refs": ["src/app/api/pharmacist-shifts/bulk/route.test.ts"],
-      "reprojection_or_removal": "owner_review_required_before_cutover:src/app/api/pharmacist-shifts/bulk/route.ts",
-      "binding_profile": "p_d5e6328da330",
-      "capability_profile": "p_01a8c3b58caf"
     },
     {
       "id": "mapping_precedence:src/app/api/pharmacist-shifts/route.ts",
@@ -32364,7 +32340,7 @@
       "path": "src/app/api/pharmacist-shifts/bulk/route.test.ts",
       "classes": ["test"],
       "detectors": ["mapping_precedence", "raw_role_semantics"],
-      "sha256": "8c341b57c2f8c154d932d098dc34965deca7022e45d94716e25fd129f445a837"
+      "sha256": "543c14de7884565b47696dd070c7c9ac757b907e39627f722c90fce515e0fca9"
     },
     {
       "path": "src/app/api/pharmacist-shifts/route.test.ts",
