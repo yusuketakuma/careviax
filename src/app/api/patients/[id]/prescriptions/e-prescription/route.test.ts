@@ -38,7 +38,44 @@ const {
 });
 
 vi.mock('@/lib/auth/context', () => ({
-  requireAuthContext: requireAuthContextMock,
+  withAuthContext:
+    (
+      handler: (
+        req: NextRequest,
+        ctx: typeof DEFAULT_CTX,
+        routeContext: { params: Promise<{ id: string }> },
+      ) => Promise<Response>,
+      options?: unknown,
+    ) =>
+    async (req: NextRequest, routeContext: { params: Promise<{ id: string }> }) => {
+      const noStore = (response: Response) => {
+        response.headers.set('Cache-Control', 'private, no-store, max-age=0');
+        response.headers.set('Pragma', 'no-cache');
+        return response;
+      };
+      const authResult = await requireAuthContextMock(req, options);
+      if ('response' in authResult) return noStore(authResult.response);
+      try {
+        return noStore(await handler(req, authResult.ctx, routeContext));
+      } catch (error) {
+        loggerErrorMock(
+          {
+            event: 'route_handler_unhandled_error',
+            route: req.nextUrl.pathname,
+            method: req.method,
+            requestId: authResult.ctx.requestId,
+            correlationId: authResult.ctx.correlationId,
+          },
+          error,
+        );
+        return noStore(
+          Response.json(
+            { code: 'INTERNAL_ERROR', message: 'サーバー内部でエラーが発生しました' },
+            { status: 500 },
+          ),
+        );
+      }
+    },
 }));
 
 vi.mock('@/lib/db/client', () => ({
@@ -115,7 +152,13 @@ function createMalformedJsonRequest() {
   });
 }
 
-const DEFAULT_CTX = { orgId: 'org_1', userId: 'user_1', role: 'admin' };
+const DEFAULT_CTX = {
+  orgId: 'org_1',
+  userId: 'user_1',
+  role: 'admin',
+  requestId: 'req_e_prescription',
+  correlationId: 'corr_e_prescription',
+};
 
 function mockAccessiblePatient() {
   prismaMock.patient.findFirst.mockResolvedValue({ id: 'patient_1', name: '山田太郎' });
@@ -175,6 +218,30 @@ describe('POST /api/patients/[id]/prescriptions/e-prescription', () => {
       async (_orgId: string, callback: (tx: typeof txMock) => unknown) => callback(txMock),
     );
     txMock.prescriptionIntake.findFirst.mockResolvedValue(null);
+  });
+
+  it('uses the standard canVisit wrapper and short-circuits denied requests with no-store', async () => {
+    requireAuthContextMock.mockResolvedValueOnce({
+      response: Response.json(
+        { code: 'AUTH_FORBIDDEN', message: '権限がありません' },
+        { status: 403 },
+      ),
+    });
+    const request = createRequest({ prescription_id: 'rx_abc123' });
+
+    const response = await POST(request, {
+      params: Promise.resolve({ id: 'patient_1' }),
+    });
+
+    expect(response.status).toBe(403);
+    expectNoStore(response);
+    expect(requireAuthContextMock).toHaveBeenCalledWith(request, {
+      permission: 'canVisit',
+      message: '電子処方箋受付の権限がありません',
+    });
+    expect(prismaMock.patient.findFirst).not.toHaveBeenCalled();
+    expect(createEPrescriptionAdapterMock).not.toHaveBeenCalled();
+    expectNoIntakeSideEffects();
   });
 
   it('rejects non-object request payloads before patient lookup or adapter calls', async () => {
@@ -867,10 +934,11 @@ describe('POST /api/patients/[id]/prescriptions/e-prescription', () => {
     expect(bodyText).not.toContain('rx_abc123');
     expect(loggerErrorMock).toHaveBeenCalledWith(
       {
-        event: 'patient_eprescription_post_unhandled_error',
-        route: '/api/patients/[id]/prescriptions/e-prescription',
+        event: 'route_handler_unhandled_error',
+        route: '/api/patients/patient_1/prescriptions/e-prescription',
         method: 'POST',
-        status: 500,
+        requestId: 'req_e_prescription',
+        correlationId: 'corr_e_prescription',
       },
       unsafeError,
     );

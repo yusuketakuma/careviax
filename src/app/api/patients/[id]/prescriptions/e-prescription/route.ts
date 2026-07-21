@@ -1,15 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { unstable_rethrow } from 'next/navigation';
-import { requireAuthContext } from '@/lib/auth/context';
-import {
-  success,
-  notFound,
-  validationError,
-  error,
-  internalError,
-  registeredError,
-} from '@/lib/api/response';
-import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
+import { withAuthContext, type AuthContext } from '@/lib/auth/context';
+import { success, notFound, validationError, error, registeredError } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
 import { isPrismaUniqueConstraintError } from '@/lib/db/prisma-errors';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
@@ -25,15 +16,12 @@ import { applyPatientAssignmentWhere } from '@/lib/auth/visit-schedule-access';
 import { listAccessiblePatientCaseIds } from '@/server/services/patient-access';
 import { requireWritablePatient } from '@/server/services/patient-write-guard';
 import { createPrescriptionIntake } from '@/server/services/prescription-intake-service';
-import { logger } from '@/lib/utils/logger';
-import { withRoutePerformance } from '@/lib/utils/performance';
 
 const fetchEPrescriptionSchema = z.object({
   prescription_id: z.string().min(1),
   case_id: z.string().trim().min(1).optional(),
 });
 
-const ROUTE = '/api/patients/[id]/prescriptions/e-prescription';
 const ACCEPTABLE_EPRESCRIPTION_STATUSES = ['issued', 'partially_dispensed'] as const;
 const EPRESCRIPTION_INTAKE_CYCLE_STATUSES = [
   'intake_received',
@@ -162,15 +150,9 @@ async function findExistingEPrescriptionIntake(args: {
  */
 async function authenticatedPOST(
   req: NextRequest,
+  ctx: AuthContext,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canVisit',
-    message: '電子処方箋受付の権限がありません',
-  });
-  if ('response' in authResult) return authResult.response;
-  const ctx = authResult.ctx;
-
   const { id: rawPatientId } = await params;
   const patientId = normalizeRequiredRouteParam(rawPatientId);
   if (!patientId) return validationError('患者IDが不正です');
@@ -471,22 +453,7 @@ async function authenticatedPOST(
   );
 }
 
-export async function POST(req: NextRequest, routeContext: { params: Promise<{ id: string }> }) {
-  return withRoutePerformance(req, async () => {
-    try {
-      return withSensitiveNoStore(await authenticatedPOST(req, routeContext));
-    } catch (err) {
-      unstable_rethrow(err);
-      logger.error(
-        {
-          event: 'patient_eprescription_post_unhandled_error',
-          route: ROUTE,
-          method: req.method,
-          status: 500,
-        },
-        err,
-      );
-      return withSensitiveNoStore(internalError());
-    }
-  });
-}
+export const POST = withAuthContext(authenticatedPOST, {
+  permission: 'canVisit',
+  message: '電子処方箋受付の権限がありません',
+});
