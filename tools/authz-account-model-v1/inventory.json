@@ -735,7 +735,7 @@
       },
       {
         "path": "Plans.md",
-        "sha256": "fc76e68025123f5ce770f32e3806703d23557c04a8c115c201836cd11cf236d7"
+        "sha256": "87b94dc507ddd54979b1a7a2d07abdbba986f18acbcaa2889d73477109ea5c6e"
       },
       {
         "path": "README.md",
@@ -903,7 +903,7 @@
       },
       {
         "path": "ops/refactor/STATE.md",
-        "sha256": "1238e18723bbe94a3d3374c8a8a9ff8ac506d06aa8be2c922628866fdb9c5e3e"
+        "sha256": "22346938dffaa50140de1f062a0c3d715d03176e65c01d7a644945d6d935344c"
       },
       {
         "path": "ops/refactor/archive/PERF_FINDINGS.md",
@@ -6223,30 +6223,6 @@
       "reprojection_or_removal": "owner_review_required_before_cutover:src/app/api/medication-issues/[id]/route.ts",
       "binding_profile": "p_d3f8b85adfe7",
       "capability_profile": "p_3f5e2867901e"
-    },
-    {
-      "id": "mapping_precedence:src/app/api/medication-issues/route.ts",
-      "detector": "mapping_precedence",
-      "path": "src/app/api/medication-issues/route.ts",
-      "evidence_sha256": "e5601167ff531ae7aa8373110aa5e1810d9c776060429b6f31b7f03f36df8f7d",
-      "principal": "human",
-      "lifecycles": ["request"],
-      "surfaces": ["rls", "writer"],
-      "exact_values_or_scopes": [
-        "not_applicable:mapping_precedence:no-enumerated-value:src/app/api/medication-issues/route.ts"
-      ],
-      "route_method_purpose": "GET,POST /api/medication-issues purpose=legacy_unspecified_pending_review",
-      "precedence_selection": "legacy_observed_requires_human_review",
-      "synthetic_derived_mapping": "not_applicable:no-synthetic-mapping-observed:src/app/api/medication-issues/route.ts",
-      "persistence_contract": "not_applicable:no-persistence-observed:src/app/api/medication-issues/route.ts",
-      "ttl_contract": "not_applicable:no-ttl-observed:src/app/api/medication-issues/route.ts",
-      "mapping_disposition": "candidate_requires_human",
-      "owner": "Identity / Authz",
-      "approval_status": "pending_owner_review",
-      "test_refs": ["src/app/api/medication-issues/route.test.ts"],
-      "reprojection_or_removal": "owner_review_required_before_cutover:src/app/api/medication-issues/route.ts",
-      "binding_profile": "p_b02161036e9d",
-      "capability_profile": "p_2f5f321572a2"
     },
     {
       "id": "mapping_precedence:src/app/api/medication-profiles/route.ts",
@@ -31838,7 +31814,7 @@
         "raw_role_semantics",
         "tenant_role"
       ],
-      "sha256": "162a421de7ae654b3b570df74951ffb9ab8353c69b3914231ebbb0ace4cca691"
+      "sha256": "d600fcf989cf5473781e0a741737cac8fe1de55c3ce21b634f901242acd6792e"
     },
     {
       "path": "src/app/api/medication-profiles/route.test.ts",

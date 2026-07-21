@@ -1,10 +1,8 @@
-import { unstable_rethrow } from 'next/navigation';
 import { NextRequest } from 'next/server';
-import { requireAuthContext } from '@/lib/auth/context';
-import { runWithRequestAuthContext } from '@/lib/auth/request-context';
+import { withAuthContext, type AuthContext } from '@/lib/auth/context';
 import { allocateDisplayId } from '@/lib/db/display-id';
 import { withOrgContext } from '@/lib/db/rls';
-import { internalError, notFound, success, validationError } from '@/lib/api/response';
+import { notFound, success, validationError } from '@/lib/api/response';
 import { readStrictOptionalSearchParam } from '@/lib/api/search-params';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { buildCursorPage, parsePaginationParams } from '@/lib/api/pagination';
@@ -26,10 +24,6 @@ import {
   listAccessiblePatientIds,
 } from '@/server/services/patient-access';
 import type { Prisma } from '@prisma/client';
-import { logger } from '@/lib/utils/logger';
-import { withRoutePerformance } from '@/lib/utils/performance';
-
-const ROUTE = '/api/medication-issues';
 
 function parseMedicationIssueListFilters(searchParams: URLSearchParams) {
   const patientResult = readStrictOptionalSearchParam(searchParams, 'patient_id', {
@@ -136,99 +130,41 @@ function isFinalMedicationIssueStatus(status: string | undefined) {
   return status === 'resolved' || status === 'dismissed';
 }
 
-async function authenticatedGET(req: NextRequest) {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canVisit',
-    message: '服薬課題の閲覧権限がありません',
-  });
-  if ('response' in authResult) return authResult.response;
-  const { ctx } = authResult;
+async function authenticatedGET(req: NextRequest, ctx: AuthContext) {
+  const { searchParams } = new URL(req.url);
+  const { cursor, limit } = parsePaginationParams(searchParams);
+  const filters = parseMedicationIssueListFilters(searchParams);
+  if (!filters.ok) return filters.response;
 
-  return runWithRequestAuthContext(ctx, async () => {
-    const { searchParams } = new URL(req.url);
-    const { cursor, limit } = parsePaginationParams(searchParams);
-    const filters = parseMedicationIssueListFilters(searchParams);
-    if (!filters.ok) return filters.response;
+  const { patientId, caseId, statusParam } = filters;
+  const status = statusParam ? medicationIssueStatusSchema.safeParse(statusParam) : null;
+  if (status && !status.success) {
+    return withSensitiveNoStore(
+      validationError('服薬課題ステータスが不正です', {
+        status: ['対応していないステータスです'],
+      }),
+    );
+  }
 
-    const { patientId, caseId, statusParam } = filters;
-    const status = statusParam ? medicationIssueStatusSchema.safeParse(statusParam) : null;
-    if (status && !status.success) {
-      return withSensitiveNoStore(
-        validationError('服薬課題ステータスが不正です', {
-          status: ['対応していないステータスです'],
-        }),
-      );
-    }
+  if (patientId && caseId) {
+    const refResult = await validateOrgReferences(ctx.orgId, {
+      patient_id: patientId,
+      case_id: caseId,
+    });
+    if (!refResult.ok) return withSensitiveNoStore(refResult.response);
+  }
 
-    if (patientId && caseId) {
-      const refResult = await validateOrgReferences(ctx.orgId, {
-        patient_id: patientId,
-        case_id: caseId,
-      });
-      if (!refResult.ok) return withSensitiveNoStore(refResult.response);
-    }
-
-    const accessContext = { userId: ctx.userId, role: ctx.role };
-    if (
-      (patientId || caseId) &&
-      !(await canAccessMedicationIssueScope({
-        orgId: ctx.orgId,
-        patientId,
-        caseId,
-        accessContext,
-      }))
-    ) {
-      const page = buildCursorPage<never>([], limit, () => undefined);
-      return withSensitiveNoStore(
-        success({
-          data: page.data,
-          meta: {
-            has_more: page.hasMore,
-            next_cursor: page.nextCursor ?? null,
-          },
-        }),
-      );
-    }
-
-    const assignmentWhere = await buildMedicationIssueAssignmentWhere({
+  const accessContext = { userId: ctx.userId, role: ctx.role };
+  if (
+    (patientId || caseId) &&
+    !(await canAccessMedicationIssueScope({
       orgId: ctx.orgId,
+      patientId,
+      caseId,
       accessContext,
-    });
-    const where: Prisma.MedicationIssueWhereInput = {
-      org_id: ctx.orgId,
-      ...(patientId ? { patient_id: patientId } : {}),
-      ...(caseId ? { case_id: caseId } : {}),
-      ...(status ? { status: status.data } : {}),
-      ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
-    };
-
-    const issues = await prisma.medicationIssue.findMany({
-      where,
-      take: limit + 1,
-      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-      orderBy: [{ identified_at: 'desc' }, { id: 'desc' }],
-      select: {
-        id: true,
-        org_id: true,
-        patient_id: true,
-        case_id: true,
-        title: true,
-        description: true,
-        status: true,
-        priority: true,
-        category: true,
-        identified_by: true,
-        identified_at: true,
-        resolved_by: true,
-        resolved_at: true,
-        version: true,
-        created_at: true,
-        updated_at: true,
-      },
-    });
-
-    const page = buildCursorPage(issues, limit, (issue) => issue.id);
-
+    }))
+  ) {
+    const page = buildCursorPage<never>([], limit, () => undefined);
     return withSensitiveNoStore(
       success({
         data: page.data,
@@ -238,102 +174,112 @@ async function authenticatedGET(req: NextRequest) {
         },
       }),
     );
+  }
+
+  const assignmentWhere = await buildMedicationIssueAssignmentWhere({
+    orgId: ctx.orgId,
+    accessContext,
   });
+  const where: Prisma.MedicationIssueWhereInput = {
+    org_id: ctx.orgId,
+    ...(patientId ? { patient_id: patientId } : {}),
+    ...(caseId ? { case_id: caseId } : {}),
+    ...(status ? { status: status.data } : {}),
+    ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
+  };
+
+  const issues = await prisma.medicationIssue.findMany({
+    where,
+    take: limit + 1,
+    ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+    orderBy: [{ identified_at: 'desc' }, { id: 'desc' }],
+    select: {
+      id: true,
+      org_id: true,
+      patient_id: true,
+      case_id: true,
+      title: true,
+      description: true,
+      status: true,
+      priority: true,
+      category: true,
+      identified_by: true,
+      identified_at: true,
+      resolved_by: true,
+      resolved_at: true,
+      version: true,
+      created_at: true,
+      updated_at: true,
+    },
+  });
+
+  const page = buildCursorPage(issues, limit, (issue) => issue.id);
+
+  return withSensitiveNoStore(
+    success({
+      data: page.data,
+      meta: {
+        has_more: page.hasMore,
+        next_cursor: page.nextCursor ?? null,
+      },
+    }),
+  );
 }
 
-export async function GET(req: NextRequest) {
-  return withRoutePerformance(req, async () => {
-    try {
-      return withSensitiveNoStore(await authenticatedGET(req));
-    } catch (err) {
-      unstable_rethrow(err);
-      logger.error(
-        {
-          event: 'medication_issues_get_unhandled_error',
-          route: ROUTE,
-          method: req.method,
-          status: 500,
-        },
-        err,
-      );
-      return withSensitiveNoStore(internalError());
-    }
-  });
-}
+export const GET = withAuthContext(authenticatedGET, {
+  permission: 'canVisit',
+  message: '服薬課題の閲覧権限がありません',
+});
 
-async function authenticatedPOST(req: NextRequest) {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canVisit',
-    message: '服薬課題の作成権限がありません',
-  });
-  if ('response' in authResult) return authResult.response;
-  const { ctx } = authResult;
+async function authenticatedPOST(req: NextRequest, ctx: AuthContext) {
+  const payload = await readJsonObjectRequestBody(req);
+  if (!payload) return validationError('リクエストボディが不正です');
 
-  return runWithRequestAuthContext(ctx, async () => {
-    const payload = await readJsonObjectRequestBody(req);
-    if (!payload) return validationError('リクエストボディが不正です');
+  const parsed = createMedicationIssueSchema.safeParse(payload);
+  if (!parsed.success) {
+    return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
+  }
 
-    const parsed = createMedicationIssueSchema.safeParse(payload);
-    if (!parsed.success) {
-      return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
-    }
-
-    if (isFinalMedicationIssueStatus(parsed.data.status)) {
-      return validationError('服薬課題の作成時に解決済み状態は指定できません', {
-        status: ['解決済みまたは却下済みの課題は更新APIで確定してください'],
-      });
-    }
-
-    const { patient_id, case_id } = parsed.data;
-    const refResult = await validateOrgReferences(ctx.orgId, {
-      patient_id,
-      case_id,
+  if (isFinalMedicationIssueStatus(parsed.data.status)) {
+    return validationError('服薬課題の作成時に解決済み状態は指定できません', {
+      status: ['解決済みまたは却下済みの課題は更新APIで確定してください'],
     });
-    if (!refResult.ok) return refResult.response;
+  }
 
-    if (
-      !(await canAccessMedicationIssueScope({
-        orgId: ctx.orgId,
-        patientId: patient_id,
-        caseId: case_id,
-        accessContext: { userId: ctx.userId, role: ctx.role },
-      }))
-    ) {
-      return notFound('患者またはケースが見つかりません');
-    }
+  const { patient_id, case_id } = parsed.data;
+  const refResult = await validateOrgReferences(ctx.orgId, {
+    patient_id,
+    case_id,
+  });
+  if (!refResult.ok) return refResult.response;
 
-    const issue = await withOrgContext(ctx.orgId, async (tx) => {
-      const displayId = await allocateDisplayId(tx, 'MedicationIssue', ctx.orgId);
-      return tx.medicationIssue.create({
-        data: {
-          org_id: ctx.orgId,
-          display_id: displayId,
-          identified_by: ctx.userId,
-          ...parsed.data,
-        },
-      });
+  if (
+    !(await canAccessMedicationIssueScope({
+      orgId: ctx.orgId,
+      patientId: patient_id,
+      caseId: case_id,
+      accessContext: { userId: ctx.userId, role: ctx.role },
+    }))
+  ) {
+    return notFound('患者またはケースが見つかりません');
+  }
+
+  const issue = await withOrgContext(ctx.orgId, async (tx) => {
+    const displayId = await allocateDisplayId(tx, 'MedicationIssue', ctx.orgId);
+    return tx.medicationIssue.create({
+      data: {
+        org_id: ctx.orgId,
+        display_id: displayId,
+        identified_by: ctx.userId,
+        ...parsed.data,
+      },
     });
-
-    return success({ data: issue }, 201);
   });
+
+  return success({ data: issue }, 201);
 }
 
-export async function POST(req: NextRequest) {
-  return withRoutePerformance(req, async () => {
-    try {
-      return withSensitiveNoStore(await authenticatedPOST(req));
-    } catch (err) {
-      unstable_rethrow(err);
-      logger.error(
-        {
-          event: 'medication_issues_post_unhandled_error',
-          route: ROUTE,
-          method: req.method,
-          status: 500,
-        },
-        err,
-      );
-      return withSensitiveNoStore(internalError());
-    }
-  });
-}
+export const POST = withAuthContext(authenticatedPOST, {
+  permission: 'canVisit',
+  message: '服薬課題の作成権限がありません',
+});
