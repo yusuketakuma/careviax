@@ -735,7 +735,7 @@
       },
       {
         "path": "Plans.md",
-        "sha256": "960fc2cab2deebfccb76cf1d4e0ea297693b0d656b72e05d580a88325228ba8f"
+        "sha256": "e7d22c704558bbe42682cc78694403a4e1c36f18e4f355b6393a1ce4cdd08bd2"
       },
       {
         "path": "README.md",
@@ -903,7 +903,7 @@
       },
       {
         "path": "ops/refactor/STATE.md",
-        "sha256": "49c019c607d2875f818b5bf01f35f02b8096cd5039798ad1f97c740b346ae1f6"
+        "sha256": "42bded6dd33ebf11fd37d051e62d5418db77d8087e1347139431776774536570"
       },
       {
         "path": "ops/refactor/archive/PERF_FINDINGS.md",
@@ -32703,8 +32703,14 @@
     {
       "path": "src/app/api/tasks/route.test.ts",
       "classes": ["test"],
-      "detectors": ["override_flag", "permission_capability", "raw_role_semantics", "tenant_role"],
-      "sha256": "4753f9f81ea040ddde7e047fcb8bb94c64c92bbc472af64936ce0db76049da0e"
+      "detectors": [
+        "mapping_precedence",
+        "override_flag",
+        "permission_capability",
+        "raw_role_semantics",
+        "tenant_role"
+      ],
+      "sha256": "106a37b3fc3c5d4230ad0e0d8c45874abef32935b89353a285965edb89f32c22"
     },
     {
       "path": "src/app/api/templates/[id]/route.test.ts",

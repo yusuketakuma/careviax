@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { unstable_rethrow } from 'next/navigation';
 import { NextRequest } from 'next/server';
 import {
   PATIENT_ARCHIVED_WRITE_CONFLICT_CODE,
@@ -17,6 +18,9 @@ const {
   taskCreateMock,
   withOrgContextMock,
   allocateDisplayIdMock,
+  loggerErrorMock,
+  runWithRequestAuthContextMock,
+  withRoutePerformanceMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
   careCaseFindManyMock: vi.fn(),
@@ -29,10 +33,50 @@ const {
   taskCreateMock: vi.fn(),
   withOrgContextMock: vi.fn(),
   allocateDisplayIdMock: vi.fn(),
+  loggerErrorMock: vi.fn(),
+  runWithRequestAuthContextMock: vi.fn((_ctx, callback: () => unknown) => callback()),
+  withRoutePerformanceMock: vi.fn((_req, callback: () => unknown) => callback()),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
-  requireAuthContext: requireAuthContextMock,
+  withAuthContext:
+    (
+      handler: (req: NextRequest, ctx: Record<string, unknown>) => Promise<Response>,
+      options?: unknown,
+    ) =>
+    async (req: NextRequest) =>
+      withRoutePerformanceMock(req, async () => {
+        const noStore = (response: Response) => {
+          response.headers.set('Cache-Control', 'private, no-store, max-age=0');
+          response.headers.set('Pragma', 'no-cache');
+          return response;
+        };
+        const authResult = await requireAuthContextMock(req, options);
+        if ('response' in authResult) return noStore(authResult.response);
+        return runWithRequestAuthContextMock(authResult.ctx, async () => {
+          try {
+            return noStore(await handler(req, authResult.ctx));
+          } catch (error) {
+            unstable_rethrow(error);
+            loggerErrorMock(
+              {
+                event: 'route_handler_unhandled_error',
+                route: req.nextUrl.pathname,
+                method: req.method,
+                requestId: authResult.ctx.requestId,
+                correlationId: authResult.ctx.correlationId,
+              },
+              error,
+            );
+            return noStore(
+              Response.json(
+                { code: 'INTERNAL_ERROR', message: 'サーバー内部でエラーが発生しました' },
+                { status: 500 },
+              ),
+            );
+          }
+        });
+      }),
 }));
 
 vi.mock('@/lib/db/client', () => ({
@@ -65,7 +109,7 @@ vi.mock('@/lib/db/display-id', () => ({
   allocateDisplayId: allocateDisplayIdMock,
 }));
 
-import { GET, POST } from './route';
+import { GET as routeGET, POST as routePOST } from './route';
 import { expectSensitiveNoStore } from '@/test/api-response-assertions';
 
 function createRequest(url: string, body?: unknown) {
@@ -92,6 +136,14 @@ function createMalformedJsonRequest(url: string) {
   });
 }
 
+function GET(req: NextRequest) {
+  return routeGET(req, { params: Promise.resolve({}) });
+}
+
+function POST(req: NextRequest) {
+  return routePOST(req, { params: Promise.resolve({}) });
+}
+
 describe('/api/tasks', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -100,6 +152,8 @@ describe('/api/tasks', () => {
         orgId: 'org_1',
         userId: 'user_1',
         role: 'pharmacist',
+        requestId: 'request_1',
+        correlationId: 'correlation_1',
       },
     });
     careCaseFindManyMock.mockResolvedValue([{ id: 'case_1', patient_id: 'patient_1' }]);

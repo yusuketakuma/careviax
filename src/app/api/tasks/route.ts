@@ -1,17 +1,15 @@
-import { unstable_rethrow } from 'next/navigation';
 import { NextRequest } from 'next/server';
 import { type Prisma, type TaskStatus } from '@prisma/client';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
-import { requireAuthContext } from '@/lib/auth/context';
+import { withAuthContext, type AuthContext } from '@/lib/auth/context';
 import { prisma } from '@/lib/db/client';
 import { allocateDisplayId } from '@/lib/db/display-id';
 import { isPrismaErrorCode, isPrismaUniqueConstraintError } from '@/lib/db/prisma-errors';
 import { toPrismaJsonInput } from '@/lib/db/json';
 import { withOrgContext } from '@/lib/db/rls';
 import { buildCursorPage, parsePaginationParams } from '@/lib/api/pagination';
-import { forbiddenResponse, internalError, success, validationError } from '@/lib/api/response';
+import { forbiddenResponse, success, validationError } from '@/lib/api/response';
 import { readStrictOptionalSearchParam } from '@/lib/api/search-params';
-import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { canCompleteTaskInline } from '@/lib/tasks/inline-completion';
 import {
   buildTaskAssigneeRejectionDetails,
@@ -262,14 +260,7 @@ function parseTaskListFilters(searchParams: URLSearchParams) {
   };
 }
 
-async function authenticatedGET(req: NextRequest) {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canManageOperationalTasks',
-    message: '運用タスクの閲覧権限がありません',
-  });
-  if ('response' in authResult) return authResult.response;
-  const { ctx } = authResult;
-
+async function authenticatedGET(req: NextRequest, ctx: AuthContext) {
   const { searchParams } = new URL(req.url);
   const { cursor, limit } = parsePaginationParams(searchParams);
   const filters = parseTaskListFilters(searchParams);
@@ -344,23 +335,12 @@ async function authenticatedGET(req: NextRequest) {
   });
 }
 
-export async function GET(req: NextRequest) {
-  try {
-    return withSensitiveNoStore(await authenticatedGET(req));
-  } catch (err) {
-    unstable_rethrow(err);
-    return withSensitiveNoStore(internalError());
-  }
-}
+export const GET = withAuthContext(authenticatedGET, {
+  permission: 'canManageOperationalTasks',
+  message: '運用タスクの閲覧権限がありません',
+});
 
-async function authenticatedPOST(req: NextRequest) {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canManageOperationalTasks',
-    message: '運用タスクの作成権限がありません',
-  });
-  if ('response' in authResult) return authResult.response;
-  const { ctx } = authResult;
-
+async function authenticatedPOST(req: NextRequest, ctx: AuthContext) {
   const payload = await readJsonObjectRequestBody(req);
   if (!payload) return validationError('リクエストボディが不正です');
 
@@ -517,11 +497,7 @@ async function authenticatedPOST(req: NextRequest) {
   }
 }
 
-export async function POST(req: NextRequest) {
-  try {
-    return withSensitiveNoStore(await authenticatedPOST(req));
-  } catch (err) {
-    unstable_rethrow(err);
-    return withSensitiveNoStore(internalError());
-  }
-}
+export const POST = withAuthContext(authenticatedPOST, {
+  permission: 'canManageOperationalTasks',
+  message: '運用タスクの作成権限がありません',
+});
