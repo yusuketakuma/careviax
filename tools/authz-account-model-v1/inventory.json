@@ -903,7 +903,7 @@
       },
       {
         "path": "ops/refactor/STATE.md",
-        "sha256": "546ceb37ec9ac4d6d1f32bce23b8ef02a5f7be59de33725c151947b575b93586"
+        "sha256": "e158edf37b4f4d93b91d8801caa03224037700c8d65f14f7f6625eee0f4ec347"
       },
       {
         "path": "ops/refactor/archive/PERF_FINDINGS.md",
@@ -1402,8 +1402,12 @@
         "sha256": "edb55e2ede6cecb8b7d8d917b7910555f012627e2863f1e691e447eaa1f2bff2"
       },
       {
+        "path": "src/components/features/dispense-workbench/dispensing-workbench.adapter.test-fixtures.ts",
+        "sha256": "21ec1b7be4700bd99ae4c2be8cd83539c113cc04fd98c7e7e9eb6faa33524117"
+      },
+      {
         "path": "src/components/features/dispense-workbench/dispensing-workbench.adapter.test.ts",
-        "sha256": "182f53f4f2600f195d00a6424a3c95e808aad1be3cf4cac066bc66e35f05e3b8"
+        "sha256": "4a37e1fafd720b4443c206d3d338472ba47a17541fdfaea2696b2abf63fe44b9"
       },
       {
         "path": "src/components/features/dispense-workbench/dispensing-workbench.adapter.ts",
