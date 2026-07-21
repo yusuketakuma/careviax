@@ -256,6 +256,27 @@ export const API_ERROR_CODE_REGISTRY = Object.freeze({
     recoveryAction: 'return_to_previous',
     messageLabel: 'api.error.medication_stock_observation.unavailable',
   },
+  COGNITO_CREATE_FAILED: {
+    httpStatus: 502,
+    logLevel: 'error',
+    retryable: true,
+    recoveryAction: 'retry',
+    messageLabel: 'api.error.organization.cognito_create_failed',
+  },
+  ORGANIZATION_PROVISIONING_FAILED: {
+    httpStatus: 500,
+    logLevel: 'error',
+    retryable: true,
+    recoveryAction: 'retry',
+    messageLabel: 'api.error.organization.provisioning_failed',
+  },
+  ORGANIZATION_PROVISIONING_PARTIAL_FAILURE: {
+    httpStatus: 500,
+    logLevel: 'error',
+    retryable: false,
+    recoveryAction: 'return_to_previous',
+    messageLabel: 'api.error.organization.provisioning_partial_failure',
+  },
   OQC_NOT_ENABLED: {
     httpStatus: 501,
     logLevel: 'info',

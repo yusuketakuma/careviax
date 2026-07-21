@@ -62,26 +62,6 @@ type RawRegisteredErrorUsage = RawLiteralErrorUsage & {
 // High-risk route migrations stay incremental; this exact baseline must not grow.
 const allowedRawLiteralErrorUsages: RawLiteralErrorUsage[] = [
   {
-    filePath: 'src/app/api/admin/organizations/route.ts',
-    code: 'COGNITO_CREATE_FAILED',
-    httpStatus: 502,
-  },
-  {
-    filePath: 'src/app/api/admin/organizations/route.ts',
-    code: 'ORGANIZATION_PROVISIONING_FAILED',
-    httpStatus: 500,
-  },
-  {
-    filePath: 'src/app/api/admin/organizations/route.ts',
-    code: 'ORGANIZATION_PROVISIONING_PARTIAL_FAILURE',
-    httpStatus: 500,
-  },
-  {
-    filePath: 'src/app/api/admin/organizations/route.ts',
-    code: 'ORGANIZATION_PROVISIONING_PARTIAL_FAILURE',
-    httpStatus: 500,
-  },
-  {
     filePath: 'src/app/api/billing-candidates/close/route.ts',
     code: 'BILLING_CLOSE_BLOCKED',
     httpStatus: 409,
@@ -267,13 +247,6 @@ const allowedRawDynamicErrorUsages: RawDynamicErrorUsage[] = [
 // Reviewed constants and conditional literals stay visible here alongside provider-derived messages.
 // Migrations should make this list smaller; new nonliteral messages require an explicit contract review.
 const allowedRawNonliteralMessageUsages: RawNonliteralMessageUsage[] = [
-  {
-    filePath: 'src/app/api/admin/organizations/route.ts',
-    helper: 'error',
-    codeExpression: "'COGNITO_CREATE_FAILED'",
-    messageExpression: 'COGNITO_CREATE_FAILED_MESSAGE',
-    statusExpression: '502',
-  },
   {
     filePath: 'src/app/api/files/[id]/download/route.ts',
     helper: 'error',

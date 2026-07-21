@@ -72,6 +72,13 @@ describe('API error code registry', () => {
           "recoveryAction": "return_to_previous",
           "retryable": false,
         },
+        "COGNITO_CREATE_FAILED": {
+          "httpStatus": 502,
+          "logLevel": "error",
+          "messageLabel": "api.error.organization.cognito_create_failed",
+          "recoveryAction": "retry",
+          "retryable": true,
+        },
         "COMMUNICATION_REQUEST_EXPORT_AUDIT_FAILED": {
           "httpStatus": 500,
           "logLevel": "error",
@@ -253,6 +260,20 @@ describe('API error code registry', () => {
           "messageLabel": "api.error.qualification_check.upstream_failure",
           "recoveryAction": "retry",
           "retryable": true,
+        },
+        "ORGANIZATION_PROVISIONING_FAILED": {
+          "httpStatus": 500,
+          "logLevel": "error",
+          "messageLabel": "api.error.organization.provisioning_failed",
+          "recoveryAction": "retry",
+          "retryable": true,
+        },
+        "ORGANIZATION_PROVISIONING_PARTIAL_FAILURE": {
+          "httpStatus": 500,
+          "logLevel": "error",
+          "messageLabel": "api.error.organization.provisioning_partial_failure",
+          "recoveryAction": "return_to_previous",
+          "retryable": false,
         },
         "PATIENT_MCS_SYNC_FAILED": {
           "httpStatus": 502,

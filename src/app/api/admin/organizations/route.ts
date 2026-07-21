@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { withAuthContext, type AuthContext } from '@/lib/auth/context';
-import { success, validationError, conflict, error, forbidden } from '@/lib/api/response';
+import { success, validationError, conflict, registeredError, forbidden } from '@/lib/api/response';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { prisma } from '@/lib/db/client';
 import { z } from 'zod';
@@ -212,10 +212,9 @@ async function provisionOrganization(req: NextRequest, ctx: AuthContext) {
           error: cause,
         });
       }
-      return error(
+      return registeredError(
         'ORGANIZATION_PROVISIONING_PARTIAL_FAILURE',
         '組織作成中に外部連携が失敗し、ロールバックにも失敗しました。手動確認が必要です。',
-        500,
       );
     }
     if (isUsernameExists) {
@@ -226,7 +225,7 @@ async function provisionOrganization(req: NextRequest, ctx: AuthContext) {
       operation: 'invite_cognito_user',
       error: cause,
     });
-    return error('COGNITO_CREATE_FAILED', COGNITO_CREATE_FAILED_MESSAGE, 502);
+    return registeredError('COGNITO_CREATE_FAILED', COGNITO_CREATE_FAILED_MESSAGE);
   }
 
   // Step 3: Update user record with Cognito sub and set status to invited
@@ -267,16 +266,14 @@ async function provisionOrganization(req: NextRequest, ctx: AuthContext) {
       error: cause,
     });
     if (cleanupFailed) {
-      return error(
+      return registeredError(
         'ORGANIZATION_PROVISIONING_PARTIAL_FAILURE',
         '組織作成中に最終更新が失敗し、ロールバックにも失敗しました。手動確認が必要です。',
-        500,
       );
     }
-    return error(
+    return registeredError(
       'ORGANIZATION_PROVISIONING_FAILED',
       '組織作成中に最終更新が失敗しました。変更をロールバックしました。',
-      500,
     );
   }
 
