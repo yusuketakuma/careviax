@@ -1,5 +1,10 @@
 import { auth, getAuthAccessToken } from '@/lib/auth/config';
-import { externalError, success, unauthorized, validationError } from '@/lib/api/response';
+import {
+  registeredExternalError,
+  success,
+  unauthorized,
+  validationError,
+} from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { verifyTotpForAccessToken } from '@/server/services/cognito-auth';
 import { issueMfaRecoveryCodes } from '@/server/services/mfa-recovery';
@@ -58,13 +63,13 @@ export async function POST(req: NextRequest) {
     });
   } catch {
     return withSensitiveNoStore(
-      await externalError('EXTERNAL_MFA_VERIFY_FAILED', '確認コードが正しくありません', 400),
+      await registeredExternalError('EXTERNAL_MFA_VERIFY_FAILED', '確認コードが正しくありません'),
     );
   }
 
   if (!userId) {
     return withSensitiveNoStore(
-      await externalError('AUTH_USER_NOT_FOUND', 'ユーザー情報の取得に失敗しました', 404),
+      await registeredExternalError('AUTH_USER_NOT_FOUND', 'ユーザー情報の取得に失敗しました'),
     );
   }
 

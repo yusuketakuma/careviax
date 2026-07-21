@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth, getAuthAccessToken } from '@/lib/auth/config';
-import { externalError, unauthorized } from '@/lib/api/response';
+import { registeredExternalError, unauthorized } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { associateTotpForAccessToken } from '@/server/services/cognito-auth';
 
@@ -27,7 +27,7 @@ export async function POST(request: NextRequest) {
     );
   } catch {
     return withSensitiveNoStore(
-      await externalError('EXTERNAL_MFA_SETUP_FAILED', 'MFA設定情報の取得に失敗しました', 400),
+      await registeredExternalError('EXTERNAL_MFA_SETUP_FAILED', 'MFA設定情報の取得に失敗しました'),
     );
   }
 }

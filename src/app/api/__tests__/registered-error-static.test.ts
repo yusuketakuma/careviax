@@ -110,26 +110,6 @@ const allowedExternalLiteralErrorUsages: RawLiteralErrorUsage[] = [
     httpStatus: null,
   },
   {
-    filePath: 'src/app/api/me/mfa/disable/route.ts',
-    code: 'EXTERNAL_MFA_DISABLE_FAILED',
-    httpStatus: 400,
-  },
-  {
-    filePath: 'src/app/api/me/mfa/setup/route.ts',
-    code: 'EXTERNAL_MFA_SETUP_FAILED',
-    httpStatus: 400,
-  },
-  {
-    filePath: 'src/app/api/me/mfa/verify/route.ts',
-    code: 'AUTH_USER_NOT_FOUND',
-    httpStatus: 404,
-  },
-  {
-    filePath: 'src/app/api/me/mfa/verify/route.ts',
-    code: 'EXTERNAL_MFA_VERIFY_FAILED',
-    httpStatus: 400,
-  },
-  {
     filePath: 'src/app/api/me/password/route.ts',
     code: 'EXTERNAL_PASSWORD_CHANGE_FAILED',
     httpStatus: null,

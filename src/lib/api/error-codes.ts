@@ -61,6 +61,13 @@ export const API_ERROR_CODE_REGISTRY = Object.freeze({
     recoveryAction: 'sign_in',
     messageLabel: 'api.error.auth.unauthenticated',
   },
+  AUTH_USER_NOT_FOUND: {
+    httpStatus: 404,
+    logLevel: 'warn',
+    retryable: false,
+    recoveryAction: 'sign_in',
+    messageLabel: 'api.error.auth.user_not_found',
+  },
   EXTERNAL_ACCESS_OTP_DELIVERY_AUDIT_FAILED: {
     httpStatus: 500,
     logLevel: 'error',
@@ -242,6 +249,27 @@ export const API_ERROR_CODE_REGISTRY = Object.freeze({
     retryable: true,
     recoveryAction: 'retry',
     messageLabel: 'api.error.external.global_signout_failed',
+  },
+  EXTERNAL_MFA_DISABLE_FAILED: {
+    httpStatus: 400,
+    logLevel: 'warn',
+    retryable: false,
+    recoveryAction: 'sign_in',
+    messageLabel: 'api.error.external.mfa_disable_failed',
+  },
+  EXTERNAL_MFA_SETUP_FAILED: {
+    httpStatus: 400,
+    logLevel: 'warn',
+    retryable: false,
+    recoveryAction: 'sign_in',
+    messageLabel: 'api.error.external.mfa_setup_failed',
+  },
+  EXTERNAL_MFA_VERIFY_FAILED: {
+    httpStatus: 400,
+    logLevel: 'warn',
+    retryable: false,
+    recoveryAction: 'correct_input',
+    messageLabel: 'api.error.external.mfa_verify_failed',
   },
   EXTERNAL_PASSWORD_RESET_REQUEST_FAILED: {
     httpStatus: 502,

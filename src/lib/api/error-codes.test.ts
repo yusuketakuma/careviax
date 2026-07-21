@@ -44,6 +44,13 @@ describe('API error code registry', () => {
           "recoveryAction": "sign_in",
           "retryable": false,
         },
+        "AUTH_USER_NOT_FOUND": {
+          "httpStatus": 404,
+          "logLevel": "warn",
+          "messageLabel": "api.error.auth.user_not_found",
+          "recoveryAction": "sign_in",
+          "retryable": false,
+        },
         "BILLING_CLOSE_BLOCKED": {
           "httpStatus": 409,
           "logLevel": "warn",
@@ -239,6 +246,27 @@ describe('API error code registry', () => {
           "messageLabel": "api.error.external.job_failed",
           "recoveryAction": "retry",
           "retryable": true,
+        },
+        "EXTERNAL_MFA_DISABLE_FAILED": {
+          "httpStatus": 400,
+          "logLevel": "warn",
+          "messageLabel": "api.error.external.mfa_disable_failed",
+          "recoveryAction": "sign_in",
+          "retryable": false,
+        },
+        "EXTERNAL_MFA_SETUP_FAILED": {
+          "httpStatus": 400,
+          "logLevel": "warn",
+          "messageLabel": "api.error.external.mfa_setup_failed",
+          "recoveryAction": "sign_in",
+          "retryable": false,
+        },
+        "EXTERNAL_MFA_VERIFY_FAILED": {
+          "httpStatus": 400,
+          "logLevel": "warn",
+          "messageLabel": "api.error.external.mfa_verify_failed",
+          "recoveryAction": "correct_input",
+          "retryable": false,
         },
         "EXTERNAL_PASSWORD_RESET_REQUEST_FAILED": {
           "httpStatus": 502,
