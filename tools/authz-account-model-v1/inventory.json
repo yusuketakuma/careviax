@@ -903,7 +903,7 @@
       },
       {
         "path": "ops/refactor/STATE.md",
-        "sha256": "aae9896f9d08d6ea78c23d01abbdbcf728741aa40cc2efd91757ea3c87b56702"
+        "sha256": "fe9be274cc12d765aeae3bd2726a7174dc59cf96d96fa8e97ea92d77d9ab9104"
       },
       {
         "path": "ops/refactor/archive/PERF_FINDINGS.md",
