@@ -7,9 +7,7 @@ const {
   careCaseFindManyMock,
   prescriptionIntakeFindManyMock,
   requireAuthContextMock,
-  runWithRequestAuthContextMock,
   withOrgContextMock,
-  withRoutePerformanceMock,
   loggerErrorMock,
   recordPhiReadAuditForRequestMock,
 } = vi.hoisted(() => ({
@@ -17,27 +15,54 @@ const {
   careCaseFindManyMock: vi.fn(),
   prescriptionIntakeFindManyMock: vi.fn(),
   requireAuthContextMock: vi.fn(),
-  runWithRequestAuthContextMock: vi.fn(),
   withOrgContextMock: vi.fn(),
-  withRoutePerformanceMock: vi.fn(),
   loggerErrorMock: vi.fn(),
   recordPhiReadAuditForRequestMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
-  requireAuthContext: requireAuthContextMock,
-}));
-
-vi.mock('@/lib/auth/request-context', () => ({
-  runWithRequestAuthContext: runWithRequestAuthContextMock,
+  withAuthContext:
+    (
+      handler: (
+        req: NextRequest,
+        ctx: Record<string, unknown>,
+        routeContext: { params: Promise<{ id: string }> },
+      ) => Promise<Response>,
+      options?: unknown,
+    ) =>
+    async (req: NextRequest, routeContext: { params: Promise<{ id: string }> }) => {
+      const noStore = (response: Response) => {
+        response.headers.set('Cache-Control', 'private, no-store, max-age=0');
+        response.headers.set('Pragma', 'no-cache');
+        return response;
+      };
+      const authResult = await requireAuthContextMock(req, options);
+      if ('response' in authResult) return noStore(authResult.response);
+      try {
+        return noStore(await handler(req, authResult.ctx, routeContext));
+      } catch (error) {
+        loggerErrorMock(
+          {
+            event: 'route_handler_unhandled_error',
+            route: req.nextUrl.pathname,
+            method: req.method,
+            requestId: authResult.ctx.requestId,
+            correlationId: authResult.ctx.correlationId,
+          },
+          error,
+        );
+        return noStore(
+          Response.json(
+            { code: 'INTERNAL_ERROR', message: 'サーバー内部でエラーが発生しました' },
+            { status: 500 },
+          ),
+        );
+      }
+    },
 }));
 
 vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
-}));
-
-vi.mock('@/lib/utils/performance', () => ({
-  withRoutePerformance: withRoutePerformanceMock,
 }));
 
 vi.mock('@/lib/utils/logger', () => ({
@@ -81,14 +106,10 @@ describe('/api/patients/[id]/prescriptions', () => {
       role: 'pharmacist',
       ipAddress: '203.0.113.10',
       userAgent: 'vitest',
+      requestId: 'req_patient_prescriptions',
+      correlationId: 'corr_patient_prescriptions',
     };
     requireAuthContextMock.mockResolvedValue({ ctx });
-    runWithRequestAuthContextMock.mockImplementation(
-      (_ctx: typeof ctx, fn: () => Promise<Response>) => fn(),
-    );
-    withRoutePerformanceMock.mockImplementation((_req: NextRequest, fn: () => Promise<Response>) =>
-      fn(),
-    );
     withOrgContextMock.mockImplementation((_orgId: string, fn: (tx: unknown) => Promise<unknown>) =>
       fn({
         patient: {
@@ -155,16 +176,12 @@ describe('/api/patients/[id]/prescriptions', () => {
     });
   });
 
-  it('uses route-local auth, performance tracking, and explicit RLS request context', async () => {
+  it('uses the standard auth wrapper and explicit RLS request context', async () => {
     const response = (await GET(createGetRequest('patient_1', 'limit=5'), {
       params: Promise.resolve({ id: 'patient_1' }),
     }))!;
 
     expect(response.status).toBe(200);
-    expect(withRoutePerformanceMock).toHaveBeenCalledWith(
-      expect.any(NextRequest),
-      expect.any(Function),
-    );
     expect(requireAuthContextMock).toHaveBeenCalledWith(expect.any(NextRequest), {
       permission: 'canViewDashboard',
       message: '患者処方履歴の閲覧権限がありません',
@@ -178,14 +195,6 @@ describe('/api/patients/[id]/prescriptions', () => {
         view: 'patient_prescriptions',
         purpose: 'care',
       },
-    );
-    expect(runWithRequestAuthContextMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        orgId: 'org_1',
-        userId: 'user_1',
-        role: 'pharmacist',
-      }),
-      expect.any(Function),
     );
     expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
       requestContext: expect.objectContaining({
@@ -207,7 +216,6 @@ describe('/api/patients/[id]/prescriptions', () => {
 
     expect(response.status).toBe(403);
     expectSensitiveNoStore(response);
-    expect(runWithRequestAuthContextMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(patientFindFirstMock).not.toHaveBeenCalled();
     expect(careCaseFindManyMock).not.toHaveBeenCalled();
@@ -665,10 +673,11 @@ describe('/api/patients/[id]/prescriptions', () => {
     expect(JSON.stringify(body)).not.toContain(rawError);
     expect(loggerErrorMock).toHaveBeenCalledWith(
       {
-        event: 'patient_prescriptions_get_unhandled_error',
-        route: '/api/patients/[id]/prescriptions',
+        event: 'route_handler_unhandled_error',
+        route: '/api/patients/patient_1/prescriptions',
         method: 'GET',
-        status: 500,
+        requestId: 'req_patient_prescriptions',
+        correlationId: 'corr_patient_prescriptions',
       },
       unsafeError,
     );

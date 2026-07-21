@@ -735,7 +735,7 @@
       },
       {
         "path": "Plans.md",
-        "sha256": "6167c31f47dc1b49554c0342b00a3298e377e6792a42538eb742d87e8e6af3ba"
+        "sha256": "21becf662fb332090391dccef2bdd80cb3830facdf78bcd0c11901ab459e8c94"
       },
       {
         "path": "README.md",
@@ -903,7 +903,7 @@
       },
       {
         "path": "ops/refactor/STATE.md",
-        "sha256": "b418c9401a30c04bd8a2d9b5893b6b1fd45085377233311c4bd6e69268d1aa27"
+        "sha256": "10a10b082b462368a56bc738a01c822268ba70258a68fb66452161b65172d367"
       },
       {
         "path": "ops/refactor/archive/PERF_FINDINGS.md",
@@ -6319,30 +6319,6 @@
       "reprojection_or_removal": "owner_review_required_before_cutover:src/app/api/patients/[id]/care-team/route.ts",
       "binding_profile": "p_d3f8b85adfe7",
       "capability_profile": "p_a04a7f9d4aaf"
-    },
-    {
-      "id": "mapping_precedence:src/app/api/patients/[id]/prescriptions/route.ts",
-      "detector": "mapping_precedence",
-      "path": "src/app/api/patients/[id]/prescriptions/route.ts",
-      "evidence_sha256": "5a35c6ed0eb4b06c51df00c960c3e8a38e37f4e4de10dac1c8e80c859126bea2",
-      "principal": "human",
-      "lifecycles": ["request"],
-      "surfaces": ["rls", "writer"],
-      "exact_values_or_scopes": [
-        "not_applicable:mapping_precedence:no-enumerated-value:src/app/api/patients/[id]/prescriptions/route.ts"
-      ],
-      "route_method_purpose": "GET /api/patients/[id]/prescriptions purpose=legacy_unspecified_pending_review",
-      "precedence_selection": "legacy_observed_requires_human_review",
-      "synthetic_derived_mapping": "not_applicable:no-synthetic-mapping-observed:src/app/api/patients/[id]/prescriptions/route.ts",
-      "persistence_contract": "not_applicable:no-persistence-observed:src/app/api/patients/[id]/prescriptions/route.ts",
-      "ttl_contract": "not_applicable:no-ttl-observed:src/app/api/patients/[id]/prescriptions/route.ts",
-      "mapping_disposition": "candidate_requires_human",
-      "owner": "Identity / Authz",
-      "approval_status": "pending_owner_review",
-      "test_refs": ["src/app/api/patients/[id]/prescriptions/route.test.ts"],
-      "reprojection_or_removal": "owner_review_required_before_cutover:src/app/api/patients/[id]/prescriptions/route.ts",
-      "binding_profile": "p_c581c0280869",
-      "capability_profile": "p_82e440740f61"
     },
     {
       "id": "mapping_precedence:src/app/api/pca-pump-rentals/route.ts",
@@ -32256,8 +32232,8 @@
     {
       "path": "src/app/api/patients/[id]/prescriptions/route.test.ts",
       "classes": ["test"],
-      "detectors": ["mapping_precedence", "permission_capability", "raw_role_semantics"],
-      "sha256": "9e1010f841805efd62ef3a3d9075ae72b138699610a121804c8f712ee99f5212"
+      "detectors": ["permission_capability", "raw_role_semantics"],
+      "sha256": "47e0256beff00d250bac67f061238859a625356317bf99cf2ce0056217e21459"
     },
     {
       "path": "src/app/api/patients/[id]/qualification-check/route.test.ts",

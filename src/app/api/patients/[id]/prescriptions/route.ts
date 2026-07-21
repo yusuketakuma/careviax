@@ -1,19 +1,14 @@
 import { NextRequest } from 'next/server';
-import { unstable_rethrow } from 'next/navigation';
-import { requireAuthContext } from '@/lib/auth/context';
+import { withAuthContext, type AuthContext } from '@/lib/auth/context';
 import { recordPhiReadAuditForRequest } from '@/lib/audit/phi-read-audit';
-import { runWithRequestAuthContext } from '@/lib/auth/request-context';
-import { internalError, success, notFound, validationError } from '@/lib/api/response';
+import { success, notFound, validationError } from '@/lib/api/response';
 import { buildCursorPage, parsePaginationParams } from '@/lib/api/pagination';
-import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { decodeKeysetCursor, encodeKeysetCursor } from '@/lib/api/keyset-cursor';
 import { withOrgContext } from '@/lib/db/rls';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import type { Prisma } from '@prisma/client';
 import { applyPatientAssignmentWhere } from '@/lib/auth/visit-schedule-access';
 import { listAccessiblePatientCaseIds } from '@/server/services/patient-access';
-import { logger } from '@/lib/utils/logger';
-import { withRoutePerformance } from '@/lib/utils/performance';
 import {
   detectMedicationChanges,
   matchMedicationDiffLines,
@@ -24,7 +19,6 @@ import type {
   PrescriptionDiffReviewRow as DiffReviewRow,
 } from '@/lib/prescriptions/diff-review-contract';
 
-const ROUTE = '/api/patients/[id]/prescriptions';
 const PATIENT_PRESCRIPTION_CURSOR_KEYS = ['prescribed_date', 'created_at'] as const;
 
 // p0_11「処方の変化を確認」: 変化 / 前回 / 今回 / 薬剤師メモ の 4 列 + サブカード用の差分集約
@@ -240,187 +234,167 @@ function buildKeysetWhere(
   };
 }
 
-async function authenticatedGET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canViewDashboard',
-    message: '患者処方履歴の閲覧権限がありません',
-  });
-  if ('response' in authResult) return authResult.response;
-  const { ctx } = authResult;
+async function authenticatedGET(
+  req: NextRequest,
+  ctx: AuthContext,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const { id: rawPatientId } = await params;
+  const patientId = normalizeRequiredRouteParam(rawPatientId);
+  if (!patientId) return validationError('患者IDが不正です');
 
-  return runWithRequestAuthContext(ctx, async () => {
-    const { id: rawPatientId } = await params;
-    const patientId = normalizeRequiredRouteParam(rawPatientId);
-    if (!patientId) return validationError('患者IDが不正です');
+  const { searchParams } = new URL(req.url);
+  const { cursor, limit } = parsePaginationParams(searchParams);
+  const caseFilter = readOptionalCaseIdFilter(searchParams);
+  if (!caseFilter.ok) return caseFilter.response;
+  const caseId = caseFilter.value;
+  const keysetWhere = buildKeysetWhere(
+    decodeKeysetCursor(PATIENT_PRESCRIPTION_CURSOR_KEYS, cursor),
+  );
 
-    const { searchParams } = new URL(req.url);
-    const { cursor, limit } = parsePaginationParams(searchParams);
-    const caseFilter = readOptionalCaseIdFilter(searchParams);
-    if (!caseFilter.ok) return caseFilter.response;
-    const caseId = caseFilter.value;
-    const keysetWhere = buildKeysetWhere(
-      decodeKeysetCursor(PATIENT_PRESCRIPTION_CURSOR_KEYS, cursor),
-    );
+  const result = await withOrgContext(
+    ctx.orgId,
+    async (tx) => {
+      const patient = await tx.patient.findFirst({
+        where: applyPatientAssignmentWhere(
+          { id: patientId, org_id: ctx.orgId },
+          { userId: ctx.userId, role: ctx.role },
+        ),
+        select: { id: true, name: true, name_kana: true },
+      });
+      if (!patient) return { type: 'not_found' as const };
 
-    const result = await withOrgContext(
-      ctx.orgId,
-      async (tx) => {
-        const patient = await tx.patient.findFirst({
-          where: applyPatientAssignmentWhere(
-            { id: patientId, org_id: ctx.orgId },
-            { userId: ctx.userId, role: ctx.role },
-          ),
-          select: { id: true, name: true, name_kana: true },
-        });
-        if (!patient) return { type: 'not_found' as const };
-
-        const caseIds = await listAccessiblePatientCaseIds({
-          db: tx,
-          orgId: ctx.orgId,
-          patientId,
-          accessContext: { userId: ctx.userId, role: ctx.role },
-        });
-        const scopedCaseIds = caseId ? caseIds.filter((id) => id === caseId) : caseIds;
-        if (scopedCaseIds.length === 0) {
-          return {
-            type: 'success' as const,
-            body: {
-              patient,
-              data: [],
-              hasMore: false,
-              nextCursor: undefined,
-              diff_review: null,
-              diff_meta: null,
-            },
-          };
-        }
-
-        const intakes = await tx.prescriptionIntake.findMany({
-          where: {
-            org_id: ctx.orgId,
-            cycle: { patient_id: patientId, case_id: { in: scopedCaseIds } },
-            ...(keysetWhere ?? {}),
-          },
-          orderBy: [{ prescribed_date: 'desc' }, { created_at: 'desc' }, { id: 'desc' }],
-          take: limit + 1,
-          select: {
-            id: true,
-            cycle_id: true,
-            source_type: true,
-            prescribed_date: true,
-            updated_at: true,
-            prescriber_name: true,
-            prescriber_institution: true,
-            prescription_expiry_date: true,
-            original_document_url: true,
-            original_collected_at: true,
-            original_collected_by: true,
-            refill_remaining_count: true,
-            refill_next_dispense_date: true,
-            split_dispense_total: true,
-            split_dispense_current: true,
-            split_next_dispense_date: true,
-            created_at: true,
-            cycle: {
-              select: { overall_status: true },
-            },
-            lines: {
-              orderBy: { line_number: 'asc' },
-              select: {
-                id: true,
-                line_number: true,
-                updated_at: true,
-                drug_name: true,
-                drug_master_id: true,
-                drug_code: true,
-                source_drug_code: true,
-                source_drug_code_type: true,
-                drug_resolution_status: true,
-                dosage_form: true,
-                dose: true,
-                frequency: true,
-                days: true,
-                quantity: true,
-                unit: true,
-                is_generic: true,
-                packaging_instructions: true,
-                notes: true,
-                route: true,
-                dispensing_method: true,
-                start_date: true,
-                end_date: true,
-              },
-            },
-          },
-        });
-
-        const page = buildCursorPage(intakes, limit, (intake) =>
-          encodeKeysetCursor(PATIENT_PRESCRIPTION_CURSOR_KEYS, intake),
-        );
-        const data = page.data;
-
-        // p0_11「処方の変化を確認」用の差分。最初のページ(カーソル無し)でのみ最新 2 件を比較する
-        const diffReview =
-          !cursor && data.length >= 2
-            ? buildDiffReview(data[0].lines as DiffReviewLine[], data[1].lines as DiffReviewLine[])
-            : null;
-        const diffMeta =
-          !cursor && data.length >= 2
-            ? {
-                current: {
-                  id: data[0].id,
-                  prescribed_date: data[0].prescribed_date,
-                },
-                previous: {
-                  id: data[1].id,
-                  prescribed_date: data[1].prescribed_date,
-                },
-              }
-            : null;
-
+      const caseIds = await listAccessiblePatientCaseIds({
+        db: tx,
+        orgId: ctx.orgId,
+        patientId,
+        accessContext: { userId: ctx.userId, role: ctx.role },
+      });
+      const scopedCaseIds = caseId ? caseIds.filter((id) => id === caseId) : caseIds;
+      if (scopedCaseIds.length === 0) {
         return {
           type: 'success' as const,
           body: {
             patient,
-            data,
-            hasMore: page.hasMore,
-            nextCursor: page.nextCursor,
-            diff_review: diffReview,
-            diff_meta: diffMeta,
+            data: [],
+            hasMore: false,
+            nextCursor: undefined,
+            diff_review: null,
+            diff_meta: null,
           },
         };
-      },
-      { requestContext: ctx },
-    );
+      }
 
-    if (result.type === 'not_found') return notFound('患者が見つかりません');
-    recordPhiReadAuditForRequest(ctx, {
-      patientId: result.body.patient.id,
-      targetType: 'patient',
-      targetId: result.body.patient.id,
-      view: 'patient_prescriptions',
-      purpose: 'care',
-    });
-    return success({ data: result.body });
-  });
-}
-
-export async function GET(req: NextRequest, routeContext: { params: Promise<{ id: string }> }) {
-  return withRoutePerformance(req, async () => {
-    try {
-      return withSensitiveNoStore(await authenticatedGET(req, routeContext));
-    } catch (err) {
-      unstable_rethrow(err);
-      logger.error(
-        {
-          event: 'patient_prescriptions_get_unhandled_error',
-          route: ROUTE,
-          method: req.method,
-          status: 500,
+      const intakes = await tx.prescriptionIntake.findMany({
+        where: {
+          org_id: ctx.orgId,
+          cycle: { patient_id: patientId, case_id: { in: scopedCaseIds } },
+          ...(keysetWhere ?? {}),
         },
-        err,
+        orderBy: [{ prescribed_date: 'desc' }, { created_at: 'desc' }, { id: 'desc' }],
+        take: limit + 1,
+        select: {
+          id: true,
+          cycle_id: true,
+          source_type: true,
+          prescribed_date: true,
+          updated_at: true,
+          prescriber_name: true,
+          prescriber_institution: true,
+          prescription_expiry_date: true,
+          original_document_url: true,
+          original_collected_at: true,
+          original_collected_by: true,
+          refill_remaining_count: true,
+          refill_next_dispense_date: true,
+          split_dispense_total: true,
+          split_dispense_current: true,
+          split_next_dispense_date: true,
+          created_at: true,
+          cycle: {
+            select: { overall_status: true },
+          },
+          lines: {
+            orderBy: { line_number: 'asc' },
+            select: {
+              id: true,
+              line_number: true,
+              updated_at: true,
+              drug_name: true,
+              drug_master_id: true,
+              drug_code: true,
+              source_drug_code: true,
+              source_drug_code_type: true,
+              drug_resolution_status: true,
+              dosage_form: true,
+              dose: true,
+              frequency: true,
+              days: true,
+              quantity: true,
+              unit: true,
+              is_generic: true,
+              packaging_instructions: true,
+              notes: true,
+              route: true,
+              dispensing_method: true,
+              start_date: true,
+              end_date: true,
+            },
+          },
+        },
+      });
+
+      const page = buildCursorPage(intakes, limit, (intake) =>
+        encodeKeysetCursor(PATIENT_PRESCRIPTION_CURSOR_KEYS, intake),
       );
-      return withSensitiveNoStore(internalError());
-    }
+      const data = page.data;
+
+      // p0_11「処方の変化を確認」用の差分。最初のページ(カーソル無し)でのみ最新 2 件を比較する
+      const diffReview =
+        !cursor && data.length >= 2
+          ? buildDiffReview(data[0].lines as DiffReviewLine[], data[1].lines as DiffReviewLine[])
+          : null;
+      const diffMeta =
+        !cursor && data.length >= 2
+          ? {
+              current: {
+                id: data[0].id,
+                prescribed_date: data[0].prescribed_date,
+              },
+              previous: {
+                id: data[1].id,
+                prescribed_date: data[1].prescribed_date,
+              },
+            }
+          : null;
+
+      return {
+        type: 'success' as const,
+        body: {
+          patient,
+          data,
+          hasMore: page.hasMore,
+          nextCursor: page.nextCursor,
+          diff_review: diffReview,
+          diff_meta: diffMeta,
+        },
+      };
+    },
+    { requestContext: ctx },
+  );
+
+  if (result.type === 'not_found') return notFound('患者が見つかりません');
+  recordPhiReadAuditForRequest(ctx, {
+    patientId: result.body.patient.id,
+    targetType: 'patient',
+    targetId: result.body.patient.id,
+    view: 'patient_prescriptions',
+    purpose: 'care',
   });
+  return success({ data: result.body });
 }
+
+export const GET = withAuthContext(authenticatedGET, {
+  permission: 'canViewDashboard',
+  message: '患者処方履歴の閲覧権限がありません',
+});
