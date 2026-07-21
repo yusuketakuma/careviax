@@ -735,7 +735,7 @@
       },
       {
         "path": "Plans.md",
-        "sha256": "8f344e9685de682637cd55828031941b8cd5ba07d83fcb32c3a419122dff60a3"
+        "sha256": "610770b163412c0ad05578a831eb44328ed43b9b07c441f82376bb0a98dd1c86"
       },
       {
         "path": "README.md",
@@ -903,7 +903,7 @@
       },
       {
         "path": "ops/refactor/STATE.md",
-        "sha256": "913d2a915436751aa4cc4d97baf4f8ca7c937d4a20f22b1a48db716a10f2ed63"
+        "sha256": "6eae4ec15933af3169bdc52b96c3607bba9038b212d3a36cfdfd2071852209c3"
       },
       {
         "path": "ops/refactor/archive/PERF_FINDINGS.md",
@@ -32173,7 +32173,7 @@
       "path": "src/app/api/patients/[id]/mcs/route.test.ts",
       "classes": ["test"],
       "detectors": ["permission_capability", "raw_role_semantics", "tenant_role"],
-      "sha256": "8b603f5d39ff90de5237c923bea95ce3a80c998d44f5b7d7c3c1326476515451"
+      "sha256": "085b34ff8c648c959d04102eca49a2116845714e9e2ee5a9286801bb70810d66"
     },
     {
       "path": "src/app/api/patients/[id]/medication-calendar/pdf/route.test.ts",

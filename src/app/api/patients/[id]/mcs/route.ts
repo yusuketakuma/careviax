@@ -1,8 +1,7 @@
-import { unstable_rethrow } from 'next/navigation';
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
-import { requireAuthContext, type AuthContext } from '@/lib/auth/context';
-import { forbidden, internalError, notFound, success, validationError } from '@/lib/api/response';
+import { withAuthContext, type AuthContext } from '@/lib/auth/context';
+import { forbidden, notFound, success, validationError } from '@/lib/api/response';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { recordPhiReadAuditForRequest } from '@/lib/audit/phi-read-audit';
@@ -10,7 +9,6 @@ import { prisma } from '@/lib/db/client';
 import { withOrgContext } from '@/lib/db/rls';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { parseOptionalBoundedIntegerParam } from '@/lib/api/pagination';
-import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import {
   getPatientMcsOverview,
   PATIENT_MCS_MAX_MESSAGE_LIMIT,
@@ -75,17 +73,13 @@ async function loadVisibleMcsPatient(
 
 async function authenticatedGET(
   req: NextRequest,
+  ctx: AuthContext,
   { params }: { params: Promise<{ id: string }> },
 ): Promise<Response> {
   const message = 'MCS 連携の閲覧権限がありません';
-  const authResult = await requireAuthContext(req, {
-    permission: 'canViewDashboard',
-    message,
-  });
-  if ('response' in authResult) return authResult.response;
-  const authorized = await authorizeMcsPatient(authResult.ctx, params, message);
+  const authorized = await authorizeMcsPatient(ctx, params, message);
   if ('response' in authorized) return authorized.response;
-  const { ctx, id } = authorized;
+  const { id } = authorized;
 
   const limitResult = parseOptionalBoundedIntegerParam(
     req.nextUrl.searchParams.get('limit'),
@@ -125,28 +119,20 @@ async function authenticatedGET(
   return response;
 }
 
-export const GET: typeof authenticatedGET = async (req, routeContext) => {
-  try {
-    return withSensitiveNoStore(await authenticatedGET(req, routeContext));
-  } catch (err) {
-    unstable_rethrow(err);
-    return withSensitiveNoStore(internalError());
-  }
-};
+export const GET = withAuthContext(authenticatedGET, {
+  permission: 'canViewDashboard',
+  message: 'MCS 連携の閲覧権限がありません',
+});
 
 async function authenticatedPATCH(
   req: NextRequest,
+  ctx: AuthContext,
   { params }: { params: Promise<{ id: string }> },
 ) {
   const message = 'MCS 連携の更新権限がありません';
-  const authResult = await requireAuthContext(req, {
-    permission: 'canVisit',
-    message,
-  });
-  if ('response' in authResult) return authResult.response;
-  const authorized = await authorizeMcsPatient(authResult.ctx, params, message);
+  const authorized = await authorizeMcsPatient(ctx, params, message);
   if ('response' in authorized) return authorized.response;
-  const { ctx, id } = authorized;
+  const { id } = authorized;
 
   const payload = await readJsonObjectRequestBody(req);
   if (!payload) return validationError('リクエストボディが不正です');
@@ -199,11 +185,7 @@ async function authenticatedPATCH(
   });
 }
 
-export const PATCH: typeof authenticatedPATCH = async (req, routeContext) => {
-  try {
-    return withSensitiveNoStore(await authenticatedPATCH(req, routeContext));
-  } catch (err) {
-    unstable_rethrow(err);
-    return withSensitiveNoStore(internalError());
-  }
-};
+export const PATCH = withAuthContext(authenticatedPATCH, {
+  permission: 'canVisit',
+  message: 'MCS 連携の更新権限がありません',
+});
