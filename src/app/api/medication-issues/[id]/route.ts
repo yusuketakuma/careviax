@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { Prisma } from '@prisma/client';
-import { requireAuthContext } from '@/lib/auth/context';
+import { withAuthContext, type AuthContext } from '@/lib/auth/context';
 import { hasPermission } from '@/lib/auth/permissions';
 import { withOrgContext } from '@/lib/db/rls';
 import { isPrismaErrorCode } from '@/lib/db/prisma-errors';
@@ -102,14 +102,11 @@ async function buildMedicationIssueAssignmentWhere(args: {
   };
 }
 
-export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canVisit',
-    message: '服薬課題の更新権限がありません',
-  });
-  if ('response' in authResult) return withSensitiveNoStore(authResult.response);
-  const ctx = authResult.ctx;
-
+async function authenticatedPATCH(
+  req: NextRequest,
+  ctx: AuthContext,
+  { params }: { params: Promise<{ id: string }> },
+) {
   const { id: rawId } = await params;
   const id = normalizeRequiredRouteParam(rawId);
   if (!id) return withSensitiveNoStore(validationError('服薬課題IDが不正です'));
@@ -320,3 +317,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   return withSensitiveNoStore(success({ data: result.issue }));
 }
+
+export const PATCH = withAuthContext(authenticatedPATCH, {
+  permission: 'canVisit',
+  message: '服薬課題の更新権限がありません',
+});

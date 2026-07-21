@@ -42,7 +42,34 @@ const {
 }));
 
 vi.mock('@/lib/auth/context', () => ({
-  requireAuthContext: requireAuthContextMock,
+  withAuthContext:
+    (
+      handler: (
+        req: NextRequest,
+        ctx: Record<string, unknown>,
+        routeContext: { params: Promise<{ id: string }> },
+      ) => Promise<Response>,
+      options?: unknown,
+    ) =>
+    async (req: NextRequest, routeContext: { params: Promise<{ id: string }> }) => {
+      const noStore = (response: Response) => {
+        response.headers.set('Cache-Control', 'private, no-store, max-age=0');
+        response.headers.set('Pragma', 'no-cache');
+        return response;
+      };
+      try {
+        const authResult = await requireAuthContextMock(req, options);
+        if ('response' in authResult) return noStore(authResult.response);
+        return noStore(await handler(req, authResult.ctx, routeContext));
+      } catch {
+        return noStore(
+          Response.json(
+            { code: 'INTERNAL_ERROR', message: 'サーバー内部でエラーが発生しました' },
+            { status: 500 },
+          ),
+        );
+      }
+    },
 }));
 
 vi.mock('@/lib/db/client', () => ({
@@ -234,6 +261,25 @@ describe('/api/medication-issues/[id]', () => {
     expect(careCaseFindFirstMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(medicationIssueUpdateManyMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a sanitized no-store 500 when medication issue loading fails unexpectedly', async () => {
+    const rawError = '患者 青葉花子 medication issue raw detail';
+    withOrgContextMock.mockRejectedValueOnce(new Error(rawError));
+
+    const response = await PATCH(createPatchRequest({ priority: 'high' }), {
+      params: Promise.resolve({ id: 'issue_1' }),
+    });
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.text();
+    expect(body).toContain('INTERNAL_ERROR');
+    expect(body).not.toContain(rawError);
+    expect(body).not.toContain('青葉花子');
+    expect(medicationIssueUpdateManyMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
   it.each([
