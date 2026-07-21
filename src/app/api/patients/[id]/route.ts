@@ -1,14 +1,12 @@
 import { format } from 'date-fns';
 import { NextRequest } from 'next/server';
-import { unstable_rethrow } from 'next/navigation';
-import { requireAuthContext } from '@/lib/auth/context';
+import { withAuthContext, type AuthContext } from '@/lib/auth/context';
 import { hasPermission } from '@/lib/auth/permissions';
 import { withOrgContext } from '@/lib/db/rls';
 import { normalizeJsonInput, readJsonObject } from '@/lib/db/json';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
-import { conflict, internalError, success, validationError, notFound } from '@/lib/api/response';
-import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
+import { conflict, success, validationError, notFound } from '@/lib/api/response';
 import { validateOrgReferences } from '@/lib/api/org-reference';
 import { updatePatientSchema, type UpdatePatientData } from '@/lib/validations/patient';
 import { prisma } from '@/lib/db/client';
@@ -909,13 +907,11 @@ function mergeHomeVisitIntake(args: {
   return entries.length > 0 ? (Object.fromEntries(entries) as HomeVisitIntake) : null;
 }
 
-async function authenticatedGET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canViewDashboard',
-    message: '患者情報の閲覧権限がありません',
-  });
-  if ('response' in authResult) return authResult.response;
-  const ctx = authResult.ctx;
+async function authenticatedGET(
+  req: NextRequest,
+  ctx: AuthContext,
+  { params }: { params: Promise<{ id: string }> },
+) {
   const canManageBilling = hasPermission(ctx.role, 'canManageBilling');
   const basePatientSharePermissions = {
     can_create_external_share: hasPermission(ctx.role, 'canManagePatientSharing'),
@@ -1470,26 +1466,16 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
   );
 }
 
-export async function GET(req: NextRequest, routeContext: { params: Promise<{ id: string }> }) {
-  try {
-    return withSensitiveNoStore(await authenticatedGET(req, routeContext));
-  } catch (err) {
-    unstable_rethrow(err);
-    return withSensitiveNoStore(internalError());
-  }
-}
+export const GET = withAuthContext(authenticatedGET, {
+  permission: 'canViewDashboard',
+  message: '患者情報の閲覧権限がありません',
+});
 
 async function authenticatedPATCH(
   req: NextRequest,
+  ctx: AuthContext,
   { params }: { params: Promise<{ id: string }> },
 ): Promise<Response> {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canVisit',
-    message: '患者情報の更新権限がありません',
-  });
-  if ('response' in authResult) return authResult.response;
-  const ctx = authResult.ctx;
-
   const { id: rawId } = await params;
   const id = normalizeRequiredRouteParam(rawId);
   if (!id) return validationError('患者IDが不正です');
@@ -2385,14 +2371,7 @@ async function authenticatedPATCH(
   }
 }
 
-export async function PATCH(
-  req: NextRequest,
-  routeContext: { params: Promise<{ id: string }> },
-): Promise<Response> {
-  try {
-    return withSensitiveNoStore(await authenticatedPATCH(req, routeContext));
-  } catch (err) {
-    unstable_rethrow(err);
-    return withSensitiveNoStore(internalError());
-  }
-}
+export const PATCH = withAuthContext(authenticatedPATCH, {
+  permission: 'canVisit',
+  message: '患者情報の更新権限がありません',
+});

@@ -735,7 +735,7 @@
       },
       {
         "path": "Plans.md",
-        "sha256": "8b1505485d8f3d23aaf4d7aa6ac3c7e5385d4b39a5deffedaea60274e32947f0"
+        "sha256": "c5d9562742083aa7e87322abd917c9766678bd8664df157910274a9f2a0cfffe"
       },
       {
         "path": "README.md",
@@ -903,7 +903,7 @@
       },
       {
         "path": "ops/refactor/STATE.md",
-        "sha256": "c5c0a5a5fd0ed0cf670fceb5bc68ff1894498a48d6417faf09843747a57d9293"
+        "sha256": "755dad8ec53b4a5437b8ccacc2f9bc20ad683df95f7887c28c2d39bbc083b197"
       },
       {
         "path": "ops/refactor/archive/PERF_FINDINGS.md",
@@ -32257,7 +32257,7 @@
       "path": "src/app/api/patients/[id]/route.test.ts",
       "classes": ["test"],
       "detectors": ["permission_capability", "raw_role_semantics", "tenant_role"],
-      "sha256": "b2a737c640faa10f476648f3e559d72bb5016e9f7de9f2755aa9afdba189f282"
+      "sha256": "b90dded70248b0596ffa77f9f8ae78d6d2ba7ed2d525aa3db21e7c8067621aca"
     },
     {
       "path": "src/app/api/patients/[id]/structured-care/route.test.ts",
