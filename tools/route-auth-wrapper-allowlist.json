@@ -123,17 +123,6 @@
       "plannedAction": "Migrate this route to withAuthContext when touched, or replace this allowlist entry with an explicit documented exception including auth type, permission, no-store, route performance, rate-limit/CSRF, and audit/security event rationale."
     },
     {
-      "path": "src/app/api/patients/[id]/field-revisions/route.ts",
-      "expectedCount": 1,
-      "permissions": ["canVisit"],
-      "sensitiveNoStore": true,
-      "routePerformance": false,
-      "owner": "platform-routing",
-      "debtId": "CORE-ROUTE-001",
-      "reason": "Existing route still calls requireAuthContext directly. This is frozen so no new direct-auth route can be added while the route wrapper audit burns down.",
-      "plannedAction": "Migrate this route to withAuthContext when touched, or replace this allowlist entry with an explicit documented exception including auth type, permission, no-store, route performance, rate-limit/CSRF, and audit/security event rationale."
-    },
-    {
       "path": "src/app/api/patients/[id]/insurance/[insuranceId]/route.ts",
       "expectedCount": 2,
       "permissions": ["canVisit"],
