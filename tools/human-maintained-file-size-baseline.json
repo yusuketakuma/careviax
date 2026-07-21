@@ -773,11 +773,6 @@
       "task_id": "MAINT-FILE-SIZE-1000-001"
     },
     {
-      "path": "src/server/services/communication-queue.test.ts",
-      "max_lines": 1157,
-      "task_id": "MAINT-FILE-SIZE-1000-001"
-    },
-    {
       "path": "src/server/services/communication-queue.ts",
       "max_lines": 1287,
       "task_id": "MAINT-FILE-SIZE-1000-001"

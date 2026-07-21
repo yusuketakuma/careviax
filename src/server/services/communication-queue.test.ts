@@ -1,4 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  callbackFixture,
+  communicationQueueMocks,
+  communicationRequestFixture,
+  emptyDbMocks,
+  inboundEventFixture,
+  inboundPatientFixture,
+  inboundSignalFixture,
+  makeDb,
+  minimalInboundEventFixture,
+  reviewTaskFixture,
+  selfReportFixture,
+} from './communication-queue.test-fixtures';
 
 const {
   selfReportFindManyMock,
@@ -14,21 +27,7 @@ const {
   patientFindManyMock,
   medicationIssueFindManyMock,
   taskFindManyMock,
-} = vi.hoisted(() => ({
-  selfReportFindManyMock: vi.fn(),
-  contactLogFindManyMock: vi.fn(),
-  communicationRequestFindManyMock: vi.fn(),
-  inboundCommunicationEventFindManyMock: vi.fn(),
-  inboundCommunicationSignalFindManyMock: vi.fn(),
-  deliveryRecordFindManyMock: vi.fn(),
-  externalAccessGrantFindManyMock: vi.fn(),
-  careReportFindManyMock: vi.fn(),
-  tracingReportFindManyMock: vi.fn(),
-  patientFindFirstMock: vi.fn(),
-  patientFindManyMock: vi.fn(),
-  medicationIssueFindManyMock: vi.fn(),
-  taskFindManyMock: vi.fn(),
-}));
+} = communicationQueueMocks;
 
 vi.mock('@/lib/db/client', () => ({
   prisma: {},
@@ -39,42 +38,6 @@ vi.mock('@/lib/utils/date', () => ({
 }));
 
 import { listCommunicationQueue } from './communication-queue';
-
-function makeDb() {
-  return {
-    patientSelfReport: { findMany: selfReportFindManyMock },
-    visitScheduleContactLog: { findMany: contactLogFindManyMock },
-    communicationRequest: { findMany: communicationRequestFindManyMock },
-    inboundCommunicationEvent: { findMany: inboundCommunicationEventFindManyMock },
-    inboundCommunicationSignal: { findMany: inboundCommunicationSignalFindManyMock },
-    deliveryRecord: { findMany: deliveryRecordFindManyMock },
-    externalAccessGrant: { findMany: externalAccessGrantFindManyMock },
-    careReport: { findMany: careReportFindManyMock },
-    tracingReport: { findMany: tracingReportFindManyMock },
-    patient: {
-      findFirst: patientFindFirstMock,
-      findMany: patientFindManyMock,
-    },
-    medicationIssue: { findMany: medicationIssueFindManyMock },
-    task: { findMany: taskFindManyMock },
-  };
-}
-
-function emptyDbMocks() {
-  selfReportFindManyMock.mockResolvedValue([]);
-  contactLogFindManyMock.mockResolvedValue([]);
-  communicationRequestFindManyMock.mockResolvedValue([]);
-  inboundCommunicationEventFindManyMock.mockResolvedValue([]);
-  inboundCommunicationSignalFindManyMock.mockResolvedValue([]);
-  deliveryRecordFindManyMock.mockResolvedValue([]);
-  externalAccessGrantFindManyMock.mockResolvedValue([]);
-  careReportFindManyMock.mockResolvedValue([]);
-  tracingReportFindManyMock.mockResolvedValue([]);
-  patientFindFirstMock.mockResolvedValue(null);
-  patientFindManyMock.mockResolvedValue([]);
-  medicationIssueFindManyMock.mockResolvedValue([]);
-  taskFindManyMock.mockResolvedValue([]);
-}
 
 describe('listCommunicationQueue', () => {
   beforeEach(() => {
@@ -97,19 +60,7 @@ describe('listCommunicationQueue', () => {
 
   it('includes self reports as queue items', async () => {
     emptyDbMocks();
-    selfReportFindManyMock.mockResolvedValue([
-      {
-        id: 'sr-1',
-        patient_id: 'p-1',
-        subject: '体調不良',
-        category: 'symptom',
-        requested_callback: true,
-        preferred_contact_time: '午前中',
-        reported_by_name: '家族A',
-        status: 'submitted',
-        created_at: new Date('2026-04-01T08:00:00Z'),
-      },
-    ]);
+    selfReportFindManyMock.mockResolvedValue([selfReportFixture]);
     patientFindManyMock.mockResolvedValue([{ id: 'p-1', name: '田中太郎' }]);
 
     const result = await listCommunicationQueue(makeDb(), {
@@ -127,19 +78,7 @@ describe('listCommunicationQueue', () => {
   it('focuses callback queue items on the linked visit schedule', async () => {
     emptyDbMocks();
     const scheduleId = 'schedule/1?x=y#frag';
-    contactLogFindManyMock.mockResolvedValue([
-      {
-        id: 'callback-1',
-        patient_id: 'p-1',
-        schedule_id: scheduleId,
-        outcome: 'unreachable',
-        contact_name: '家族A',
-        contact_phone: '090-0000-0000',
-        note: null,
-        callback_due_at: new Date('2026-04-01T09:00:00Z'),
-        called_at: new Date('2026-04-01T08:00:00Z'),
-      },
-    ]);
+    contactLogFindManyMock.mockResolvedValue([callbackFixture(scheduleId)]);
     patientFindManyMock.mockResolvedValue([{ id: 'p-1', name: '田中太郎' }]);
 
     const result = await listCommunicationQueue(makeDb(), {
@@ -163,21 +102,7 @@ describe('listCommunicationQueue', () => {
 
   it('includes communication requests as queue items', async () => {
     emptyDbMocks();
-    communicationRequestFindManyMock.mockResolvedValue([
-      {
-        id: 'cr-1',
-        patient_id: 'p-1',
-        request_type: 'care_report_reply_request',
-        subject: '処方確認',
-        content: '用量について確認',
-        template_key: null,
-        related_entity_type: 'care_report',
-        related_entity_id: 'report-1',
-        status: 'sent',
-        due_date: new Date('2026-04-02'),
-        requested_at: new Date('2026-04-01'),
-      },
-    ]);
+    communicationRequestFindManyMock.mockResolvedValue([communicationRequestFixture]);
     patientFindManyMock.mockResolvedValue([{ id: 'p-1', name: '佐藤花子' }]);
 
     const result = await listCommunicationQueue(makeDb(), {
@@ -206,21 +131,7 @@ describe('listCommunicationQueue', () => {
   it('includes inbound communication events as summary-only queue items', async () => {
     emptyDbMocks();
     const patientId = 'patient/1?x=y#frag';
-    inboundCommunicationEventFindManyMock.mockResolvedValue([
-      {
-        id: 'event/1?x=y#frag',
-        patient_id: patientId,
-        case_id: 'case-1',
-        event_type: 'medication_stock_report',
-        source_channel: 'phone',
-        received_at: new Date('2026-04-02T10:00:00Z'),
-        subject: '湿布の残りが少ない',
-        content: '湿布は残り4枚です',
-        counterpart_name: '訪問看護師A',
-        counterpart_contact: '090-0000-0000',
-        attachments: [{ name: 'photo.jpg', storage_key: 'secret-key' }],
-      },
-    ]);
+    inboundCommunicationEventFindManyMock.mockResolvedValue([inboundEventFixture(patientId)]);
     patientFindManyMock.mockResolvedValue([{ id: patientId, name: '佐藤花子' }]);
 
     const result = await listCommunicationQueue(makeDb(), {
@@ -360,32 +271,10 @@ describe('listCommunicationQueue', () => {
 
   it('fetches only requested inbound sources for inbound-only inbox reads', async () => {
     emptyDbMocks();
-    inboundCommunicationEventFindManyMock.mockResolvedValue([
-      {
-        id: 'event_1',
-        patient_id: 'patient_1',
-        source_channel: 'phone',
-        received_at: new Date('2026-04-02T10:00:00Z'),
-      },
-    ]);
-    inboundCommunicationSignalFindManyMock.mockResolvedValue([
-      {
-        id: 'signal_1',
-        inbound_event_id: 'event_1',
-        review_status: 'needs_review',
-        action_status: 'not_linked',
-      },
-    ]);
-    taskFindManyMock.mockResolvedValue([
-      {
-        id: 'task_1',
-        task_type: 'pharmacy.inbound_medication_stock_signal_review_required',
-        status: 'pending',
-        priority: 'urgent',
-        dedupe_key: 'inbound:signal_1:pharmacy.inbound_medication_stock_signal_review_required',
-      },
-    ]);
-    patientFindManyMock.mockResolvedValue([{ id: 'patient_1', name: '佐藤花子' }]);
+    inboundCommunicationEventFindManyMock.mockResolvedValue([minimalInboundEventFixture]);
+    inboundCommunicationSignalFindManyMock.mockResolvedValue([inboundSignalFixture()]);
+    taskFindManyMock.mockResolvedValue([reviewTaskFixture()]);
+    patientFindManyMock.mockResolvedValue([inboundPatientFixture]);
 
     const result = await listCommunicationQueue(makeDb(), {
       orgId: 'org-1',
@@ -428,32 +317,10 @@ describe('listCommunicationQueue', () => {
 
   it('marks inbound communication events as task-created from formal signal task dedupe keys', async () => {
     emptyDbMocks();
-    inboundCommunicationEventFindManyMock.mockResolvedValue([
-      {
-        id: 'event_1',
-        patient_id: 'patient_1',
-        source_channel: 'phone',
-        received_at: new Date('2026-04-02T10:00:00Z'),
-      },
-    ]);
-    inboundCommunicationSignalFindManyMock.mockResolvedValue([
-      {
-        id: 'signal_1',
-        inbound_event_id: 'event_1',
-        review_status: 'needs_review',
-        action_status: 'not_linked',
-      },
-    ]);
-    taskFindManyMock.mockResolvedValue([
-      {
-        id: 'task_1',
-        task_type: 'pharmacy.inbound_medication_stock_signal_review_required',
-        status: 'pending',
-        priority: 'urgent',
-        dedupe_key: 'inbound:signal_1:pharmacy.inbound_medication_stock_signal_review_required',
-      },
-    ]);
-    patientFindManyMock.mockResolvedValue([{ id: 'patient_1', name: '佐藤花子' }]);
+    inboundCommunicationEventFindManyMock.mockResolvedValue([minimalInboundEventFixture]);
+    inboundCommunicationSignalFindManyMock.mockResolvedValue([inboundSignalFixture()]);
+    taskFindManyMock.mockResolvedValue([reviewTaskFixture()]);
+    patientFindManyMock.mockResolvedValue([inboundPatientFixture]);
 
     const result = await listCommunicationQueue(makeDb(), {
       orgId: 'org-1',
@@ -521,29 +388,12 @@ describe('listCommunicationQueue', () => {
 
   it('marks inbound communication events as completed when all formal signals are record-only or rejected', async () => {
     emptyDbMocks();
-    inboundCommunicationEventFindManyMock.mockResolvedValue([
-      {
-        id: 'event_1',
-        patient_id: 'patient_1',
-        source_channel: 'phone',
-        received_at: new Date('2026-04-02T10:00:00Z'),
-      },
-    ]);
+    inboundCommunicationEventFindManyMock.mockResolvedValue([minimalInboundEventFixture]);
     inboundCommunicationSignalFindManyMock.mockResolvedValue([
-      {
-        id: 'signal_1',
-        inbound_event_id: 'event_1',
-        review_status: 'record_only',
-        action_status: 'ignored',
-      },
-      {
-        id: 'signal_2',
-        inbound_event_id: 'event_1',
-        review_status: 'rejected',
-        action_status: 'ignored',
-      },
+      inboundSignalFixture({ review_status: 'record_only', action_status: 'ignored' }),
+      inboundSignalFixture({ id: 'signal_2', review_status: 'rejected', action_status: 'ignored' }),
     ]);
-    patientFindManyMock.mockResolvedValue([{ id: 'patient_1', name: '佐藤花子' }]);
+    patientFindManyMock.mockResolvedValue([inboundPatientFixture]);
 
     const result = await listCommunicationQueue(makeDb(), {
       orgId: 'org-1',
@@ -563,32 +413,14 @@ describe('listCommunicationQueue', () => {
 
   it('marks accepted formal signals as reviewed pending action until downstream reflection exists', async () => {
     emptyDbMocks();
-    inboundCommunicationEventFindManyMock.mockResolvedValue([
-      {
-        id: 'event_1',
-        patient_id: 'patient_1',
-        source_channel: 'phone',
-        received_at: new Date('2026-04-02T10:00:00Z'),
-      },
-    ]);
+    inboundCommunicationEventFindManyMock.mockResolvedValue([minimalInboundEventFixture]);
     inboundCommunicationSignalFindManyMock.mockResolvedValue([
-      {
-        id: 'signal_1',
-        inbound_event_id: 'event_1',
-        review_status: 'accepted',
-        action_status: 'not_linked',
-      },
+      inboundSignalFixture({ review_status: 'accepted' }),
     ]);
     taskFindManyMock.mockResolvedValue([
-      {
-        id: 'task_1',
-        task_type: 'pharmacy.inbound_medication_stock_signal_review_required',
-        status: 'completed',
-        priority: 'normal',
-        dedupe_key: 'inbound:signal_1:pharmacy.inbound_medication_stock_signal_review_required',
-      },
+      reviewTaskFixture({ status: 'completed', priority: 'normal' }),
     ]);
-    patientFindManyMock.mockResolvedValue([{ id: 'patient_1', name: '佐藤花子' }]);
+    patientFindManyMock.mockResolvedValue([inboundPatientFixture]);
 
     const result = await listCommunicationQueue(makeDb(), {
       orgId: 'org-1',
