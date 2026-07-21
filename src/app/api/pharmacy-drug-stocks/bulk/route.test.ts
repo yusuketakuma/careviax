@@ -321,12 +321,11 @@ describe('/api/pharmacy-drug-stocks/bulk', () => {
     expect(body).toMatchObject({ code: 'INTERNAL_ERROR' });
     expect(JSON.stringify(body)).not.toContain('adoption note secret');
     expect(loggerErrorMock).toHaveBeenCalledWith(
-      {
-        event: 'pharmacy_drug_stocks_bulk_post_unhandled_error',
+      expect.objectContaining({
+        event: 'route_handler_unhandled_error',
         route: '/api/pharmacy-drug-stocks/bulk',
         method: 'POST',
-        status: 500,
-      },
+      }),
       unsafeError,
     );
     const routeContext = loggerErrorMock.mock.calls[0]?.[0];

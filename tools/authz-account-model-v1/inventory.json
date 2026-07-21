@@ -735,7 +735,7 @@
       },
       {
         "path": "Plans.md",
-        "sha256": "cedaa5ada2207681e651ed94901c4b333e9ee8e6e9b53026126c747337161976"
+        "sha256": "fcca00129573c5b917a72e677df8e0dffc72b656064033b9af5dffa2d0b05900"
       },
       {
         "path": "README.md",
@@ -903,7 +903,7 @@
       },
       {
         "path": "ops/refactor/STATE.md",
-        "sha256": "09a32707333157c2b984cccbdc75fc17664e6a24ae407173bed8aad3655dd36b"
+        "sha256": "a28e08fa5cb21bda0d4c5884ff80e23eb38dd74589efe04b6386a8e6e974ea4d"
       },
       {
         "path": "ops/refactor/archive/PERF_FINDINGS.md",
@@ -6324,30 +6324,6 @@
       "reprojection_or_removal": "owner_review_required_before_cutover:src/app/api/pharmacists/route.ts",
       "binding_profile": "p_707b8d027643",
       "capability_profile": "p_6e2fcf09f584"
-    },
-    {
-      "id": "mapping_precedence:src/app/api/pharmacy-drug-stocks/bulk/route.ts",
-      "detector": "mapping_precedence",
-      "path": "src/app/api/pharmacy-drug-stocks/bulk/route.ts",
-      "evidence_sha256": "3354690fb47d310481304ae58ed221df383ba4e4362ec0896c6307f3dcacfc74",
-      "principal": "human",
-      "lifecycles": ["request"],
-      "surfaces": ["rls", "writer"],
-      "exact_values_or_scopes": [
-        "not_applicable:mapping_precedence:no-enumerated-value:src/app/api/pharmacy-drug-stocks/bulk/route.ts"
-      ],
-      "route_method_purpose": "POST /api/pharmacy-drug-stocks/bulk purpose=legacy_unspecified_pending_review",
-      "precedence_selection": "legacy_observed_requires_human_review",
-      "synthetic_derived_mapping": "not_applicable:no-synthetic-mapping-observed:src/app/api/pharmacy-drug-stocks/bulk/route.ts",
-      "persistence_contract": "not_applicable:no-persistence-observed:src/app/api/pharmacy-drug-stocks/bulk/route.ts",
-      "ttl_contract": "not_applicable:no-ttl-observed:src/app/api/pharmacy-drug-stocks/bulk/route.ts",
-      "mapping_disposition": "candidate_requires_human",
-      "owner": "Identity / Authz",
-      "approval_status": "pending_owner_review",
-      "test_refs": ["src/app/api/pharmacy-drug-stocks/bulk/route.test.ts"],
-      "reprojection_or_removal": "owner_review_required_before_cutover:src/app/api/pharmacy-drug-stocks/bulk/route.ts",
-      "binding_profile": "p_26b6d3d5bc5d",
-      "capability_profile": "p_a325f45c9b2a"
     },
     {
       "id": "mapping_precedence:src/app/api/pharmacy-drug-stocks/usage-mismatch/route.ts",
@@ -32237,7 +32213,7 @@
       "path": "src/app/api/pharmacy-drug-stocks/bulk/route.test.ts",
       "classes": ["test"],
       "detectors": ["mapping_precedence", "raw_role_semantics"],
-      "sha256": "9590844978cf0c813848df989a86db704ad8cf4b9d3279e98be87ed5aa57aa69"
+      "sha256": "78cf72fef42a9b05ddb2499dcee18b94c3668373a6ed21fbf6094fa60bea10d9"
     },
     {
       "path": "src/app/api/pharmacy-drug-stocks/copy/route.test.ts",
