@@ -1,29 +1,19 @@
-import { unstable_rethrow } from 'next/navigation';
 import { NextRequest } from 'next/server';
-import { requireAuthContext } from '@/lib/auth/context';
+import { withAuthContext, type AuthContext, type AuthRouteContext } from '@/lib/auth/context';
 import { recordPhiReadAuditForRequest } from '@/lib/audit/phi-read-audit';
 import { canAccessVisitScheduleAssignment } from '@/lib/auth/visit-schedule-access';
-import {
-  success,
-  validationError,
-  notFound,
-  forbiddenResponse,
-  internalError,
-} from '@/lib/api/response';
+import { success, validationError, notFound, forbiddenResponse } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { prisma } from '@/lib/db/client';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { getPatientPrivacyFlags } from '@/lib/patient/privacy';
 import { listFieldRevisionsBySourceVisitRecord } from '@/server/services/patient-field-revision-list';
 
-async function authenticatedGET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canVisit',
-    message: '訪問記録の閲覧権限がありません',
-  });
-  if ('response' in authResult) return withSensitiveNoStore(authResult.response);
-  const ctx = authResult.ctx;
-
+async function authenticatedGET(
+  _req: NextRequest,
+  ctx: AuthContext,
+  { params }: AuthRouteContext<{ id: string }>,
+) {
   const { id: rawId } = await params;
   const id = normalizeRequiredRouteParam(rawId);
   if (!id) return withSensitiveNoStore(validationError('訪問記録IDが不正です'));
@@ -63,11 +53,7 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
   return response;
 }
 
-export async function GET(req: NextRequest, routeContext: { params: Promise<{ id: string }> }) {
-  try {
-    return withSensitiveNoStore(await authenticatedGET(req, routeContext));
-  } catch (err) {
-    unstable_rethrow(err);
-    return withSensitiveNoStore(internalError());
-  }
-}
+export const GET = withAuthContext(authenticatedGET, {
+  permission: 'canVisit',
+  message: '訪問記録の閲覧権限がありません',
+});
