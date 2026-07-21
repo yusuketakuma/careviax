@@ -1,13 +1,11 @@
-import { unstable_rethrow } from 'next/navigation';
 import { NextRequest } from 'next/server';
-import { requireAuthContext } from '@/lib/auth/context';
+import { withAuthContext, type AuthContext } from '@/lib/auth/context';
 import { recordPhiReadAuditForRequest } from '@/lib/audit/phi-read-audit';
 import { prisma } from '@/lib/db/client';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { withOrgContext } from '@/lib/db/rls';
-import { internalError, success, validationError, notFound } from '@/lib/api/response';
-import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
+import { success, validationError, notFound } from '@/lib/api/response';
 import { upsertVisitConstraintsSchema } from '@/lib/validations/visit-constraints';
 import { applyPatientAssignmentWhere } from '@/lib/auth/visit-schedule-access';
 import { hhmmToTimeDate } from '@/lib/datetime/time-of-day';
@@ -17,14 +15,11 @@ function toTimeValue(value?: string) {
   return value ? hhmmToTimeDate(value) : null;
 }
 
-async function authenticatedGET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canViewDashboard',
-    message: '訪問条件の閲覧権限がありません',
-  });
-  if ('response' in authResult) return authResult.response;
-  const { ctx } = authResult;
-
+async function authenticatedGET(
+  req: NextRequest,
+  ctx: AuthContext,
+  { params }: { params: Promise<{ id: string }> },
+) {
   const { id: rawId } = await params;
   const id = normalizeRequiredRouteParam(rawId);
   if (!id) return validationError('患者IDが不正です');
@@ -61,23 +56,16 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
   });
 }
 
-export async function GET(req: NextRequest, routeContext: { params: Promise<{ id: string }> }) {
-  try {
-    return withSensitiveNoStore(await authenticatedGET(req, routeContext));
-  } catch (err) {
-    unstable_rethrow(err);
-    return withSensitiveNoStore(internalError());
-  }
-}
+export const GET = withAuthContext(authenticatedGET, {
+  permission: 'canViewDashboard',
+  message: '訪問条件の閲覧権限がありません',
+});
 
-export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canVisit',
-    message: '訪問条件の更新権限がありません',
-  });
-  if ('response' in authResult) return authResult.response;
-  const { ctx } = authResult;
-
+async function authenticatedPUT(
+  req: NextRequest,
+  ctx: AuthContext,
+  { params }: { params: Promise<{ id: string }> },
+) {
   const { id: rawId } = await params;
   const id = normalizeRequiredRouteParam(rawId);
   if (!id) return validationError('患者IDが不正です');
@@ -172,3 +160,8 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 
   return success({ data: updated });
 }
+
+export const PUT = withAuthContext(authenticatedPUT, {
+  permission: 'canVisit',
+  message: '訪問条件の更新権限がありません',
+});
