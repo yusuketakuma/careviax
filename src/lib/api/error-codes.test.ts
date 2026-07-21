@@ -37,6 +37,20 @@ describe('API error code registry', () => {
           "recoveryAction": "sign_in",
           "retryable": false,
         },
+        "BILLING_CLOSE_BLOCKED": {
+          "httpStatus": 409,
+          "logLevel": "warn",
+          "messageLabel": "api.error.billing.close_blocked",
+          "recoveryAction": "correct_input",
+          "retryable": false,
+        },
+        "BILLING_CLOSE_STALE_CANDIDATES": {
+          "httpStatus": 409,
+          "logLevel": "warn",
+          "messageLabel": "api.error.billing.close_stale_candidates",
+          "recoveryAction": "reload",
+          "retryable": false,
+        },
         "BILLING_DOCUMENT_PDF_EXPORT_AUDIT_FAILED": {
           "httpStatus": 500,
           "logLevel": "error",

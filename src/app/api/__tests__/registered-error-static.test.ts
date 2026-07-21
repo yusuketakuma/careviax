@@ -62,16 +62,6 @@ type RawRegisteredErrorUsage = RawLiteralErrorUsage & {
 // High-risk route migrations stay incremental; this exact baseline must not grow.
 const allowedRawLiteralErrorUsages: RawLiteralErrorUsage[] = [
   {
-    filePath: 'src/app/api/billing-candidates/close/route.ts',
-    code: 'BILLING_CLOSE_BLOCKED',
-    httpStatus: 409,
-  },
-  {
-    filePath: 'src/app/api/billing-candidates/close/route.ts',
-    code: 'BILLING_CLOSE_STALE_CANDIDATES',
-    httpStatus: 409,
-  },
-  {
     filePath: 'src/app/api/patients/[id]/prescriptions/e-prescription/route.ts',
     code: 'AMBIGUOUS_ACTIVE_CYCLE',
     httpStatus: 409,
@@ -327,19 +317,6 @@ const allowedExternalNonliteralMessageUsages: RawNonliteralMessageUsage[] = [
 
 // Existing wire-visible details are debt, not an approved public contract. This baseline must not grow.
 const allowedRawErrorDetailsUsages: RawErrorDetailsUsage[] = [
-  {
-    filePath: 'src/app/api/billing-candidates/close/route.ts',
-    helper: 'error',
-    codeExpression: "'BILLING_CLOSE_BLOCKED'",
-    detailsExpression: '{ summary: result.summary, blockingCount: result.blockingCount, }',
-  },
-  {
-    filePath: 'src/app/api/billing-candidates/close/route.ts',
-    helper: 'error',
-    codeExpression: "'BILLING_CLOSE_STALE_CANDIDATES'",
-    detailsExpression:
-      '{ billing_month: parsedBillingMonth.start.toISOString(), billing_domain: billingDomain, conflictCount: 1, }',
-  },
   {
     filePath: 'src/app/api/patients/[id]/prescriptions/e-prescription/route.ts',
     helper: 'error',

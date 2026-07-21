@@ -95,6 +95,20 @@ export const API_ERROR_CODE_REGISTRY = Object.freeze({
     recoveryAction: 'return_to_previous',
     messageLabel: 'api.error.billing.export_audit_failed',
   },
+  BILLING_CLOSE_BLOCKED: {
+    httpStatus: 409,
+    logLevel: 'warn',
+    retryable: false,
+    recoveryAction: 'correct_input',
+    messageLabel: 'api.error.billing.close_blocked',
+  },
+  BILLING_CLOSE_STALE_CANDIDATES: {
+    httpStatus: 409,
+    logLevel: 'warn',
+    retryable: false,
+    recoveryAction: 'reload',
+    messageLabel: 'api.error.billing.close_stale_candidates',
+  },
   BILLING_PARTNER_APPROVAL_NOT_IMPLEMENTED: {
     httpStatus: 501,
     logLevel: 'info',

@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server';
 import { withAuthContext, type AuthContext } from '@/lib/auth/context';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { withOrgContext } from '@/lib/db/rls';
-import { error, success, validationError } from '@/lib/api/response';
+import { registeredError, success, validationError } from '@/lib/api/response';
 import { closeBillingCandidatesForMonth } from '@/server/services/billing-evidence';
 import { enqueueWebhookEvent } from '@/server/services/outbound-webhook-queue';
 import { BILLING_DOMAIN_ERROR_MESSAGE, parseBillingDomainOrDefault } from '../billing-domain';
@@ -52,10 +52,9 @@ async function closeBillingMonth(req: NextRequest, ctx: AuthContext) {
     });
   } catch (cause) {
     if (isBillingCloseStaleCandidatesError(cause)) {
-      return error(
+      return registeredError(
         'BILLING_CLOSE_STALE_CANDIDATES',
         '請求候補が他のユーザーによって更新されています。最新のデータを取得してから月次締めしてください。',
-        409,
         {
           billing_month: parsedBillingMonth.start.toISOString(),
           billing_domain: billingDomain,
@@ -67,10 +66,9 @@ async function closeBillingMonth(req: NextRequest, ctx: AuthContext) {
   }
 
   if (result.blocked) {
-    return error(
+    return registeredError(
       'BILLING_CLOSE_BLOCKED',
       '未確認の請求候補が残っているため月次締めできません',
-      409,
       {
         summary: result.summary,
         blockingCount: result.blockingCount,
