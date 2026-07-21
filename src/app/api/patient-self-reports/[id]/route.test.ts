@@ -31,11 +31,36 @@ const {
 }));
 
 vi.mock('@/lib/auth/context', () => ({
-  requireAuthContext: requireAuthContextMock,
-  withAuthContext: (handler: (...args: unknown[]) => unknown) => {
-    return (req: NextRequest, routeContext: { params: Promise<{ id: string }> }) =>
-      handler(req, { orgId: 'org_1', userId: 'user_1', role: authRoleMock() }, routeContext);
-  },
+  withAuthContext:
+    (
+      handler: (
+        req: NextRequest,
+        ctx: Record<string, unknown>,
+        routeContext: { params: Promise<{ id: string }> },
+      ) => Promise<Response>,
+      options?: unknown,
+    ) =>
+    async (req: NextRequest, routeContext: { params: Promise<{ id: string }> }) => {
+      const noStore = (response: Response) => {
+        response.headers.set('Cache-Control', 'private, no-store, max-age=0');
+        response.headers.set('Pragma', 'no-cache');
+        return response;
+      };
+      try {
+        const authResult = await requireAuthContextMock(req, options);
+        if ('response' in authResult) return noStore(authResult.response);
+        return noStore(
+          await handler(req, { ...authResult.ctx, role: authRoleMock() }, routeContext),
+        );
+      } catch {
+        return noStore(
+          Response.json(
+            { code: 'INTERNAL_ERROR', message: 'サーバー内部でエラーが発生しました' },
+            { status: 500 },
+          ),
+        );
+      }
+    },
 }));
 
 vi.mock('@/lib/db/client', () => ({
@@ -560,6 +585,7 @@ describe('/api/patient-self-reports/[id] PATCH', () => {
   });
 
   it('returns full self report detail fields for internal clerk users', async () => {
+    authRoleMock.mockReturnValue('clerk');
     requireAuthContextMock.mockResolvedValueOnce({
       ctx: { orgId: 'org_1', userId: 'user_1', role: 'clerk' },
     });

@@ -1,6 +1,5 @@
-import { unstable_rethrow } from 'next/navigation';
-import { withAuthContext, requireAuthContext } from '@/lib/auth/context';
-import { success, validationError, notFound, conflict, internalError } from '@/lib/api/response';
+import { withAuthContext, type AuthContext } from '@/lib/auth/context';
+import { success, validationError, notFound, conflict } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { recordPhiReadAuditForRequest } from '@/lib/audit/phi-read-audit';
@@ -35,14 +34,11 @@ class PatientSelfReportConflictError extends Error {}
 
 const sensitiveResponse = withSensitiveNoStore;
 
-async function authenticatedGET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canReport',
-    message: '患者自己申告の閲覧権限がありません',
-  });
-  if ('response' in authResult) return sensitiveResponse(authResult.response);
-  const ctx = authResult.ctx;
-
+async function authenticatedGET(
+  req: NextRequest,
+  ctx: AuthContext,
+  { params }: { params: Promise<{ id: string }> },
+) {
   const { id: rawId } = await params;
   const id = normalizeRequiredRouteParam(rawId);
   if (!id) return sensitiveResponse(validationError('患者自己申告IDが不正です'));
@@ -86,14 +82,10 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
   );
 }
 
-export async function GET(req: NextRequest, routeContext: { params: Promise<{ id: string }> }) {
-  try {
-    return sensitiveResponse(await authenticatedGET(req, routeContext));
-  } catch (err) {
-    unstable_rethrow(err);
-    return sensitiveResponse(internalError());
-  }
-}
+export const GET = withAuthContext(authenticatedGET, {
+  permission: 'canReport',
+  message: '患者自己申告の閲覧権限がありません',
+});
 
 const authenticatedPATCH = withAuthContext<{ id: string }>(
   async (req, ctx, routeContext) => {
@@ -227,11 +219,4 @@ const authenticatedPATCH = withAuthContext<{ id: string }>(
   },
 );
 
-export const PATCH: typeof authenticatedPATCH = async (req, routeContext) => {
-  try {
-    return sensitiveResponse(await authenticatedPATCH(req, routeContext));
-  } catch (err) {
-    unstable_rethrow(err);
-    return sensitiveResponse(internalError());
-  }
-};
+export const PATCH = authenticatedPATCH;
