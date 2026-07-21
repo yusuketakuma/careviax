@@ -18,7 +18,17 @@ const {
 }));
 
 vi.mock('@/lib/auth/context', () => ({
-  requireAuthContext: requireAuthContextMock,
+  withAuthContext:
+    (
+      handler: (req: NextRequest, ctx: Record<string, unknown>) => Promise<Response>,
+      options?: unknown,
+    ) =>
+    async (req: NextRequest) =>
+      withRoutePerformanceMock(req, async () => {
+        const authResult = await requireAuthContextMock(req, options);
+        if ('response' in authResult) return withSensitiveNoStoreMock(authResult.response);
+        return withSensitiveNoStoreMock(await handler(req, authResult.ctx));
+      }),
 }));
 
 vi.mock('@/lib/db/rls', () => ({
