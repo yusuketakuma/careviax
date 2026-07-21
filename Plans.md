@@ -342,7 +342,7 @@ Phased migration / rollback:
 
 Phase 0 executable split（2026-07-20）:
 
-- `AUTHZ-ACCOUNT-MODEL-V1-001A-FREEZE-INVENTORY`: **Validating / static preparation only**。`tools/authz-account-model-v1/inventory.json`を正本に、legacy 7 tenant role、3 platform role、5 PHOS role、4 override、13 permission、PHOS scopeと、Cognito/JWT/session、direct/synthetic mapping、RLS/IaC/UI、Dynamo/offline、service/job、SSE、historical snapshotのsource/classificationを双方向に固定する。legacy `PharmacistCredential`は`qualification_authority=none`、noncanonical、clinical action非許可とし、presence/date completeness以外を推論しない。集計SQLはread-only transaction、timeout、小セル抑制、識別子/PHI非出力を契約化する。自動検証はlocal `ph_os_e2e`のmigration済みschemaでread-only compile/runを行い、schema-valid anomalyはrun固有fixtureを`REPEATABLE READ` transactionへ投入してexact deltaとrollback residue zeroを検証する。FKで通常生成不能なorphanだけを別のisolated anomaly fixtureで検証する。fixture以外のruntime DMLは行わず、live/non-test DBではHuman gate批准前に実行しない。このsliceはruntime auth/schema/IaC/Cognito/UIを変更せず、親Phase 0を完了扱いにしない。
+- `AUTHZ-ACCOUNT-MODEL-V1-001A-FREEZE-INVENTORY`: **Static preparation closed (2026-07-21)**。`tools/authz-account-model-v1/inventory.json`を正本に、legacy 7 tenant role、3 platform role、5 PHOS role、4 override、13 permission、PHOS scopeと、Cognito/JWT/session、direct/synthetic mapping、RLS/IaC/UI、Dynamo/offline、service/job、SSE、historical snapshotのsource/classificationを双方向に固定済み。legacy `PharmacistCredential`は`qualification_authority=none`、noncanonical、clinical action非許可とし、presence/date completeness以外を推論しない。集計SQLはread-only transaction、timeout、小セル抑制、識別子/PHI非出力を契約化した。自動検証はlocal `ph_os_e2e`のmigration済みschemaでread-only compile/runを行い、schema-valid anomalyはrun固有fixtureを`REPEATABLE READ` transactionへ投入してexact deltaとrollback residue zeroを検証する。FKで通常生成不能なorphanだけを別のisolated anomaly fixtureで検証する。fixture以外のruntime DMLは行わず、live/non-test DBではHuman gate批准前に実行しない。このsliceはruntime auth/schema/IaC/Cognito/UIを変更せず、親Phase 0を完了扱いにしない。
 - `AUTHZ-ACCOUNT-MODEL-V1-001A-LIVE-IDENTITY-DRIFT-EVIDENCE`: **Human gate**。DB/Cognito/claimのunknown value、tenant mismatch、disabled state、projection mismatchを識別子/PHIなしで集計し、実行前にprivacy、DB owner、EXPLAIN/costを批准する。static checkerまたは未実行SQLだけでlive drift zeroを主張しない。
 - `BROWSER-AUTOMATION-AGENT-BROWSER-CUTOVER`: **Not started / hard dependency before legacy browser deletion**。既存Playwrightの各test case、config、helper、script、dependency、snapshot/artifact、CI、`.agent-loop/GATE_CONFIG.md`を双方向scenario manifestへ固定し、各scenarioを`agent-browser`または批准済みdeterministic non-browser testへ対応付ける。mandatory scenario IDは`tenant_switching_owner_target_pin`、`supporter_assigned_read_zero_write`、`role_capability_matrix`、`qualification_negative_clinical_action`、`stale_downgraded_unknown_claim_deny`、`platform_break_glass`、`multi_site_ambiguity`、`offline_replay_after_revocation`、`sse_revocation`、`keyboard_focus_error_announcements`、`console_runtime_errors_zero`。unmapped scenario、根拠なしretire、先行削除、stale gateをcheckerで拒否し、parity後だけpackage/CI/gateを原子的に切り替える。直接Playwright実行とblind deletionを行わない。
 
@@ -575,15 +575,14 @@ Wave 4 acceptance merge: `AUTHZ-PRIVILEGED-ACCOUNT-LIFECYCLE-001`のsession/offl
 > FHIRは上の`FHIR child dependency order`だけを使う。ここでは親roll-upとHuman gateを順位付けせず、継続中または依存を満たした非FHIR sliceだけを上から評価する。
 
 1. `DB-TX-SERIALIZATION-AUDIT-001`: 現在の`Validating`を閉じる。失敗時はtransaction境界・retry・isolationの同じroot causeを直す。
-2. `AUTHZ-ACCOUNT-MODEL-V1-001A-FREEZE-INVENTORY`: static preparationの残validationと相互検証だけを閉じる。runtime auth/schema/IaC/Cognito/UI、live DB/Cognito/claim drift実行、親Phase 0完了へ広げない。
-3. `BILLING-CLAIMS-CONFORMANCE-FAIL-CLOSED-001`: official yrese conformance残件だけをP0で閉じる。
-4. `BILLING-PARTNER-CONTRACT-APPROVAL-SOD-001`: 批准前のfail-closed境界を維持し、既存active移行はHuman gateのままにする。
-5. `MEDSAFE-CYCLE-TRANSITION-OCC-001` / `MEDSAFE-INCIDENT-REVIEW-OCC-001`: 残るfresh authorizationとreview versionを独立sliceで閉じる。批准が必要な実行拡張はしない。
-6. `DB-EVENT-001` / `STABILITY-DELIVERY-PROVIDER-READINESS-001` / `STABILITY-WORKFLOW-CACHE-COHERENCE-001`: durable outbox/ack/reconcile、authoritative recovery、cache epochへ収束する。
-7. `JOB-TENANT-EXECUTION-001` / `EXP-SURFACE-REGISTRY-001` / `STABILITY-JOB-PARTIAL-OUTCOME-001`: RLS-bound job、authoritative export、cursor/epochを揃え、bounded subsetを空・全件・成功に見せない。
-8. `CI-CONTAINER-ARTIFACT-IMMUTABILITY-001` / `SEC-SECRET-HISTORY-REMEDIATION-001` / `CI-PREVIEW-URL-VERIFICATION-001` / `CI-SECURITY-RATCHET-PARITY-001`: SHA→digest provenance、redacted triage、exact preview/release DAGを閉じる。rotation/history rewrite/AWS mutation/deployはHuman gate。
-9. `PERF-RTE-001A` / `PERF-REFERENCE-MASTER-TENANT-FANOUT-001`: process-local metricとtenant×全国master fan-outをbounded aggregate/cursorへ分離する。
-10. `FE-SCHEDULE-001`: authoritative totalとloaded subset、empty/partial/error/staleをUIで分離し、mutation対象をlocal first pageへ限定しない。
+2. `BILLING-CLAIMS-CONFORMANCE-FAIL-CLOSED-001`: official yrese conformance残件だけをP0で閉じる。
+3. `BILLING-PARTNER-CONTRACT-APPROVAL-SOD-001`: 批准前のfail-closed境界を維持し、既存active移行はHuman gateのままにする。
+4. `MEDSAFE-CYCLE-TRANSITION-OCC-001` / `MEDSAFE-INCIDENT-REVIEW-OCC-001`: 残るfresh authorizationとreview versionを独立sliceで閉じる。批准が必要な実行拡張はしない。
+5. `DB-EVENT-001` / `STABILITY-DELIVERY-PROVIDER-READINESS-001` / `STABILITY-WORKFLOW-CACHE-COHERENCE-001`: durable outbox/ack/reconcile、authoritative recovery、cache epochへ収束する。
+6. `JOB-TENANT-EXECUTION-001` / `EXP-SURFACE-REGISTRY-001` / `STABILITY-JOB-PARTIAL-OUTCOME-001`: RLS-bound job、authoritative export、cursor/epochを揃え、bounded subsetを空・全件・成功に見せない。
+7. `CI-CONTAINER-ARTIFACT-IMMUTABILITY-001` / `SEC-SECRET-HISTORY-REMEDIATION-001` / `CI-PREVIEW-URL-VERIFICATION-001` / `CI-SECURITY-RATCHET-PARITY-001`: SHA→digest provenance、redacted triage、exact preview/release DAGを閉じる。rotation/history rewrite/AWS mutation/deployはHuman gate。
+8. `PERF-RTE-001A` / `PERF-REFERENCE-MASTER-TENANT-FANOUT-001`: process-local metricとtenant×全国master fan-outをbounded aggregate/cursorへ分離する。
+9. `FE-SCHEDULE-001`: authoritative totalとloaded subset、empty/partial/error/staleをUIで分離し、mutation対象をlocal first pageへ限定しない。
 
 **Program backlog — 長期プログラム残スコープ（sprint queue に数えない。着手時に小IDで queue へ昇格）**:
 

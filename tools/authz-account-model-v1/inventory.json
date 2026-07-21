@@ -735,7 +735,7 @@
       },
       {
         "path": "Plans.md",
-        "sha256": "d9ac1aad733e652600f9621f5075aaba7af8d8329a17a60ce1ea15249071eaeb"
+        "sha256": "b445ed21d851562552b312dd2809eef68a41216e6fb148a5a297f19069965107"
       },
       {
         "path": "README.md",
@@ -903,7 +903,7 @@
       },
       {
         "path": "ops/refactor/STATE.md",
-        "sha256": "cbdd863fdfd87ed7f5806cfd9b76b2d1000965d80b6f041c1ce628905aa5a373"
+        "sha256": "6c5cbda52a75dc6d1813653c82714842120677c4020be4bb56df8f704baee8e1"
       },
       {
         "path": "ops/refactor/archive/PERF_FINDINGS.md",
@@ -1567,11 +1567,11 @@
       },
       {
         "path": "src/lib/db/client.test.ts",
-        "sha256": "d21d739e5b9b1fca5e78aa030620e8ca986f3d0d6c09f7d5cd988f07fcbf6241"
+        "sha256": "e0df2c4c6fee72c236420616073eadfd06d9a726d7a6fac73d5e696a4a883d8c"
       },
       {
         "path": "src/lib/db/client.ts",
-        "sha256": "91b8c8cec57afaf7c9250a6bc168c47ac0bc70f98dbd517bfb8e33966f9f9a4f"
+        "sha256": "81df67ff745ea77e3dc814ee72e5a4bb2a0483d97ad52b975855e5bdec52bc0b"
       },
       {
         "path": "src/lib/db/display-id-registry.ts",
@@ -1584,6 +1584,10 @@
       {
         "path": "src/lib/db/display-id.ts",
         "sha256": "852c7fd6ff1f7001b51110f9e5f4a8e89e8da925253ec810a0137218b8d7978e"
+      },
+      {
+        "path": "src/lib/db/query-metrics.ts",
+        "sha256": "a7a65bace8839ea1f0151aea24527e5ccaeaa06e156ed0cdc9ed5f380f64fbe1"
       },
       {
         "path": "src/lib/db/rls.ts",
@@ -1619,7 +1623,7 @@
       },
       {
         "path": "src/lib/utils/performance.ts",
-        "sha256": "e53a2621c20271217820f36a71f044c5d61b9cd9e2defda361da5ce640e7bd54"
+        "sha256": "c296bfc32db61470eb2281685070d2979ae70f0b9d71134fee4eb542643145ce"
       },
       {
         "path": "src/lib/utils/route-payload-budgets.ts",
