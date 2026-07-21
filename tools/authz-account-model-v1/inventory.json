@@ -735,7 +735,7 @@
       },
       {
         "path": "Plans.md",
-        "sha256": "21becf662fb332090391dccef2bdd80cb3830facdf78bcd0c11901ab459e8c94"
+        "sha256": "0b2f1f349827e0f70e4d6b65d406f01a7b5a95144a06a65601fa61d199c6bf68"
       },
       {
         "path": "README.md",
@@ -903,7 +903,7 @@
       },
       {
         "path": "ops/refactor/STATE.md",
-        "sha256": "fa3dfcbca08e6a67b3c4bfc66ca824f0d411caf8aba48033e67b89013ce2275b"
+        "sha256": "ce27ecbd561cc4ab13c0370ffef8c2488cd3e15f5267f04fc0dabd66cdab082b"
       },
       {
         "path": "ops/refactor/archive/PERF_FINDINGS.md",
@@ -32239,7 +32239,7 @@
       "path": "src/app/api/patients/[id]/qualification-check/route.test.ts",
       "classes": ["test"],
       "detectors": ["raw_role_semantics"],
-      "sha256": "71777f944f96804a748bf22e8bdc7221098b76f928089ba024af73f975ab4ec0"
+      "sha256": "9a9ca80925927bcae57bf047c48e90c80445476a8e8338f0c19a3e742f4a76da"
     },
     {
       "path": "src/app/api/patients/[id]/readiness/route.test.ts",

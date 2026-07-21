@@ -43,7 +43,64 @@ const {
 });
 
 vi.mock('@/lib/auth/context', () => ({
-  requireAuthContext: requireAuthContextMock,
+  withAuthContext:
+    (
+      handler: (
+        req: NextRequest,
+        ctx: Record<string, unknown>,
+        routeContext: { params: Promise<{ id: string }> },
+      ) => Promise<Response>,
+      options?: unknown,
+    ) =>
+    async (req: NextRequest, routeContext: { params: Promise<{ id: string }> }) => {
+      const noStore = (response: Response) => {
+        response.headers.set('Cache-Control', 'private, no-store, max-age=0');
+        response.headers.set('Pragma', 'no-cache');
+        return response;
+      };
+      let authResult: Awaited<ReturnType<typeof requireAuthContextMock>>;
+      try {
+        authResult = await requireAuthContextMock(req, options);
+      } catch (error) {
+        loggerErrorMock(
+          {
+            event: 'route_auth_unhandled_error',
+            route: req.nextUrl.pathname,
+            method: req.method,
+            requestId: 'req_auth_failure',
+            correlationId: 'corr_auth_failure',
+          },
+          error,
+        );
+        return noStore(
+          Response.json(
+            { code: 'INTERNAL_ERROR', message: 'サーバー内部でエラーが発生しました' },
+            { status: 500 },
+          ),
+        );
+      }
+      if ('response' in authResult) return noStore(authResult.response);
+      try {
+        return noStore(await handler(req, authResult.ctx, routeContext));
+      } catch (error) {
+        loggerErrorMock(
+          {
+            event: 'route_handler_unhandled_error',
+            route: req.nextUrl.pathname,
+            method: req.method,
+            requestId: authResult.ctx.requestId,
+            correlationId: authResult.ctx.correlationId,
+          },
+          error,
+        );
+        return noStore(
+          Response.json(
+            { code: 'INTERNAL_ERROR', message: 'サーバー内部でエラーが発生しました' },
+            { status: 500 },
+          ),
+        );
+      }
+    },
 }));
 
 vi.mock('@/lib/db/client', () => ({
@@ -100,7 +157,13 @@ describe('/api/patients/[id]/qualification-check POST', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     requireAuthContextMock.mockResolvedValue({
-      ctx: { orgId: 'org_1', userId: 'user_1', role: 'pharmacist' },
+      ctx: {
+        orgId: 'org_1',
+        userId: 'user_1',
+        role: 'pharmacist',
+        requestId: 'req_qualification_check',
+        correlationId: 'corr_qualification_check',
+      },
     });
     patientFindFirstMock.mockResolvedValue({
       id: 'patient_1',
@@ -574,17 +637,18 @@ describe('/api/patients/[id]/qualification-check POST', () => {
     expect(serializedBody).not.toContain('12345678');
     expect(serializedBody).not.toContain('token secret');
     expect(loggerErrorMock).toHaveBeenCalledTimes(1);
-    expect(loggerErrorMock).toHaveBeenCalledWith({
-      event: 'qualification_check_post_unhandled_error',
-      route: '/api/patients/:id/qualification-check',
-      method: 'POST',
-      status: 500,
-      code: 'Error',
-    });
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      {
+        event: 'route_handler_unhandled_error',
+        route: '/api/patients/patient_1/qualification-check',
+        method: 'POST',
+        requestId: 'req_qualification_check',
+        correlationId: 'corr_qualification_check',
+      },
+      unsafeError,
+    );
     const [logContext] = loggerErrorMock.mock.calls[0] ?? [];
     expect(typeof logContext).not.toBe('string');
-    expect(loggerErrorMock.mock.calls[0]).not.toContain(unsafeError);
-    expect(loggerErrorMock.mock.calls[0]?.[1]).toBeUndefined();
     const logged = JSON.stringify(loggerErrorMock.mock.calls);
     expect(JSON.stringify(logContext)).not.toContain('山田 太郎');
     expect(JSON.stringify(logContext)).not.toContain('12345678');
@@ -620,17 +684,18 @@ describe('/api/patients/[id]/qualification-check POST', () => {
     expect(createQualificationCheckAdapterMock).not.toHaveBeenCalled();
     expect(enqueueQualificationCheckedWebhookMock).not.toHaveBeenCalled();
     expect(loggerErrorMock).toHaveBeenCalledTimes(1);
-    expect(loggerErrorMock).toHaveBeenCalledWith({
-      event: 'qualification_check_post_unhandled_error',
-      route: '/api/patients/:id/qualification-check',
-      method: 'POST',
-      status: 500,
-      code: 'Error',
-    });
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      {
+        event: 'route_auth_unhandled_error',
+        route: '/api/patients/patient_1/qualification-check',
+        method: 'POST',
+        requestId: 'req_auth_failure',
+        correlationId: 'corr_auth_failure',
+      },
+      unsafeError,
+    );
     const [logContext] = loggerErrorMock.mock.calls[0] ?? [];
     expect(typeof logContext).not.toBe('string');
-    expect(loggerErrorMock.mock.calls[0]).not.toContain(unsafeError);
-    expect(loggerErrorMock.mock.calls[0]?.[1]).toBeUndefined();
     const logged = JSON.stringify(loggerErrorMock.mock.calls);
     expect(JSON.stringify(logContext)).not.toContain('山田 太郎');
     expect(JSON.stringify(logContext)).not.toContain('token secret');

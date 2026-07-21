@@ -1,14 +1,6 @@
 import { NextRequest } from 'next/server';
-import { unstable_rethrow } from 'next/navigation';
-import { requireAuthContext } from '@/lib/auth/context';
-import {
-  success,
-  notFound,
-  registeredError,
-  validationError,
-  internalError,
-} from '@/lib/api/response';
-import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
+import { withAuthContext, type AuthContext } from '@/lib/auth/context';
+import { success, notFound, registeredError, validationError } from '@/lib/api/response';
 import { withOrgContext } from '@/lib/db/rls';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import {
@@ -21,18 +13,7 @@ import { enqueueQualificationCheckedWebhook } from '@/server/services/outbound-w
 import { applyPatientAssignmentWhere } from '@/lib/auth/visit-schedule-access';
 import { resolvePatientInsurance } from '@/server/services/patient-insurance';
 import { requireWritablePatient } from '@/server/services/patient-write-guard';
-import { logger } from '@/lib/utils/logger';
 
-const ROUTE = '/api/patients/:id/qualification-check';
-const SAFE_UNHANDLED_ERROR_NAMES = new Set([
-  'Error',
-  'TypeError',
-  'RangeError',
-  'ReferenceError',
-  'SyntaxError',
-  'EvalError',
-  'URIError',
-]);
 const QUALIFICATION_CHECK_ERROR_MESSAGES = {
   NOT_IMPLEMENTED: 'オンライン資格確認はまだ有効化されていません',
   INVALID_REQUEST: '資格確認リクエストが不正です',
@@ -55,11 +36,6 @@ type ScopedQualificationPatient =
     };
 
 type QualificationIdentityMatch = 'matched' | 'mismatch' | 'unknown';
-
-function safeUnhandledErrorCode(err: unknown) {
-  if (!(err instanceof Error)) return 'non_error_throw';
-  return SAFE_UNHANDLED_ERROR_NAMES.has(err.name) ? err.name : 'Error';
-}
 
 function normalizeIdentityName(value: string | null | undefined) {
   return value?.normalize('NFKC').replace(/\s+/g, '').trim().toLowerCase();
@@ -125,15 +101,9 @@ function qualificationCheckAdapterErrorResponse(cause: QualificationCheckAdapter
 
 async function authenticatedPOST(
   req: NextRequest,
+  ctx: AuthContext,
   { params }: { params: Promise<{ id: string }> },
 ): Promise<Response> {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canVisit',
-    message: '資格確認の実行権限がありません',
-  });
-  if ('response' in authResult) return authResult.response;
-  const ctx = authResult.ctx;
-
   const { id: rawId } = await params;
   const id = normalizeRequiredRouteParam(rawId);
   if (!id) return validationError('患者IDが不正です');
@@ -217,18 +187,7 @@ async function authenticatedPOST(
   }
 }
 
-export async function POST(req: NextRequest, routeContext: { params: Promise<{ id: string }> }) {
-  try {
-    return withSensitiveNoStore(await authenticatedPOST(req, routeContext));
-  } catch (err) {
-    unstable_rethrow(err);
-    logger.error({
-      event: 'qualification_check_post_unhandled_error',
-      route: ROUTE,
-      method: req.method,
-      status: 500,
-      code: safeUnhandledErrorCode(err),
-    });
-    return withSensitiveNoStore(internalError());
-  }
-}
+export const POST = withAuthContext(authenticatedPOST, {
+  permission: 'canVisit',
+  message: '資格確認の実行権限がありません',
+});
