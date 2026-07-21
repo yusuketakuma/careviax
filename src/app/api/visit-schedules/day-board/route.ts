@@ -608,10 +608,10 @@ async function buildReadyBlockerSummaries(
     Math.max(...schedules.map((schedule) => scheduleReadyAsOf(schedule).getTime())),
   );
 
-  const [consents, firstVisitDocuments, managementPlans, billingEvidence] = await Promise.all([
+  const consents =
     patientIds.length === 0
-      ? Promise.resolve([])
-      : db.consentRecord.findMany({
+      ? []
+      : await db.consentRecord.findMany({
           where: {
             org_id: orgId,
             patient_id: { in: patientIds },
@@ -621,17 +621,19 @@ async function buildReadyBlockerSummaries(
             OR: [{ expiry_date: null }, { expiry_date: { gte: minScheduledDate } }],
           },
           select: { patient_id: true },
-        }),
+        });
+  const firstVisitDocuments =
     caseIds.length === 0
-      ? Promise.resolve([])
-      : db.firstVisitDocument.findMany({
+      ? []
+      : await db.firstVisitDocument.findMany({
           where: { org_id: orgId, case_id: { in: caseIds } },
           orderBy: [{ case_id: 'asc' }, { created_at: 'desc' }],
           select: { case_id: true, delivered_at: true, created_at: true },
-        }),
+        });
+  const managementPlans =
     caseIds.length === 0
-      ? Promise.resolve([])
-      : db.managementPlan.findMany({
+      ? []
+      : await db.managementPlan.findMany({
           where: {
             org_id: orgId,
             case_id: { in: caseIds },
@@ -647,10 +649,11 @@ async function buildReadyBlockerSummaries(
             version: true,
             approved_at: true,
           },
-        }),
+        });
+  const billingEvidence =
     visitRecordIds.length === 0 && cycleIds.length === 0
-      ? Promise.resolve([])
-      : db.billingEvidence.findMany({
+      ? []
+      : await db.billingEvidence.findMany({
           where: {
             org_id: orgId,
             claimable: false,
@@ -668,8 +671,7 @@ async function buildReadyBlockerSummaries(
             exclusion_reason: true,
             same_month_exclusion_flags: true,
           },
-        }),
-  ]);
+        });
 
   const consentPatientIds = new Set(consents.map((consent) => consent.patient_id));
   const firstVisitDocumentByCaseId = new Map<string, (typeof firstVisitDocuments)[number]>();

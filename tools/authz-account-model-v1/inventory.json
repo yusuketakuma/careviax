@@ -903,7 +903,7 @@
       },
       {
         "path": "ops/refactor/STATE.md",
-        "sha256": "54994fe96ff7e38346974d11ee331b4387f4ed13a99602f486536472851b8e33"
+        "sha256": "81120df61d409f28e98d7e177140f37e39959f0e59cec8bb10ee2dbad764a092"
       },
       {
         "path": "ops/refactor/archive/PERF_FINDINGS.md",
@@ -33106,7 +33106,7 @@
       "path": "src/app/api/visit-schedules/day-board/route.test.ts",
       "classes": ["test"],
       "detectors": ["raw_role_semantics"],
-      "sha256": "99be378ef1dcbf000902c8c046ad79822ec617e633187f6bbbafb11b200de9b5"
+      "sha256": "6fd0f8567e978ec3b0365ff827c156e4bae9518c4db7774333b626ce887aec1b"
     },
     {
       "path": "src/app/api/visit-schedules/generate/route.test.ts",

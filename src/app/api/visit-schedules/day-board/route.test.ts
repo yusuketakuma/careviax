@@ -99,6 +99,14 @@ function createRequestWithSearch(search: string) {
   });
 }
 
+function createDeferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
+}
+
 function countDayBoardDbQueries() {
   return [
     membershipFindManyMock,
@@ -1261,9 +1269,11 @@ describe('/api/visit-schedules/day-board', () => {
         };
       }),
     );
-    consentRecordFindManyMock.mockResolvedValue(
-      memberships.map((_, index) => ({ patient_id: `patient_${index + 1}` })),
-    );
+    const consentRows = memberships.map((_, index) => ({
+      patient_id: `patient_${index + 1}`,
+    }));
+    const consentRead = createDeferred<typeof consentRows>();
+    consentRecordFindManyMock.mockReturnValue(consentRead.promise);
     firstVisitDocumentFindManyMock.mockResolvedValue(
       memberships.map((_, index) => ({
         case_id: `case_${index + 1}`,
@@ -1305,9 +1315,23 @@ describe('/api/visit-schedules/day-board', () => {
       { id: 'task_hidden_2', related_entity_type: 'visit_schedule' },
     ]);
 
-    const response = (await GET(createRequest('2026-06-12'), {
+    const responsePromise = GET(createRequest('2026-06-12'), {
       params: Promise.resolve({}),
-    }))!;
+    });
+    for (
+      let attempt = 0;
+      attempt < 20 && consentRecordFindManyMock.mock.calls.length === 0;
+      attempt += 1
+    ) {
+      await Promise.resolve();
+    }
+    expect(consentRecordFindManyMock).toHaveBeenCalledTimes(1);
+    expect(firstVisitDocumentFindManyMock).not.toHaveBeenCalled();
+    expect(managementPlanFindManyMock).not.toHaveBeenCalled();
+    expect(billingEvidenceFindManyMock).not.toHaveBeenCalled();
+    consentRead.resolve(consentRows);
+
+    const response = (await responsePromise)!;
     expect(response.status).toBe(200);
     const json = await response.json();
 
