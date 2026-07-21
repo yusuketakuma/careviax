@@ -903,7 +903,7 @@
       },
       {
         "path": "ops/refactor/STATE.md",
-        "sha256": "e90ef47bdd3e625e5e71ab266e32191a254b946b0f4ab45030e5fbf101c547ed"
+        "sha256": "871d71ce5c35dd0d5214c8630a5d0a23ab0b8e5c31ba945ecdf73dd0181d9246"
       },
       {
         "path": "ops/refactor/archive/PERF_FINDINGS.md",
@@ -32685,7 +32685,7 @@
       "path": "src/app/api/visit-schedules/[id]/reschedule/route.test.ts",
       "classes": ["test"],
       "detectors": ["raw_role_semantics", "tenant_role"],
-      "sha256": "8326db4715406d70250bd3bc72ea587902e229b03ae7648d7137ad7cc59474b8"
+      "sha256": "b9dbd285319d70b80da5dd88f121d59f6867d8e13b4950e0c021e570e47ba2ba"
     },
     {
       "path": "src/app/api/visit-schedules/[id]/route.test.ts",
