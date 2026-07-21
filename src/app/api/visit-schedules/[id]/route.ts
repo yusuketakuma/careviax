@@ -1,7 +1,6 @@
 import { NextRequest } from 'next/server';
-import { unstable_rethrow } from 'next/navigation';
 import { Prisma } from '@prisma/client';
-import { requireAuthContext, type AuthContext } from '@/lib/auth/context';
+import { withAuthContext, type AuthContext, type AuthRouteContext } from '@/lib/auth/context';
 import {
   canAccessVisitScheduleAssignment,
   canBypassVisitScheduleAssignmentAccess,
@@ -30,9 +29,7 @@ import {
   notFound,
   forbiddenResponse,
   conflict,
-  internalError,
 } from '@/lib/api/response';
-import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { validateOrgReferences } from '@/lib/api/org-reference';
 import { updateVisitScheduleSchema, type ScheduleStatus } from '@/lib/validations/visit-schedule';
 import { findVisitRouteOrderConflict } from '@/lib/visits/route-order-conflicts';
@@ -161,14 +158,11 @@ async function withSerializableVisitSchedulePatchTransaction<T>(
   throw new VisitSchedulePatchRetryLimitError();
 }
 
-async function authenticatedGET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canViewDashboard',
-    message: '訪問予定の閲覧権限がありません',
-  });
-  if ('response' in authResult) return authResult.response;
-  const ctx = authResult.ctx;
-
+async function authenticatedGET(
+  req: NextRequest,
+  ctx: AuthContext,
+  { params }: AuthRouteContext<{ id: string }>,
+) {
   const { id: rawId } = await params;
   const id = normalizeRequiredRouteParam(rawId);
   if (!id) return validationError('訪問予定IDが不正です');
@@ -214,26 +208,16 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
   return response;
 }
 
-export async function GET(req: NextRequest, routeContext: { params: Promise<{ id: string }> }) {
-  try {
-    return withSensitiveNoStore(await authenticatedGET(req, routeContext));
-  } catch (err) {
-    unstable_rethrow(err);
-    return withSensitiveNoStore(internalError());
-  }
-}
+export const GET = withAuthContext(authenticatedGET, {
+  permission: 'canViewDashboard',
+  message: '訪問予定の閲覧権限がありません',
+});
 
 async function authenticatedPATCH(
   req: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
+  ctx: AuthContext,
+  { params }: AuthRouteContext<{ id: string }>,
 ) {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canVisit',
-    message: '訪問予定の更新権限がありません',
-  });
-  if ('response' in authResult) return authResult.response;
-  const ctx = authResult.ctx;
-
   const { id: rawId } = await params;
   const id = normalizeRequiredRouteParam(rawId);
   if (!id) return validationError('訪問予定IDが不正です');
@@ -785,14 +769,10 @@ async function authenticatedPATCH(
   return success({ data: schedule.schedule });
 }
 
-export async function PATCH(req: NextRequest, routeContext: { params: Promise<{ id: string }> }) {
-  try {
-    return withSensitiveNoStore(await authenticatedPATCH(req, routeContext));
-  } catch (err) {
-    unstable_rethrow(err);
-    return withSensitiveNoStore(internalError());
-  }
-}
+export const PATCH = withAuthContext(authenticatedPATCH, {
+  permission: 'canVisit',
+  message: '訪問予定の更新権限がありません',
+});
 
 function readPatchTimeString(value: Date | null | undefined) {
   return timeDateToString(value);
@@ -855,15 +835,9 @@ const cancelScheduleSchema = z.object({
 
 async function authenticatedDELETE(
   req: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
+  ctx: AuthContext,
+  { params }: AuthRouteContext<{ id: string }>,
 ) {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canVisit',
-    message: '訪問予定の更新権限がありません',
-  });
-  if ('response' in authResult) return authResult.response;
-  const ctx = authResult.ctx;
-
   const { id: rawId } = await params;
   const id = normalizeRequiredRouteParam(rawId);
   if (!id) return validationError('訪問予定IDが不正です');
@@ -1000,11 +974,7 @@ async function authenticatedDELETE(
   return success({ data: schedule.schedule });
 }
 
-export async function DELETE(req: NextRequest, routeContext: { params: Promise<{ id: string }> }) {
-  try {
-    return withSensitiveNoStore(await authenticatedDELETE(req, routeContext));
-  } catch (err) {
-    unstable_rethrow(err);
-    return withSensitiveNoStore(internalError());
-  }
-}
+export const DELETE = withAuthContext(authenticatedDELETE, {
+  permission: 'canVisit',
+  message: '訪問予定の更新権限がありません',
+});

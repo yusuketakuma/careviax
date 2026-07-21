@@ -288,12 +288,13 @@ describe('/api/visit-vehicle-resources/[id]', () => {
     expect(JSON.stringify(body)).not.toContain('patch notes secret');
     expect(loggerErrorMock).toHaveBeenCalledTimes(1);
     expect(loggerErrorMock).toHaveBeenCalledWith(
-      {
-        event: 'visit_vehicle_resources_id_patch_unhandled_error',
-        route: '/api/visit-vehicle-resources/[id]',
+      expect.objectContaining({
+        event: 'route_handler_unhandled_error',
+        route: '/api/visit-vehicle-resources/vehicle_1',
         method: 'PATCH',
-        status: 500,
-      },
+        requestId: expect.any(String),
+        correlationId: expect.any(String),
+      }),
       unsafeError,
     );
     const loggedContext = loggerErrorMock.mock.calls[0]?.[0] as Record<string, unknown>;

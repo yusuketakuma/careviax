@@ -1,10 +1,9 @@
 import { createHash } from 'node:crypto';
 import { addDays, format, parseISO } from 'date-fns';
-import { unstable_rethrow } from 'next/navigation';
 import { NextRequest } from 'next/server';
 import { Prisma } from '@prisma/client';
 import type { ScheduleStatus, VisitAssignmentMode, VisitPriority, VisitType } from '@prisma/client';
-import { requireAuthContext, type AuthContext } from '@/lib/auth/context';
+import { withAuthContext, type AuthContext, type AuthRouteContext } from '@/lib/auth/context';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
@@ -15,10 +14,8 @@ import {
   validationError,
   notFound,
   conflict,
-  internalError,
   forbiddenResponse,
 } from '@/lib/api/response';
-import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { prisma } from '@/lib/db/client';
 import {
   buildVisitScheduleAssignmentWhere,
@@ -448,15 +445,9 @@ async function loadExistingPendingReschedule(args: {
 
 const authenticatedPOST = async (
   req: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
+  ctx: AuthContext,
+  { params }: AuthRouteContext<{ id: string }>,
 ) => {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canVisit',
-    message: '訪問予定のリスケ権限がありません',
-  });
-  if ('response' in authResult) return authResult.response;
-  const ctx = authResult.ctx;
-
   const { id: rawId } = await params;
   const id = normalizeRequiredRouteParam(rawId);
   if (!id) return validationError('訪問予定IDが不正です');
@@ -1355,11 +1346,7 @@ const authenticatedPOST = async (
   );
 };
 
-export const POST: typeof authenticatedPOST = async (req, routeContext) => {
-  try {
-    return withSensitiveNoStore(await authenticatedPOST(req, routeContext));
-  } catch (err) {
-    unstable_rethrow(err);
-    return withSensitiveNoStore(internalError());
-  }
-};
+export const POST = withAuthContext(authenticatedPOST, {
+  permission: 'canVisit',
+  message: '訪問予定のリスケ権限がありません',
+});

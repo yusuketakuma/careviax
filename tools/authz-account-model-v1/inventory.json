@@ -735,7 +735,7 @@
       },
       {
         "path": "Plans.md",
-        "sha256": "77fa817b262b1698b10dd6b9eaf672d2679040669f929e78ef1cafcfb91b1d29"
+        "sha256": "4e30194b5c567631a1788a4dc5c6a73e1df46412a97bfdbf53da6ae021d32997"
       },
       {
         "path": "README.md",
@@ -903,7 +903,7 @@
       },
       {
         "path": "ops/refactor/STATE.md",
-        "sha256": "8e70704b1dd99972b6504a300bac89dfb76dddd19adbcf1c2adb460d21321501"
+        "sha256": "5c2768db29ef7d9ede5b1f5a3dbe54a47d3cc2b6ecaba6dbb61f36702cb2aad4"
       },
       {
         "path": "ops/refactor/archive/PERF_FINDINGS.md",
@@ -6630,54 +6630,6 @@
       "reprojection_or_removal": "owner_review_required_before_cutover:src/app/api/visit-schedule-proposals/route.ts",
       "binding_profile": "p_2a62cb15a377",
       "capability_profile": "p_3f5e2867901e"
-    },
-    {
-      "id": "mapping_precedence:src/app/api/visit-vehicle-resources/[id]/route.ts",
-      "detector": "mapping_precedence",
-      "path": "src/app/api/visit-vehicle-resources/[id]/route.ts",
-      "evidence_sha256": "5a35c6ed0eb4b06c51df00c960c3e8a38e37f4e4de10dac1c8e80c859126bea2",
-      "principal": "human",
-      "lifecycles": ["request"],
-      "surfaces": ["rls", "writer"],
-      "exact_values_or_scopes": [
-        "not_applicable:mapping_precedence:no-enumerated-value:src/app/api/visit-vehicle-resources/[id]/route.ts"
-      ],
-      "route_method_purpose": "PATCH /api/visit-vehicle-resources/[id] purpose=legacy_unspecified_pending_review",
-      "precedence_selection": "legacy_observed_requires_human_review",
-      "synthetic_derived_mapping": "not_applicable:no-synthetic-mapping-observed:src/app/api/visit-vehicle-resources/[id]/route.ts",
-      "persistence_contract": "not_applicable:no-persistence-observed:src/app/api/visit-vehicle-resources/[id]/route.ts",
-      "ttl_contract": "not_applicable:no-ttl-observed:src/app/api/visit-vehicle-resources/[id]/route.ts",
-      "mapping_disposition": "candidate_requires_human",
-      "owner": "Identity / Authz",
-      "approval_status": "pending_owner_review",
-      "test_refs": ["src/app/api/visit-vehicle-resources/[id]/route.test.ts"],
-      "reprojection_or_removal": "owner_review_required_before_cutover:src/app/api/visit-vehicle-resources/[id]/route.ts",
-      "binding_profile": "p_26b6d3d5bc5d",
-      "capability_profile": "p_a325f45c9b2a"
-    },
-    {
-      "id": "mapping_precedence:src/app/api/visit-vehicle-resources/route.ts",
-      "detector": "mapping_precedence",
-      "path": "src/app/api/visit-vehicle-resources/route.ts",
-      "evidence_sha256": "e5601167ff531ae7aa8373110aa5e1810d9c776060429b6f31b7f03f36df8f7d",
-      "principal": "human",
-      "lifecycles": ["request"],
-      "surfaces": ["rls", "writer"],
-      "exact_values_or_scopes": [
-        "not_applicable:mapping_precedence:no-enumerated-value:src/app/api/visit-vehicle-resources/route.ts"
-      ],
-      "route_method_purpose": "GET,POST /api/visit-vehicle-resources purpose=legacy_unspecified_pending_review",
-      "precedence_selection": "legacy_observed_requires_human_review",
-      "synthetic_derived_mapping": "not_applicable:no-synthetic-mapping-observed:src/app/api/visit-vehicle-resources/route.ts",
-      "persistence_contract": "not_applicable:no-persistence-observed:src/app/api/visit-vehicle-resources/route.ts",
-      "ttl_contract": "not_applicable:no-ttl-observed:src/app/api/visit-vehicle-resources/route.ts",
-      "mapping_disposition": "candidate_requires_human",
-      "owner": "Identity / Authz",
-      "approval_status": "pending_owner_review",
-      "test_refs": ["src/app/api/visit-vehicle-resources/route.test.ts"],
-      "reprojection_or_removal": "owner_review_required_before_cutover:src/app/api/visit-vehicle-resources/route.ts",
-      "binding_profile": "p_9971ab61d617",
-      "capability_profile": "p_a325f45c9b2a"
     },
     {
       "id": "mapping_precedence:src/app/platform/tenants/[orgId]/audit-log-panel.tsx",
@@ -32733,7 +32685,7 @@
       "path": "src/app/api/visit-schedules/[id]/reschedule/route.test.ts",
       "classes": ["test"],
       "detectors": ["raw_role_semantics", "tenant_role"],
-      "sha256": "de2dd9e699242c51a239f9443e286074e8fed2de48c1fd4d169eebdc2e36e912"
+      "sha256": "8326db4715406d70250bd3bc72ea587902e229b03ae7648d7137ad7cc59474b8"
     },
     {
       "path": "src/app/api/visit-schedules/[id]/route.test.ts",
@@ -32769,13 +32721,13 @@
       "path": "src/app/api/visit-vehicle-resources/[id]/route.test.ts",
       "classes": ["test"],
       "detectors": ["mapping_precedence", "raw_role_semantics"],
-      "sha256": "239023220a95d88a168b70da38c61ee5b2360ac651dc1091ae3b29e018e297eb"
+      "sha256": "9e43d55b4652d11b84fd5d2ef39833a16a55d3e52295ad235e55de7670a5fef1"
     },
     {
       "path": "src/app/api/visit-vehicle-resources/route.test.ts",
       "classes": ["test"],
       "detectors": ["mapping_precedence", "raw_role_semantics"],
-      "sha256": "4fc38d93037639eb8fc80a5c7bd9d3ef7e89d8153360249440f046a94d20eed1"
+      "sha256": "897c7fb27a521fa148afb65117a9e145f6ee48602567e676f1311d9dd12af004"
     },
     {
       "path": "src/app/api/visits/today-preparation/route.test.ts",

@@ -291,12 +291,13 @@ describe('/api/visit-vehicle-resources', () => {
     expect(JSON.stringify(body)).not.toContain('route notes secret');
     expect(loggerErrorMock).toHaveBeenCalledTimes(1);
     expect(loggerErrorMock).toHaveBeenCalledWith(
-      {
-        event: 'visit_vehicle_resources_get_unhandled_error',
+      expect.objectContaining({
+        event: 'route_handler_unhandled_error',
         route: '/api/visit-vehicle-resources',
         method: 'GET',
-        status: 500,
-      },
+        requestId: expect.any(String),
+        correlationId: expect.any(String),
+      }),
       unsafeError,
     );
     const loggedContext = loggerErrorMock.mock.calls[0]?.[0] as Record<string, unknown>;
@@ -507,12 +508,13 @@ describe('/api/visit-vehicle-resources', () => {
     expect(JSON.stringify(body)).not.toContain('creation notes secret');
     expect(loggerErrorMock).toHaveBeenCalledTimes(1);
     expect(loggerErrorMock).toHaveBeenCalledWith(
-      {
-        event: 'visit_vehicle_resources_post_unhandled_error',
+      expect.objectContaining({
+        event: 'route_handler_unhandled_error',
         route: '/api/visit-vehicle-resources',
         method: 'POST',
-        status: 500,
-      },
+        requestId: expect.any(String),
+        correlationId: expect.any(String),
+      }),
       unsafeError,
     );
     const loggedContext = loggerErrorMock.mock.calls[0]?.[0] as Record<string, unknown>;
