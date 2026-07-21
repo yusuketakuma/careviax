@@ -1,12 +1,10 @@
-import { unstable_rethrow } from 'next/navigation';
 import { NextRequest } from 'next/server';
-import { requireAuthContext } from '@/lib/auth/context';
+import { withAuthContext, type AuthContext } from '@/lib/auth/context';
 import { prisma } from '@/lib/db/client';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { withOrgContext } from '@/lib/db/rls';
-import { conflict, internalError, notFound, success, validationError } from '@/lib/api/response';
-import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
+import { conflict, notFound, success, validationError } from '@/lib/api/response';
 import { updatePatientCareTeamSchema } from '@/lib/validations/patient';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { recordPhiReadAuditForRequest } from '@/lib/audit/phi-read-audit';
@@ -14,7 +12,6 @@ import {
   applyPatientAssignmentWhere,
   buildCareCaseAssignmentWhere,
 } from '@/lib/auth/visit-schedule-access';
-import type { AuthContext } from '@/lib/auth/context';
 import { requireWritablePatient } from '@/server/services/patient-write-guard';
 import {
   buildCareTeamReliabilitySummary,
@@ -159,13 +156,11 @@ function buildCareTeamReplacementAuditChanges(args: {
   };
 }
 
-async function authenticatedGET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canViewDashboard',
-    message: '患者情報の閲覧権限がありません',
-  });
-  if ('response' in authResult) return authResult.response;
-  const ctx = authResult.ctx;
+async function authenticatedGET(
+  req: NextRequest,
+  ctx: AuthContext,
+  { params }: { params: Promise<{ id: string }> },
+) {
   const { id: rawId } = await params;
   const id = normalizeRequiredRouteParam(rawId);
   if (!id) return validationError('患者IDが不正です');
@@ -209,22 +204,16 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
   return response;
 }
 
-export async function GET(req: NextRequest, routeContext: { params: Promise<{ id: string }> }) {
-  try {
-    return withSensitiveNoStore(await authenticatedGET(req, routeContext));
-  } catch (err) {
-    unstable_rethrow(err);
-    return withSensitiveNoStore(internalError());
-  }
-}
+export const GET = withAuthContext(authenticatedGET, {
+  permission: 'canViewDashboard',
+  message: '患者情報の閲覧権限がありません',
+});
 
-async function authenticatedPUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canVisit',
-    message: '患者情報の更新権限がありません',
-  });
-  if ('response' in authResult) return authResult.response;
-  const ctx = authResult.ctx;
+async function authenticatedPUT(
+  req: NextRequest,
+  ctx: AuthContext,
+  { params }: { params: Promise<{ id: string }> },
+) {
   const { id: rawId } = await params;
   const id = normalizeRequiredRouteParam(rawId);
   if (!id) return validationError('患者IDが不正です');
@@ -384,11 +373,7 @@ async function authenticatedPUT(req: NextRequest, { params }: { params: Promise<
   }
 }
 
-export async function PUT(req: NextRequest, routeContext: { params: Promise<{ id: string }> }) {
-  try {
-    return withSensitiveNoStore(await authenticatedPUT(req, routeContext));
-  } catch (err) {
-    unstable_rethrow(err);
-    return withSensitiveNoStore(internalError());
-  }
-}
+export const PUT = withAuthContext(authenticatedPUT, {
+  permission: 'canVisit',
+  message: '患者情報の更新権限がありません',
+});
