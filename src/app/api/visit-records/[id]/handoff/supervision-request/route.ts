@@ -1,7 +1,6 @@
-import { unstable_rethrow } from 'next/navigation';
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
-import { requireAuthContext } from '@/lib/auth/context';
+import { withAuthContext, type AuthContext, type AuthRouteContext } from '@/lib/auth/context';
 import {
   canRequestSupervisedVisitHandoffConfirmation,
   selectVisitHandoffSupervisionAssignee,
@@ -9,7 +8,6 @@ import {
 import {
   conflict,
   forbiddenResponse,
-  internalError,
   notFound,
   registeredError,
   success,
@@ -60,15 +58,9 @@ const visitRecordSupervisionSelect = {
 
 async function authenticatedPOST(
   req: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
+  ctx: AuthContext,
+  { params }: AuthRouteContext<{ id: string }>,
 ) {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canVisit',
-    message: '訪問記録の更新権限がありません',
-  });
-  if ('response' in authResult) return withSensitiveNoStore(authResult.response);
-  const ctx = authResult.ctx;
-
   const { id: rawId } = await params;
   const id = normalizeRequiredRouteParam(rawId);
   if (!id) return withSensitiveNoStore(validationError('訪問記録IDが不正です'));
@@ -149,11 +141,7 @@ async function authenticatedPOST(
   }
 }
 
-export async function POST(req: NextRequest, routeContext: { params: Promise<{ id: string }> }) {
-  try {
-    return withSensitiveNoStore(await authenticatedPOST(req, routeContext));
-  } catch (err) {
-    unstable_rethrow(err);
-    return withSensitiveNoStore(internalError());
-  }
-}
+export const POST = withAuthContext(authenticatedPOST, {
+  permission: 'canVisit',
+  message: '訪問記録の更新権限がありません',
+});

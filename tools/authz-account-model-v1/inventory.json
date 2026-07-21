@@ -735,7 +735,7 @@
       },
       {
         "path": "Plans.md",
-        "sha256": "58e802249e1ea8525040c48235dd253582e569d8a107f569ebbdaa66c78a8b40"
+        "sha256": "7fd761def3b88e03fb3cd6ea44592f501fc888b69b12b1225a22c030c598e8e1"
       },
       {
         "path": "README.md",
@@ -903,7 +903,7 @@
       },
       {
         "path": "ops/refactor/STATE.md",
-        "sha256": "c6cbb84f56738ff0d9418005696820579d15f8ae24a78ff619f3339caa2fc335"
+        "sha256": "bb0ebbed1dd8dad464f3927360e0c6c37c5169d92de04e7d81202d503cda7b28"
       },
       {
         "path": "ops/refactor/archive/PERF_FINDINGS.md",
@@ -32613,8 +32613,13 @@
     {
       "path": "src/app/api/visit-records/[id]/handoff/supervision-request/route.test.ts",
       "classes": ["test"],
-      "detectors": ["mapping_precedence", "raw_role_semantics", "tenant_role"],
-      "sha256": "4b764084b27c0a139de8084adab8d34abfa74a00d4c323097be1de02e0a2fb84"
+      "detectors": [
+        "mapping_precedence",
+        "permission_capability",
+        "raw_role_semantics",
+        "tenant_role"
+      ],
+      "sha256": "c1018da7fd1c712c0c83944ff7ab740ab1e694e4f568ae606ca3d787699b097d"
     },
     {
       "path": "src/app/api/visit-records/[id]/medication-stock-observations/route.test.ts",
