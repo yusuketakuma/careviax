@@ -735,7 +735,7 @@
       },
       {
         "path": "Plans.md",
-        "sha256": "1bb1cd7d2078b71f4ab77cea145758741e2ab27b3a7cacb2d7bd45b41207d5f5"
+        "sha256": "991f5248ac23430a095fcbe26c4ef2848fbc491d4a52d3f5c480400307881918"
       },
       {
         "path": "README.md",
@@ -903,7 +903,7 @@
       },
       {
         "path": "ops/refactor/STATE.md",
-        "sha256": "a7ed15e8dcce03ebf1b2a11da7130097977967e28e4258c0efa5ff0a593377e8"
+        "sha256": "5a1048b13de35c0a9ba2e12f48e333a0d8e1110b569f25a13c4b155bcfbdb035"
       },
       {
         "path": "ops/refactor/archive/PERF_FINDINGS.md",
@@ -34029,7 +34029,7 @@
       "path": "src/server/jobs/notification-delivery.test.ts",
       "classes": ["test"],
       "detectors": ["service_job"],
-      "sha256": "5f25857547bcd9429db86c22ad126a3fdf6a4b25181e92aed405f8ea8a395fd7"
+      "sha256": "7d70ca0a867b2546ac79067aead5763fa1dd67002dcb8aae761016530a414f63"
     },
     {
       "path": "src/server/jobs/pdf-bulk-export.test.ts",

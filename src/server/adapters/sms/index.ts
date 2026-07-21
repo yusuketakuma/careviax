@@ -36,11 +36,27 @@ const TWILIO_ACCEPTED_STATUSES = new Set([
   'delivered',
 ]);
 const TWILIO_FAILED_STATUSES = new Set(['canceled', 'failed', 'undelivered']);
+const TWILIO_DELIVERY_STATUSES = new Set([
+  ...TWILIO_ACCEPTED_STATUSES,
+  ...TWILIO_FAILED_STATUSES,
+  'read',
+  'partially_delivered',
+]);
 
 export type SmsProviderReadiness = {
   status: 'ready' | 'not_configured' | 'misconfigured';
   deliveryTracking: 'ready' | 'not_configured' | 'misconfigured';
 };
+
+export type TwilioMessageStatusResult =
+  | {
+      status: 'available';
+      providerStatus: string;
+      errorCode: string | null;
+    }
+  | {
+      status: 'not_configured' | 'failed' | 'unknown';
+    };
 
 export class SmsNotificationAdapterError extends Error {
   constructor(message: string) {
@@ -192,5 +208,60 @@ export class SmsNotificationAdapter {
     }
 
     throw new SmsNotificationAdapterError('Unsupported SMS provider configuration');
+  }
+
+  async fetchTwilioMessageStatus(messageSid: string): Promise<TwilioMessageStatusResult> {
+    if (!TWILIO_MESSAGE_SID_RE.test(messageSid)) {
+      throw new SmsNotificationAdapterError('Invalid Twilio message SID');
+    }
+    if (this.config.provider === 'not_configured') return { status: 'not_configured' };
+    if (this.config.provider === 'misconfigured') return { status: 'failed' };
+
+    const abort = createFetchTimeout(resolveSmsDeliveryTimeoutMs());
+    let response: Response;
+    try {
+      response = await fetch(
+        `https://api.twilio.com/2010-04-01/Accounts/${this.config.accountSid}/Messages/${messageSid}.json`,
+        {
+          method: 'GET',
+          headers: {
+            Authorization: `Basic ${Buffer.from(
+              `${this.config.accountSid}:${this.config.authToken}`,
+            ).toString('base64')}`,
+          },
+          signal: abort.signal,
+        },
+      );
+    } catch {
+      return { status: 'unknown' };
+    } finally {
+      abort.clear();
+    }
+
+    if (!response.ok) return { status: 'failed' };
+    try {
+      const body: unknown = await response.json();
+      if (!body || typeof body !== 'object') return { status: 'unknown' };
+      const responseSid = Reflect.get(body, 'sid');
+      const providerStatus = Reflect.get(body, 'status');
+      const providerErrorCode = Reflect.get(body, 'error_code');
+      if (
+        responseSid !== messageSid ||
+        typeof providerStatus !== 'string' ||
+        !TWILIO_DELIVERY_STATUSES.has(providerStatus)
+      ) {
+        return { status: 'unknown' };
+      }
+      return {
+        status: 'available',
+        providerStatus,
+        errorCode:
+          typeof providerErrorCode === 'number' || typeof providerErrorCode === 'string'
+            ? String(providerErrorCode)
+            : null,
+      };
+    } catch {
+      return { status: 'unknown' };
+    }
   }
 }

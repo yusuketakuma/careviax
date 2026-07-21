@@ -221,6 +221,50 @@ describe('SmsNotificationAdapter', () => {
     });
   });
 
+  it('fetches a Twilio delivery status by the exact provider message SID', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      Response.json({
+        sid: TWILIO_MESSAGE_SID,
+        status: 'delivered',
+        error_code: null,
+        body: 'must not be returned',
+        to: '+819011111111',
+      }),
+    );
+    const adapter = new SmsNotificationAdapter({
+      provider: 'twilio',
+      accountSid: 'AC123',
+      authToken: 'auth-token',
+      fromNumber: '+819012345678',
+    });
+
+    await expect(adapter.fetchTwilioMessageStatus(TWILIO_MESSAGE_SID)).resolves.toEqual({
+      status: 'available',
+      providerStatus: 'delivered',
+      errorCode: null,
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      `https://api.twilio.com/2010-04-01/Accounts/AC123/Messages/${TWILIO_MESSAGE_SID}.json`,
+      expect.objectContaining({ method: 'GET', signal: expect.any(AbortSignal) }),
+    );
+  });
+
+  it('fails closed when a Twilio status response does not match the requested SID', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      Response.json({ sid: `SM${'b'.repeat(32)}`, status: 'delivered' }),
+    );
+    const adapter = new SmsNotificationAdapter({
+      provider: 'twilio',
+      accountSid: 'AC123',
+      authToken: 'auth-token',
+      fromNumber: '+819012345678',
+    });
+
+    await expect(adapter.fetchTwilioMessageStatus(TWILIO_MESSAGE_SID)).resolves.toEqual({
+      status: 'unknown',
+    });
+  });
+
   it('rejects blank delivery targets and messages before calling Twilio', async () => {
     const fetchMock = vi
       .spyOn(globalThis, 'fetch')

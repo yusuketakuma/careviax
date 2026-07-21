@@ -3,6 +3,7 @@ import {
   drainNotificationDeliveryOutbox,
   listNotificationDeliveryOrgIds,
 } from '@/server/services/notification-delivery-outbox';
+import { reconcileTwilioDeliveries } from '@/server/services/twilio-delivery-reconciliation';
 import { runJob } from './runner';
 
 type NotificationDeliveryJobContext = {
@@ -20,6 +21,11 @@ export function drainNotificationDeliveries(context: NotificationDeliveryJobCont
         retryCount: 0,
         unknownCount: 0,
         deadLetterCount: 0,
+        reconciliationScannedCount: 0,
+        reconciliationClaimedCount: 0,
+        reconciliationReconciledCount: 0,
+        reconciliationTerminalCount: 0,
+        reconciliationUnavailableCount: 0,
         errors: [] as string[],
       };
 
@@ -34,6 +40,17 @@ export function drainNotificationDeliveries(context: NotificationDeliveryJobCont
           aggregate.errors.push(...result.errors);
         } catch {
           aggregate.errors.push('notification_delivery_org_drain_failed');
+        }
+        try {
+          const reconciliation = await reconcileTwilioDeliveries(orgId);
+          aggregate.reconciliationScannedCount += reconciliation.scannedCount;
+          aggregate.reconciliationClaimedCount += reconciliation.claimedCount;
+          aggregate.reconciliationReconciledCount += reconciliation.reconciledCount;
+          aggregate.reconciliationTerminalCount += reconciliation.terminalCount;
+          aggregate.reconciliationUnavailableCount += reconciliation.unavailableCount;
+          aggregate.errors.push(...reconciliation.errors);
+        } catch {
+          aggregate.errors.push('twilio_status_reconcile_org_failed');
         }
       }
 

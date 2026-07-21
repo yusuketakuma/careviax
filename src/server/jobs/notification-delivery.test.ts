@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { runJobMock, drainMock, listOrgIdsMock, prismaMock } = vi.hoisted(() => ({
+const { runJobMock, drainMock, reconcileMock, listOrgIdsMock, prismaMock } = vi.hoisted(() => ({
   runJobMock: vi.fn(),
   drainMock: vi.fn(),
+  reconcileMock: vi.fn(),
   listOrgIdsMock: vi.fn(),
   prismaMock: { organization: { findMany: vi.fn() } },
 }));
@@ -12,6 +13,9 @@ vi.mock('./runner', () => ({ runJob: runJobMock }));
 vi.mock('@/server/services/notification-delivery-outbox', () => ({
   drainNotificationDeliveryOutbox: drainMock,
   listNotificationDeliveryOrgIds: listOrgIdsMock,
+}));
+vi.mock('@/server/services/twilio-delivery-reconciliation', () => ({
+  reconcileTwilioDeliveries: reconcileMock,
 }));
 
 import { drainNotificationDeliveries } from './notification-delivery';
@@ -26,6 +30,14 @@ describe('drainNotificationDeliveries', () => {
       retryCount: 0,
       unknownCount: 0,
       deadLetterCount: 0,
+      errors: [],
+    });
+    reconcileMock.mockResolvedValue({
+      scannedCount: 1,
+      claimedCount: 1,
+      reconciledCount: 1,
+      terminalCount: 1,
+      unavailableCount: 0,
       errors: [],
     });
   });
@@ -43,6 +55,7 @@ describe('drainNotificationDeliveries', () => {
     );
     expect(listOrgIdsMock).not.toHaveBeenCalled();
     expect(drainMock).toHaveBeenCalledWith('org_1');
+    expect(reconcileMock).toHaveBeenCalledWith('org_1');
   });
 
   it('enumerates organizations then drains each through the tenant-bound service', async () => {
@@ -56,6 +69,8 @@ describe('drainNotificationDeliveries', () => {
     expect(listOrgIdsMock).toHaveBeenCalledWith(prismaMock);
     expect(drainMock).toHaveBeenNthCalledWith(1, 'org_1');
     expect(drainMock).toHaveBeenNthCalledWith(2, 'org_2');
+    expect(reconcileMock).toHaveBeenNthCalledWith(1, 'org_1');
+    expect(reconcileMock).toHaveBeenNthCalledWith(2, 'org_2');
   });
 
   it('returns only fixed diagnostics when one tenant drain fails', async () => {
@@ -73,5 +88,20 @@ describe('drainNotificationDeliveries', () => {
 
     expect(result).toMatchObject({ errors: ['notification_delivery_org_drain_failed'] });
     expect(JSON.stringify(result)).not.toContain('patient name');
+  });
+
+  it('continues status reconciliation when delivery drain fails', async () => {
+    drainMock.mockRejectedValueOnce(new Error('database unavailable'));
+
+    const result = await drainNotificationDeliveries({ orgId: 'org_1' });
+
+    expect(reconcileMock).toHaveBeenCalledWith('org_1');
+    expect(result).toMatchObject({
+      reconciliationScannedCount: 1,
+      reconciliationClaimedCount: 1,
+      reconciliationReconciledCount: 1,
+      reconciliationTerminalCount: 1,
+      errors: ['notification_delivery_org_drain_failed'],
+    });
   });
 });
