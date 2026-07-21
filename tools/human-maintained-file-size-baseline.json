@@ -413,11 +413,6 @@
       "task_id": "MAINT-FILE-SIZE-1000-001"
     },
     {
-      "path": "src/app/api/dispense-results/route.ts",
-      "max_lines": 1154,
-      "task_id": "MAINT-FILE-SIZE-1000-001"
-    },
-    {
       "path": "src/app/api/external-access/route.test.ts",
       "max_lines": 1500,
       "task_id": "MAINT-FILE-SIZE-1000-001"

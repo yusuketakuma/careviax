@@ -19,7 +19,6 @@ import {
   InvalidTransitionError,
   VersionConflictError,
 } from '@/lib/db/cycle-transition';
-import { DISPENSE_SAFETY_CHECKLIST_ACK } from '@/lib/dispensing/safety-checklist';
 import {
   buildActualQuantityConfirmationErrors,
   buildActualQuantityUnitErrors,
@@ -33,99 +32,13 @@ import {
 } from '@/lib/dispensing/dispense-barcode-verification';
 import { selectLatestDrugPriceVersionsByDrugMasterIdForAsOf } from './drug-price-version-selection';
 import { Prisma } from '@prisma/client';
-import { z } from 'zod';
 import type { ExceptionSeverity, ExceptionStatus } from '@/types/domain-literals';
-
-const dispenseResultLineSchema = z.object({
-  line_id: z.string().min(1),
-  actual_drug_name: z.string().min(1, '実薬剤名は必須です'),
-  actual_drug_code: z.string().optional(),
-  actual_quantity: z.number().positive('数量は正の数を入力してください'),
-  actual_quantity_confirmed: z.boolean().optional(),
-  actual_quantity_source: z
-    .enum(['existing_result', 'prescription_quantity_confirmed', 'manual_entry'])
-    .optional(),
-  actual_unit: z.string().optional(),
-  discrepancy_reason: z.string().optional(),
-  carry_type: z.enum(['carry', 'facility_deposit', 'deferred']),
-  special_notes: z.string().optional(),
-  is_unit_dose: z.boolean().optional(),
-  is_crushed: z.boolean().optional(),
-  packaging_method: z
-    .enum([
-      'none',
-      'unit_dose',
-      'morning_evening_unit_dose',
-      'medication_box',
-      'calendar_pack',
-      'blister_pack',
-      'crush_and_pack',
-      'other',
-    ])
-    .optional(),
-  packaging_group_id: z.string().optional(),
-  barcode_scan: z
-    .object({
-      barcode: z.string().trim().min(1, 'バーコードは必須です').max(512),
-    })
-    .strict()
-    .optional(),
-});
-
-const dispenseSafetyChecklistSchema = z.object({
-  patient_identity: z.literal(DISPENSE_SAFETY_CHECKLIST_ACK.patient_identity),
-  drug_name_strength: z.literal(DISPENSE_SAFETY_CHECKLIST_ACK.drug_name_strength),
-  quantity_days: z.literal(DISPENSE_SAFETY_CHECKLIST_ACK.quantity_days),
-  directions_route: z.literal(DISPENSE_SAFETY_CHECKLIST_ACK.directions_route),
-  packaging_storage: z.literal(DISPENSE_SAFETY_CHECKLIST_ACK.packaging_storage),
-  cds_alerts_reviewed: z.literal(DISPENSE_SAFETY_CHECKLIST_ACK.cds_alerts_reviewed),
-});
-
-const createDispenseResultSchema = z
-  .object({
-    task_id: z.string().min(1),
-    lines: z.array(dispenseResultLineSchema).min(1, '調剤実績を1件以上入力してください'),
-    safety_checklist: dispenseSafetyChecklistSchema.optional(),
-    // 楽観的ロック: ワークベンチ表示時の cycle.version。
-    // 調剤結果は訪問 carry_items まで再投影するため、必ず現在 version と照合する。
-    expected_version: z.number().int().nonnegative(),
-  })
-  .superRefine((value, ctx) => {
-    const seenLineIds = new Set<string>();
-    for (const line of value.lines) {
-      if (seenLineIds.has(line.line_id)) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ['lines'],
-          message: '同じ line_id を複数指定できません',
-        });
-        return;
-      }
-      seenLineIds.add(line.line_id);
-    }
-  });
-
-type SubmittedDispenseResultLine = z.infer<typeof dispenseResultLineSchema>;
-
-type ReplayableDispenseResult = {
-  id: string;
-  line_id: string;
-  actual_drug_name: string;
-  actual_drug_code: string | null;
-  actual_quantity: unknown;
-  actual_unit: string | null;
-  discrepancy_reason: string | null;
-  carry_type: string | null;
-  special_notes: string | null;
-};
-
-type ReplayablePrescriptionLine = {
-  id: string;
-  drug_name: string;
-  drug_code: string | null;
-  drug_master_id: string | null;
-  unit: string | null;
-};
+import { createDispenseResultSchema, type SubmittedDispenseResultLine } from './route.schema';
+import {
+  buildIdempotentDispenseResultReplay,
+  normalizeOptionalText,
+  type ReplayablePrescriptionLine,
+} from './route.replay';
 
 type DrugPriceSnapshot = {
   drug_price_version_id: string | null;
@@ -155,7 +68,7 @@ function countCdsAlertsBySeverity(alerts: Array<{ severity: 'critical' | 'warnin
   );
 }
 
-function resolveDispensingDecision(line: z.infer<typeof dispenseResultLineSchema>) {
+function resolveDispensingDecision(line: SubmittedDispenseResultLine) {
   const method =
     line.packaging_method ??
     (line.is_unit_dose ? 'unit_dose' : line.is_crushed ? 'crush_and_pack' : null);
@@ -208,104 +121,6 @@ async function findInvalidPackagingGroupAssignments(args: {
     if (!groupId || validGroupIds.has(groupId)) return [];
     return [{ line_id: line.line_id, packaging_group_id: groupId }];
   });
-}
-
-function normalizeOptionalText(value: string | null | undefined) {
-  const normalized = value?.trim();
-  return normalized ? normalized : null;
-}
-
-function actualDrugIdentityMatches(args: {
-  existingResult: Pick<ReplayableDispenseResult, 'actual_drug_name' | 'actual_drug_code'>;
-  submittedLine: Pick<SubmittedDispenseResultLine, 'actual_drug_name' | 'actual_drug_code'>;
-}) {
-  const existingCode = normalizeOptionalText(args.existingResult.actual_drug_code);
-  const submittedCode = normalizeOptionalText(args.submittedLine.actual_drug_code);
-  if (existingCode || submittedCode) return existingCode != null && existingCode === submittedCode;
-
-  return args.existingResult.actual_drug_name === args.submittedLine.actual_drug_name;
-}
-
-function dispenseResultMatchesSubmittedLine(args: {
-  existingResult: ReplayableDispenseResult;
-  submittedLine: SubmittedDispenseResultLine;
-  prescribedUnit: string | null | undefined;
-}) {
-  const canonicalActualUnit = resolveCanonicalActualUnit({
-    prescribedUnit: args.prescribedUnit,
-    actualUnit: args.submittedLine.actual_unit,
-  });
-
-  return (
-    actualDrugIdentityMatches(args) &&
-    Number(args.existingResult.actual_quantity) === args.submittedLine.actual_quantity &&
-    normalizeOptionalText(args.existingResult.actual_unit) ===
-      normalizeOptionalText(canonicalActualUnit) &&
-    normalizeOptionalText(args.existingResult.discrepancy_reason) ===
-      normalizeOptionalText(args.submittedLine.discrepancy_reason) &&
-    args.existingResult.carry_type === args.submittedLine.carry_type &&
-    normalizeOptionalText(args.existingResult.special_notes) ===
-      normalizeOptionalText(args.submittedLine.special_notes)
-  );
-}
-
-async function buildIdempotentDispenseResultReplay(args: {
-  tx: Prisma.TransactionClient;
-  taskId: string;
-  submittedLines: Array<SubmittedDispenseResultLine>;
-  prescribedLines: Array<ReplayablePrescriptionLine>;
-  existingResults: Array<ReplayableDispenseResult>;
-}) {
-  const prescribedLineById = new Map(args.prescribedLines.map((line) => [line.id, line]));
-  const existingResultByLineId = new Map(
-    args.existingResults.map((result) => [result.line_id, result]),
-  );
-  const seenSubmittedLineIds = new Set<string>();
-  const replayResults = [];
-
-  for (const submittedLine of args.submittedLines) {
-    if (seenSubmittedLineIds.has(submittedLine.line_id)) return null;
-    seenSubmittedLineIds.add(submittedLine.line_id);
-
-    const prescribedLine = prescribedLineById.get(submittedLine.line_id);
-    if (!prescribedLine) return null;
-
-    const existingResult = existingResultByLineId.get(submittedLine.line_id);
-    if (!existingResult) return null;
-
-    if (
-      !dispenseResultMatchesSubmittedLine({
-        existingResult,
-        submittedLine,
-        prescribedUnit: prescribedLine.unit,
-      })
-    ) {
-      return null;
-    }
-
-    if (submittedLine.barcode_scan) {
-      const verification = await verifyDispenseBarcodeForLine({
-        client: args.tx,
-        line: prescribedLine,
-        barcode: submittedLine.barcode_scan.barcode,
-      });
-      if (!verification.evidence.match || verification.evidence.expired) return null;
-    }
-
-    replayResults.push(existingResult);
-  }
-
-  const persistedLineIds = new Set(args.existingResults.map((result) => result.line_id));
-  const hasAllResults =
-    args.prescribedLines.length > 0 &&
-    args.prescribedLines.every((line) => persistedLineIds.has(line.id));
-
-  return {
-    results: replayResults,
-    task_id: args.taskId,
-    partial: !hasAllResults,
-    idempotent: true as const,
-  };
 }
 
 async function buildBarcodeVerificationEvidence(args: {
