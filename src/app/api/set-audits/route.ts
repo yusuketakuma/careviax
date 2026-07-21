@@ -1,11 +1,10 @@
 import { NextRequest } from 'next/server';
 import { unstable_rethrow } from 'next/navigation';
-import { requireAuthContext } from '@/lib/auth/context';
+import { withAuthContext, type AuthContext } from '@/lib/auth/context';
 import { runWithRequestAuthContext } from '@/lib/auth/request-context';
 import { allocateDisplayId } from '@/lib/db/display-id';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError, notFound, conflict, internalError } from '@/lib/api/response';
-import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cache';
 import {
   transitionCycleStatus,
@@ -34,7 +33,6 @@ import {
 import { RejectCode, SetAuditCellState, type ScheduleStatus } from '@prisma/client';
 import { deriveOutsideMedEvidenceKind } from '@/lib/dispensing/outside-med-classification';
 import { logger } from '@/lib/utils/logger';
-import { withRoutePerformance } from '@/lib/utils/performance';
 import { z } from 'zod';
 import type { ExceptionSeverity, ExceptionStatus } from '@/types/domain-literals';
 
@@ -521,15 +519,7 @@ function summarizeCellStates(batches: Array<{ audit_state: SetAuditCellState }>)
   return summary;
 }
 
-async function authenticatedGET(req: NextRequest) {
-  const auth = await requireAuthContext(req, {
-    permission: 'canViewDashboard',
-    message: 'セット鑑査の閲覧権限がありません',
-  });
-  if ('response' in auth) return auth.response;
-
-  const { ctx } = auth;
-
+async function handleGET(req: NextRequest, ctx: AuthContext) {
   return runWithRequestAuthContext(ctx, async () => {
     const { searchParams } = new URL(req.url);
     const planId = searchParams.get('plan_id') ?? undefined;
@@ -621,10 +611,10 @@ async function authenticatedGET(req: NextRequest) {
   });
 }
 
-export async function GET(req: NextRequest) {
-  return withRoutePerformance(req, async () => {
+export const GET = withAuthContext(
+  async (req, ctx) => {
     try {
-      return withSensitiveNoStore(await authenticatedGET(req));
+      return await handleGET(req, ctx);
     } catch (err) {
       unstable_rethrow(err);
       logger.error(
@@ -636,20 +626,16 @@ export async function GET(req: NextRequest) {
         },
         err,
       );
-      return withSensitiveNoStore(internalError());
+      return internalError();
     }
-  });
-}
+  },
+  {
+    permission: 'canViewDashboard',
+    message: 'セット鑑査の閲覧権限がありません',
+  },
+);
 
-async function authenticatedPOST(req: NextRequest) {
-  const auth = await requireAuthContext(req, {
-    permission: 'canAuditSet',
-    message: 'セット鑑査の実行権限がありません',
-  });
-  if ('response' in auth) return auth.response;
-
-  const { ctx } = auth;
-
+async function handlePOST(req: NextRequest, ctx: AuthContext) {
   return runWithRequestAuthContext(ctx, async () => {
     const payload = await readJsonObjectRequestBody(req);
     if (!payload) return validationError('リクエストボディが不正です');
@@ -1307,10 +1293,10 @@ async function authenticatedPOST(req: NextRequest) {
   });
 }
 
-export async function POST(req: NextRequest) {
-  return withRoutePerformance(req, async () => {
+export const POST = withAuthContext(
+  async (req, ctx) => {
     try {
-      return withSensitiveNoStore(await authenticatedPOST(req));
+      return await handlePOST(req, ctx);
     } catch (err) {
       unstable_rethrow(err);
       logger.error(
@@ -1322,7 +1308,11 @@ export async function POST(req: NextRequest) {
         },
         err,
       );
-      return withSensitiveNoStore(internalError());
+      return internalError();
     }
-  });
-}
+  },
+  {
+    permission: 'canAuditSet',
+    message: 'セット鑑査の実行権限がありません',
+  },
+);
