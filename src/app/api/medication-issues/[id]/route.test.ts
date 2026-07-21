@@ -106,27 +106,11 @@ vi.mock('@/server/services/workflow-dashboard-cache', () => ({
 }));
 
 import { PATCH } from './route';
+import {
+  createMalformedMedicationIssuePatchRequest as createMalformedJsonPatchRequest,
+  createMedicationIssuePatchRequest as createPatchRequest,
+} from './route.test-helpers';
 import { expectSensitiveNoStore } from '@/test/api-response-assertions';
-
-function createPatchRequest(body: unknown) {
-  const versionedBody =
-    body !== null && typeof body === 'object' && !Array.isArray(body)
-      ? { version: 1, ...body }
-      : body;
-  return new NextRequest('http://localhost/api/medication-issues/issue_1', {
-    method: 'PATCH',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(versionedBody),
-  });
-}
-
-function createMalformedJsonPatchRequest() {
-  return new NextRequest('http://localhost/api/medication-issues/issue_1', {
-    method: 'PATCH',
-    headers: { 'content-type': 'application/json' },
-    body: '{"status":',
-  });
-}
 
 describe('/api/medication-issues/[id]', () => {
   beforeEach(() => {

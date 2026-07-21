@@ -903,7 +903,7 @@
       },
       {
         "path": "ops/refactor/STATE.md",
-        "sha256": "438418a50e2c82038139b61ecde7143cf9290143c0740677180743fa1af37043"
+        "sha256": "a4dab93954e92bb42779d842e0be0af72a2a59a32bb3a2ebd7460a903edf6337"
       },
       {
         "path": "ops/refactor/archive/PERF_FINDINGS.md",
@@ -31491,7 +31491,7 @@
       "path": "src/app/api/medication-issues/[id]/route.test.ts",
       "classes": ["test"],
       "detectors": ["mapping_precedence", "raw_role_semantics", "tenant_role"],
-      "sha256": "c6026a6cdf25df112fd171bc27bf62ffdcb48ce7f811b16090cc5b6fa7b7d010"
+      "sha256": "15b6ef2948849a31a80a5e7c0a77a5ed41ed21aa9269ab224fb73be2fdb52464"
     },
     {
       "path": "src/app/api/medication-issues/route.test.ts",
@@ -31729,7 +31729,7 @@
       "path": "src/app/api/patients/[id]/insurance/[insuranceId]/route.test.ts",
       "classes": ["test"],
       "detectors": ["permission_capability", "raw_role_semantics"],
-      "sha256": "440ad9a31bdabc2bcaa9aad203087c8d912c9246db5b7469603080080a7a3309"
+      "sha256": "93f25b21fa81cfd0c82a95bdc8c71a0608cb839f90fd671dc001d7e73f20d990"
     },
     {
       "path": "src/app/api/patients/[id]/insurance/route.test.ts",
