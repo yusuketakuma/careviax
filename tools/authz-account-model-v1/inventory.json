@@ -735,7 +735,7 @@
       },
       {
         "path": "Plans.md",
-        "sha256": "96b67527281602351a1b652e3d14d81a2af6d6cfb0d24aa9a31b1ce55a4e69a9"
+        "sha256": "788cee8f00d8910b06187532307dcd54b0fed7059564876e6d237e00bbdc2855"
       },
       {
         "path": "README.md",
@@ -903,7 +903,7 @@
       },
       {
         "path": "ops/refactor/STATE.md",
-        "sha256": "95ea01a064879c201cf1bfae97cbb17e31520e0a599641848f73e57e15846bdd"
+        "sha256": "0acac482059820e46e91352507bab99003cec530afac8ce1cd447e394f00effe"
       },
       {
         "path": "ops/refactor/archive/PERF_FINDINGS.md",
@@ -32155,7 +32155,7 @@
       "path": "src/app/api/patients/[id]/labs/route.test.ts",
       "classes": ["test"],
       "detectors": ["raw_role_semantics"],
-      "sha256": "e26b229caba4e1f4bf99a5fbe507ff3c7bbb82f38c34e5c3eebdd11d4a082410"
+      "sha256": "688365bd4f0872afb34959965ffd8993cdd58e3cc9ae01cdda858d0c1e025629"
     },
     {
       "path": "src/app/api/patients/[id]/mcs-sync/route.test.ts",

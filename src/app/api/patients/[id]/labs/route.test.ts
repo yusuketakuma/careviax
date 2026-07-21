@@ -19,15 +19,45 @@ const {
 }));
 
 vi.mock('@/lib/auth/context', () => ({
-  requireAuthContext: vi.fn(async () => ({
-    ctx: {
-      orgId: 'org_1',
-      userId: 'pharmacist_1',
-      role: 'pharmacist',
-      ipAddress: '127.0.0.1',
-      userAgent: 'vitest',
+  withAuthContext:
+    (
+      handler: (
+        req: NextRequest,
+        ctx: Record<string, unknown>,
+        routeContext: { params: Promise<{ id: string }> },
+      ) => Promise<Response>,
+    ) =>
+    async (req: NextRequest, routeContext: { params: Promise<{ id: string }> }) => {
+      const noStore = (response: Response) => {
+        response.headers.set('Cache-Control', 'private, no-store, max-age=0');
+        response.headers.set('Pragma', 'no-cache');
+        return response;
+      };
+      try {
+        return noStore(
+          await handler(
+            req,
+            {
+              orgId: 'org_1',
+              userId: 'pharmacist_1',
+              role: 'pharmacist',
+              ipAddress: '127.0.0.1',
+              userAgent: 'vitest',
+              requestId: 'req_patient_labs_1',
+              correlationId: 'corr_patient_labs_1',
+            },
+            routeContext,
+          ),
+        );
+      } catch {
+        return noStore(
+          Response.json(
+            { code: 'INTERNAL_ERROR', message: 'サーバー内部でエラーが発生しました' },
+            { status: 500 },
+          ),
+        );
+      }
     },
-  })),
 }));
 
 vi.mock('@/lib/db/rls', () => ({
