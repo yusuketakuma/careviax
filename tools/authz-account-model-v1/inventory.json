@@ -735,7 +735,7 @@
       },
       {
         "path": "Plans.md",
-        "sha256": "06c23cfbdf3a0c806b11695590edad6ffe184960b9105f1c557f8ad72e30688f"
+        "sha256": "5859f1935d47b78bfc532fee1ddd00700340026c4cef9299d179ffa97a8e1ee9"
       },
       {
         "path": "README.md",
@@ -903,7 +903,7 @@
       },
       {
         "path": "ops/refactor/STATE.md",
-        "sha256": "fff2aa84fcddfc68c27647e22a98997507aa1dec334657285b07d6f451aa573f"
+        "sha256": "6a4828cae03695df48e7630c093487ce58264fadad785adc3fd1cd988f468fd2"
       },
       {
         "path": "ops/refactor/archive/PERF_FINDINGS.md",
@@ -6617,7 +6617,7 @@
       "id": "mapping_precedence:src/app/api/staff-workload/route.ts",
       "detector": "mapping_precedence",
       "path": "src/app/api/staff-workload/route.ts",
-      "evidence_sha256": "9794c5b4befe0372a8f0063d6187f062b544491577e7900caa1b7d5619c65dac",
+      "evidence_sha256": "e23a587946dad3a7f3ea830bed4d3bdbd95cfec312dae1afb0db85dafca59edc",
       "principal": "human",
       "lifecycles": ["request"],
       "surfaces": ["rls", "writer"],
@@ -32662,7 +32662,7 @@
         "raw_role_semantics",
         "tenant_role"
       ],
-      "sha256": "cc0f9291d189142fb5d6cb316d02dad5a8d281015822c93b613a9a4bc2c0b894"
+      "sha256": "8d012fb2113b142bba0e499b260470d54414c6f61f2ebe70e83212b2f5c1ffbb"
     },
     {
       "path": "src/app/api/tasks/[id]/prescription-supply/resolve/route.test.ts",
