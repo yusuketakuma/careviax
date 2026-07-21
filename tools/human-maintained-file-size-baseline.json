@@ -428,11 +428,6 @@
       "task_id": "MAINT-FILE-SIZE-1000-001"
     },
     {
-      "path": "src/app/api/notifications/stream/route.test.ts",
-      "max_lines": 1069,
-      "task_id": "MAINT-FILE-SIZE-1000-001"
-    },
-    {
       "path": "src/app/api/patient-share-cases/route.test.ts",
       "max_lines": 1265,
       "task_id": "MAINT-FILE-SIZE-1000-001"

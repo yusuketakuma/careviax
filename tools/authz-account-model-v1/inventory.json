@@ -735,7 +735,7 @@
       },
       {
         "path": "Plans.md",
-        "sha256": "d5ad67c88e55efbb27533fad04440f51ef339b7c3ed446b12f1796d4d8981dc8"
+        "sha256": "c8d423d34895d83b1b19fb0ad1c164ff82a37119c9d23d02baf1500cb23a4b92"
       },
       {
         "path": "README.md",
@@ -903,7 +903,7 @@
       },
       {
         "path": "ops/refactor/STATE.md",
-        "sha256": "058c7482f2e3f7d42200e0802f7f4782a3d60432e0716ad785259e1c7920cf71"
+        "sha256": "87eed04c31e7e3da64de3e94fcc555b67b714335030e66cac72b005664ede2d3"
       },
       {
         "path": "ops/refactor/archive/PERF_FINDINGS.md",
@@ -1334,8 +1334,8 @@
         "sha256": "6900cf7385e2d4835594c76f72292be8c2119565403da135396dee8e62ff2cb8"
       },
       {
-        "path": "src/app/api/notifications/stream/route.test.ts",
-        "sha256": "cfd1f79fe61bd0212fc0d76f125664e8708a0133dcba963fe16b277c9600d600"
+        "path": "src/app/api/notifications/stream/route.test-helpers.ts",
+        "sha256": "6c3f14c99b25c60cfd1ed8739ec05441de61c7974c9dcee0a458b7572eddfdfe"
       },
       {
         "path": "src/app/api/notifications/stream/route.ts",
@@ -31738,7 +31738,7 @@
       "path": "src/app/api/notifications/stream/route.test.ts",
       "classes": ["test"],
       "detectors": ["long_lived_or_offline", "raw_role_semantics"],
-      "sha256": "cfd1f79fe61bd0212fc0d76f125664e8708a0133dcba963fe16b277c9600d600"
+      "sha256": "3d3fc4edf57563b2322736513b599e90e48512e09e81695951fd97115cd1e872"
     },
     {
       "path": "src/app/api/onboarding/renewal-board/route.test.ts",
