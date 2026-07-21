@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 
 const {
   requireAuthContextMock,
@@ -21,6 +21,27 @@ const {
 
 vi.mock('@/lib/auth/context', () => ({
   requireAuthContext: requireAuthContextMock,
+  withAuthContext:
+    (
+      handler: (
+        req: NextRequest,
+        ctx: typeof authCtx.ctx,
+        routeContext: { params: Promise<{ id: string }> },
+      ) => Promise<Response>,
+      options: { permission: string; message: string },
+    ) =>
+    async (req: NextRequest, routeContext: { params: Promise<{ id: string }> }) => {
+      const authResult = await requireAuthContextMock(req, options);
+      if ('response' in authResult) {
+        authResult.response.headers.set('Cache-Control', 'private, no-store, max-age=0');
+        authResult.response.headers.set('Pragma', 'no-cache');
+        return authResult.response;
+      }
+      const response = await handler(req, authResult.ctx, routeContext);
+      response.headers.set('Cache-Control', 'private, no-store, max-age=0');
+      response.headers.set('Pragma', 'no-cache');
+      return response;
+    },
 }));
 
 vi.mock('@/lib/auth/visit-schedule-access', () => ({
@@ -73,6 +94,25 @@ describe('/api/visit-records/[id]/handoff/extract', () => {
     requireAuthContextMock.mockResolvedValue(authCtx);
     canAccessVisitScheduleAssignmentMock.mockReturnValue(true);
     selectVisitHandoffConfirmationAssigneeMock.mockReturnValue('user_1');
+  });
+
+  it('returns a sensitive no-store auth failure before loading the visit record', async () => {
+    requireAuthContextMock.mockResolvedValueOnce({
+      response: NextResponse.json({ code: 'AUTH_FORBIDDEN' }, { status: 403 }),
+    });
+
+    const req = createRequest('http://localhost/api/visit-records/vr_1/handoff/extract');
+    const res = await POST(req, { params: Promise.resolve({ id: 'vr_1' }) });
+
+    expect(res.status).toBe(403);
+    expectSensitiveNoStore(res);
+    expect(requireAuthContextMock).toHaveBeenCalledWith(req, {
+      permission: 'canVisit',
+      message: '訪問記録の更新権限がありません',
+    });
+    expect(visitRecordFindFirstMock).not.toHaveBeenCalled();
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(processHandoffExtractionMock).not.toHaveBeenCalled();
   });
 
   it('returns 201 on successful extraction', async () => {

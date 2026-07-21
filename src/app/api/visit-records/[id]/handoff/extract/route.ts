@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { requireAuthContext } from '@/lib/auth/context';
+import { withAuthContext } from '@/lib/auth/context';
 import {
   canAccessVisitScheduleAssignment,
   selectVisitHandoffConfirmationAssignee,
@@ -43,66 +43,69 @@ const visitRecordHandoffExtractionSelect = {
   },
 } as const;
 
-export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const authResult = await requireAuthContext(req, {
-    permission: 'canVisit',
-    message: '訪問記録の更新権限がありません',
-  });
-  if ('response' in authResult) return withSensitiveNoStore(authResult.response);
-  const ctx = authResult.ctx;
+export const POST = withAuthContext(
+  async (_req: NextRequest, ctx, { params }) => {
+    const { id: rawId } = await params;
+    const id = normalizeRequiredRouteParam(rawId);
+    if (!id) return withSensitiveNoStore(validationError('訪問記録IDが不正です'));
 
-  const { id: rawId } = await params;
-  const id = normalizeRequiredRouteParam(rawId);
-  if (!id) return withSensitiveNoStore(validationError('訪問記録IDが不正です'));
-
-  const record = await prisma.visitRecord.findFirst({
-    where: { id, org_id: ctx.orgId },
-    select: visitRecordHandoffExtractionSelect,
-  });
-  if (!record) return withSensitiveNoStore(notFound('訪問記録が見つかりません'));
-
-  if (!canAccessVisitScheduleAssignment(ctx, record.schedule)) {
-    return withSensitiveNoStore(await forbiddenResponse('この訪問記録を更新する権限がありません'));
-  }
-
-  if (
-    !record.structured_soap ||
-    typeof record.structured_soap !== 'object' ||
-    Array.isArray(record.structured_soap)
-  ) {
-    return withSensitiveNoStore(error('no_structured_soap', '構造化SOAPデータがありません', 422));
-  }
-
-  const patient = await prisma.patient.findFirst({
-    where: { id: record.patient_id, org_id: ctx.orgId },
-    select: { name: true },
-  });
-  if (!patient) return withSensitiveNoStore(notFound('患者情報が見つかりません'));
-
-  try {
-    const handoff = await processHandoffExtraction(prisma, {
-      orgId: ctx.orgId,
-      visitRecordId: id,
-      patientId: record.patient_id,
-      patientName: patient.name,
-      structuredSoap: record.structured_soap as StructuredSoap,
-      soapAssessment: record.soap_assessment ?? null,
-      soapPlan: record.soap_plan ?? null,
-      expectedVersion: record.version,
-      requestContext: ctx,
-      handoffConfirmationAssigneeId: selectVisitHandoffConfirmationAssignee(record.schedule),
+    const record = await prisma.visitRecord.findFirst({
+      where: { id, org_id: ctx.orgId },
+      select: visitRecordHandoffExtractionSelect,
     });
-    return withSensitiveNoStore(success({ data: handoff }, 201));
-  } catch (cause) {
-    if (cause instanceof VisitHandoffStaleRecordError) {
+    if (!record) return withSensitiveNoStore(notFound('訪問記録が見つかりません'));
+
+    if (!canAccessVisitScheduleAssignment(ctx, record.schedule)) {
       return withSensitiveNoStore(
-        conflict('訪問記録が更新されています。再読み込みしてから申し送り抽出をやり直してください'),
+        await forbiddenResponse('この訪問記録を更新する権限がありません'),
       );
     }
-    return withSensitiveNoStore(
-      registeredError('extraction_failed', VISIT_HANDOFF_EXTRACTION_FAILED_MESSAGE, {
-        extraction: { status: 'failed', retryable: true },
-      }),
-    );
-  }
-}
+
+    if (
+      !record.structured_soap ||
+      typeof record.structured_soap !== 'object' ||
+      Array.isArray(record.structured_soap)
+    ) {
+      return withSensitiveNoStore(error('no_structured_soap', '構造化SOAPデータがありません', 422));
+    }
+
+    const patient = await prisma.patient.findFirst({
+      where: { id: record.patient_id, org_id: ctx.orgId },
+      select: { name: true },
+    });
+    if (!patient) return withSensitiveNoStore(notFound('患者情報が見つかりません'));
+
+    try {
+      const handoff = await processHandoffExtraction(prisma, {
+        orgId: ctx.orgId,
+        visitRecordId: id,
+        patientId: record.patient_id,
+        patientName: patient.name,
+        structuredSoap: record.structured_soap as StructuredSoap,
+        soapAssessment: record.soap_assessment ?? null,
+        soapPlan: record.soap_plan ?? null,
+        expectedVersion: record.version,
+        requestContext: ctx,
+        handoffConfirmationAssigneeId: selectVisitHandoffConfirmationAssignee(record.schedule),
+      });
+      return withSensitiveNoStore(success({ data: handoff }, 201));
+    } catch (cause) {
+      if (cause instanceof VisitHandoffStaleRecordError) {
+        return withSensitiveNoStore(
+          conflict(
+            '訪問記録が更新されています。再読み込みしてから申し送り抽出をやり直してください',
+          ),
+        );
+      }
+      return withSensitiveNoStore(
+        registeredError('extraction_failed', VISIT_HANDOFF_EXTRACTION_FAILED_MESSAGE, {
+          extraction: { status: 'failed', retryable: true },
+        }),
+      );
+    }
+  },
+  {
+    permission: 'canVisit',
+    message: '訪問記録の更新権限がありません',
+  },
+);
