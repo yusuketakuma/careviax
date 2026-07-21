@@ -568,11 +568,6 @@
       "task_id": "MAINT-FILE-SIZE-1000-001"
     },
     {
-      "path": "src/components/features/dispense-workbench/prescription-grid.tsx",
-      "max_lines": 1010,
-      "task_id": "MAINT-FILE-SIZE-1000-001"
-    },
-    {
       "path": "src/components/features/dispense-workbench/right-pane.tsx",
       "max_lines": 1137,
       "task_id": "MAINT-FILE-SIZE-1000-001"

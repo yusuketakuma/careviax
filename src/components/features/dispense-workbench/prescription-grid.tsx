@@ -26,6 +26,16 @@ import type {
   Phase,
   WorkbenchView,
 } from './dispensing-workbench.types';
+import {
+  auditCountInputStyle,
+  CELL_BORDER,
+  COL,
+  headCell,
+  HEADER_BORDER,
+  timingCell,
+  totalCell,
+  TOTAL_BORDER,
+} from './prescription-grid-layout';
 import type { WorkbenchWriteHandlers } from './use-workbench-write-handlers';
 
 interface PrescriptionGridProps {
@@ -34,39 +44,6 @@ interface PrescriptionGridProps {
   handlers?: WorkbenchWriteHandlers;
   isPending?: boolean;
 }
-
-/** ヘッダ / 合計行で共有するセル幅・区切り（設計プロト実値） */
-const COL = {
-  drag: 16,
-  check: 44,
-  no: 30,
-  yoho: 108,
-  asa: 36,
-  hiru: 36,
-  yu: 36,
-  nemae: 42,
-  other: 60,
-  daily: 64,
-  days: 58,
-  funsai: 44,
-  note: 220,
-} as const;
-
-const HEADER_BORDER = '1px solid var(--wb-line)';
-const CELL_BORDER = '1px solid var(--wb-line)';
-const TOTAL_BORDER = '1px solid var(--wb-line)';
-const auditCountInputStyle: CSSProperties = {
-  width: 40,
-  flex: 'none',
-  fontSize: 12,
-  color: 'var(--wb-ink)',
-  background: 'var(--wb-surface)',
-  border: '1px solid var(--wb-confirm-border)',
-  borderRadius: 4,
-  padding: '2px 3px',
-  textAlign: 'right',
-  font: 'inherit',
-};
 
 export function PrescriptionGrid({ view, phase, handlers, isPending }: PrescriptionGridProps) {
   // 書込操作はシェルから渡される handlers（store アクション + 実データ mutation 結線）を優先し、
@@ -420,31 +397,6 @@ export function PrescriptionGrid({ view, phase, handlers, isPending }: Prescript
       </div>
     </div>
   );
-}
-
-/** ヘッダセル共通スタイル（中央寄せ・右区切り） */
-function headCell(width: number): CSSProperties {
-  return {
-    width,
-    flex: 'none',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRight: HEADER_BORDER,
-    padding: '5px 0',
-  };
-}
-
-/** 合計行セル共通スタイル */
-function totalCell(width: number): CSSProperties {
-  return {
-    width,
-    flex: 'none',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRight: TOTAL_BORDER,
-  };
 }
 
 interface SectionRowProps {
@@ -993,18 +945,4 @@ function DrugRow({
       </div>
     </div>
   );
-}
-
-/** 朝昼夕眠前 セル共通スタイル */
-function timingCell(width: number): CSSProperties {
-  return {
-    width,
-    flex: 'none',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRight: CELL_BORDER,
-    fontWeight: 700,
-    color: 'var(--wb-ink)',
-  };
 }
