@@ -813,11 +813,6 @@
       "task_id": "MAINT-FILE-SIZE-1000-001"
     },
     {
-      "path": "src/server/services/workflow-dashboard-queries.ts",
-      "max_lines": 1703,
-      "task_id": "MAINT-FILE-SIZE-1000-001"
-    },
-    {
       "path": "tools/api-route-reachability-inventory.json",
       "max_lines": 10513,
       "task_id": "MAINT-FILE-SIZE-1000-001"
