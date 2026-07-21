@@ -1,5 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
+import {
+  createMalformedPatientDetailPatchRequest as createMalformedJsonPatchRequest,
+  createPatientDetailRequest as createRequest,
+  expectSensitiveNoStore,
+} from './route.test-helpers';
 
 const {
   requireAuthContextMock,
@@ -267,38 +272,6 @@ vi.mock('@/lib/patient/facility-reference', () => ({
 }));
 
 import { GET, PATCH } from './route';
-
-const SENSITIVE_NO_STORE = 'private, no-store, max-age=0';
-
-function createRequest(body?: unknown, headers?: Record<string, string>) {
-  if (body === undefined) {
-    return new NextRequest('http://localhost/api/patients/patient_1', { headers });
-  }
-  return new NextRequest('http://localhost/api/patients/patient_1', {
-    method: 'PATCH',
-    body: JSON.stringify(body),
-    headers: {
-      'content-type': 'application/json',
-      ...headers,
-    },
-  });
-}
-
-function createMalformedJsonPatchRequest(headers?: Record<string, string>) {
-  return new NextRequest('http://localhost/api/patients/patient_1', {
-    method: 'PATCH',
-    body: '{"name":',
-    headers: {
-      'content-type': 'application/json',
-      ...headers,
-    },
-  });
-}
-
-function expectSensitiveNoStore(response: Response) {
-  expect(response.headers.get('Cache-Control')).toBe(SENSITIVE_NO_STORE);
-  expect(response.headers.get('Pragma')).toBe('no-cache');
-}
 
 describe('/api/patients/[id]', () => {
   beforeEach(() => {
