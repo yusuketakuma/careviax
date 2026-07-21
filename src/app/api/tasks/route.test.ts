@@ -109,53 +109,22 @@ vi.mock('@/lib/db/display-id', () => ({
   allocateDisplayId: allocateDisplayIdMock,
 }));
 
-import { GET as routeGET, POST as routePOST } from './route';
+import {
+  buildDefaultCreatedTask,
+  createMalformedJsonRequest,
+  createRequest,
+  createTaskAuthContext,
+  expectTaskWriteNotStarted,
+  GET,
+  installTaskCreateTransactionMock,
+  POST,
+} from './route.test-helpers';
 import { expectSensitiveNoStore } from '@/test/api-response-assertions';
-
-function createRequest(url: string, body?: unknown) {
-  return new NextRequest(url, {
-    method: body === undefined ? 'GET' : 'POST',
-    ...(body === undefined
-      ? {}
-      : {
-          headers: {
-            'content-type': 'application/json',
-          },
-          body: JSON.stringify(body),
-        }),
-  });
-}
-
-function createMalformedJsonRequest(url: string) {
-  return new NextRequest(url, {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-    },
-    body: '{bad json',
-  });
-}
-
-function GET(req: NextRequest) {
-  return routeGET(req, { params: Promise.resolve({}) });
-}
-
-function POST(req: NextRequest) {
-  return routePOST(req, { params: Promise.resolve({}) });
-}
 
 describe('/api/tasks', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    requireAuthContextMock.mockResolvedValue({
-      ctx: {
-        orgId: 'org_1',
-        userId: 'user_1',
-        role: 'pharmacist',
-        requestId: 'request_1',
-        correlationId: 'correlation_1',
-      },
-    });
+    requireAuthContextMock.mockResolvedValue(createTaskAuthContext('pharmacist'));
     careCaseFindManyMock.mockResolvedValue([{ id: 'case_1', patient_id: 'patient_1' }]);
     careCaseFindFirstMock.mockResolvedValue({ patient_id: 'patient_1' });
     patientFindFirstMock.mockResolvedValue({ id: 'patient_1', archived_at: null });
@@ -165,19 +134,9 @@ describe('/api/tasks', () => {
       { user_id: 'user_1', role: 'pharmacist', can_audit_dispense: true },
     ]);
     taskFindFirstMock.mockResolvedValue(null);
-    taskCreateMock.mockResolvedValue({
-      id: 'task_1',
-      display_id: 't0000000001',
-      title: '折返し対応',
-    });
+    taskCreateMock.mockResolvedValue(buildDefaultCreatedTask());
     allocateDisplayIdMock.mockResolvedValue('t0000000001');
-    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
-      callback({
-        task: {
-          create: taskCreateMock,
-        },
-      }),
-    );
+    installTaskCreateTransactionMock(withOrgContextMock, taskCreateMock);
   });
 
   it('filters tasks by related entity fields', async () => {
@@ -963,9 +922,7 @@ describe('/api/tasks', () => {
           assigned_to: ['このタスク種別を担当できるスタッフを選択してください'],
         },
       });
-      expect(withOrgContextMock).not.toHaveBeenCalled();
-      expect(allocateDisplayIdMock).not.toHaveBeenCalled();
-      expect(taskCreateMock).not.toHaveBeenCalled();
+      expectTaskWriteNotStarted(withOrgContextMock, allocateDisplayIdMock, taskCreateMock);
     },
   );
 
@@ -1150,9 +1107,7 @@ describe('/api/tasks', () => {
       message: '担当外リソースのタスクは作成できません',
     });
     expect(patientFindFirstMock).not.toHaveBeenCalled();
-    expect(withOrgContextMock).not.toHaveBeenCalled();
-    expect(allocateDisplayIdMock).not.toHaveBeenCalled();
-    expect(taskCreateMock).not.toHaveBeenCalled();
+    expectTaskWriteNotStarted(withOrgContextMock, allocateDisplayIdMock, taskCreateMock);
   });
 
   it('returns the existing task when a duplicate dedupe key create races', async () => {
@@ -1245,9 +1200,7 @@ describe('/api/tasks', () => {
       message: PATIENT_ARCHIVED_WRITE_CONFLICT_MESSAGE,
     });
     expect(membershipFindManyMock).not.toHaveBeenCalled();
-    expect(withOrgContextMock).not.toHaveBeenCalled();
-    expect(allocateDisplayIdMock).not.toHaveBeenCalled();
-    expect(taskCreateMock).not.toHaveBeenCalled();
+    expectTaskWriteNotStarted(withOrgContextMock, allocateDisplayIdMock, taskCreateMock);
   });
 
   it('rejects archived patients resolved from related cases before creating operational tasks', async () => {
@@ -1281,9 +1234,7 @@ describe('/api/tasks', () => {
       select: { patient_id: true },
     });
     expect(membershipFindManyMock).not.toHaveBeenCalled();
-    expect(withOrgContextMock).not.toHaveBeenCalled();
-    expect(allocateDisplayIdMock).not.toHaveBeenCalled();
-    expect(taskCreateMock).not.toHaveBeenCalled();
+    expectTaskWriteNotStarted(withOrgContextMock, allocateDisplayIdMock, taskCreateMock);
   });
 
   it('rejects inactive, non-active-account, cross-org, or unknown assignees', async () => {
@@ -1335,9 +1286,7 @@ describe('/api/tasks', () => {
     expect(response.status).toBe(400);
     expectSensitiveNoStore(response);
     expect(careCaseFindManyMock).not.toHaveBeenCalled();
-    expect(withOrgContextMock).not.toHaveBeenCalled();
-    expect(allocateDisplayIdMock).not.toHaveBeenCalled();
-    expect(taskCreateMock).not.toHaveBeenCalled();
+    expectTaskWriteNotStarted(withOrgContextMock, allocateDisplayIdMock, taskCreateMock);
   });
 
   it('rejects unregistered task types before related-entity validation or assignment scope', async () => {
@@ -1356,9 +1305,7 @@ describe('/api/tasks', () => {
       message: '未登録のタスク種別です',
     });
     expect(careCaseFindManyMock).not.toHaveBeenCalled();
-    expect(withOrgContextMock).not.toHaveBeenCalled();
-    expect(allocateDisplayIdMock).not.toHaveBeenCalled();
-    expect(taskCreateMock).not.toHaveBeenCalled();
+    expectTaskWriteNotStarted(withOrgContextMock, allocateDisplayIdMock, taskCreateMock);
   });
 
   it('rejects malformed JSON create payloads before resolving assignment scope', async () => {
@@ -1371,9 +1318,7 @@ describe('/api/tasks', () => {
       message: 'リクエストボディが不正です',
     });
     expect(careCaseFindManyMock).not.toHaveBeenCalled();
-    expect(withOrgContextMock).not.toHaveBeenCalled();
-    expect(allocateDisplayIdMock).not.toHaveBeenCalled();
-    expect(taskCreateMock).not.toHaveBeenCalled();
+    expectTaskWriteNotStarted(withOrgContextMock, allocateDisplayIdMock, taskCreateMock);
   });
 
   it('rejects creation for an unassigned related patient before write', async () => {
@@ -1412,9 +1357,7 @@ describe('/api/tasks', () => {
 
     expect(response.status).toBe(403);
     expectSensitiveNoStore(response);
-    expect(withOrgContextMock).not.toHaveBeenCalled();
-    expect(allocateDisplayIdMock).not.toHaveBeenCalled();
-    expect(taskCreateMock).not.toHaveBeenCalled();
+    expectTaskWriteNotStarted(withOrgContextMock, allocateDisplayIdMock, taskCreateMock);
   });
 
   it('returns a sanitized no-store internal error when task creation throws', async () => {

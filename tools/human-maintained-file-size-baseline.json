@@ -574,7 +574,7 @@
     },
     {
       "path": "src/app/api/tasks/route.test.ts",
-      "max_lines": 1390,
+      "max_lines": 1387,
       "task_id": "MAINT-FILE-SIZE-1000-001"
     },
     {

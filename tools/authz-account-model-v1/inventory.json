@@ -903,7 +903,7 @@
       },
       {
         "path": "ops/refactor/STATE.md",
-        "sha256": "7c0c3fe5e2db81258ff85a7d21fba5e76e81023179694b4149b75c1cd2096fc0"
+        "sha256": "562c64d2f62a21a56f16b7cb710b5e75401a87bd4147a833f82dbe71f7149e79"
       },
       {
         "path": "ops/refactor/archive/PERF_FINDINGS.md",
@@ -32476,7 +32476,7 @@
         "raw_role_semantics",
         "tenant_role"
       ],
-      "sha256": "106a37b3fc3c5d4230ad0e0d8c45874abef32935b89353a285965edb89f32c22"
+      "sha256": "4e75f2d4729ae8b69b200b43c181663b34ade0977ac39d21eb373fd77380b309"
     },
     {
       "path": "src/app/api/templates/[id]/route.test.ts",
