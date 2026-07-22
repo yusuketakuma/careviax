@@ -13,6 +13,7 @@ import {
 
 const SAFE_URL = 'postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public';
 const DISPOSABLE_CI_ENV = {
+  NODE_ENV: 'test',
   CI: 'true',
   GITHUB_ACTIONS: 'true',
   GITHUB_RUN_ID: '123456789',
@@ -71,7 +72,12 @@ describe('run-postgres-integration-manifest', () => {
     'postgresql://ph_os:ph_os@127.0.0.1:5433/ph_os_e2e?schema=public',
     'postgresql://ph_os:ph_os@[::1]:5433/ph_os_e2e?schema=public',
   ])('rejects unsafe database target %s', (databaseUrl) => {
-    expect(() => resolveDatabaseUrl({ POSTGRES_INTEGRATION_DATABASE_URL: databaseUrl })).toThrow(
+    expect(() =>
+      resolveDatabaseUrl({
+        NODE_ENV: 'test',
+        POSTGRES_INTEGRATION_DATABASE_URL: databaseUrl,
+      }),
+    ).toThrow(
       /must (?:point to postgresql:\/\/ph_os@localhost:5433\/ph_os_e2e|use the literal localhost)/,
     );
   });
@@ -79,6 +85,7 @@ describe('run-postgres-integration-manifest', () => {
   it('accepts only literal localhost and gives the dedicated override precedence', () => {
     expect(
       resolveDatabaseUrl({
+        NODE_ENV: 'test',
         POSTGRES_INTEGRATION_DATABASE_URL: SAFE_URL,
         DATABASE_URL: 'postgresql://ph_os:ph_os@db.internal:5432/production',
       }),
