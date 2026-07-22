@@ -7,7 +7,7 @@ confidence: high
 created_by: codex-lead
 expires_at: null
 project_id: careviax
-ingested_at: '2026-07-22T01:08:07.650Z'
+ingested_at: '2026-07-22T01:27:47.687Z'
 owner_agent: codex-lead
 source_kind: put_page
 commit_after: 3eb759e5b
@@ -33,7 +33,7 @@ run_context: { os: macOS, node: 24.x, package_manager: pnpm, env: local }
 ## Scope
 
 - Extracted visit medication stock observation labels, JST formatting, summary fetch, and draft helpers without changing UI or API behavior.
-- Component reduced from 1073 to 887 lines; helper is 214 lines; file-size baseline reduced from 161 to 160.
+- Component reduced from 1073 to 886 lines; helper is 214 lines; file-size baseline reduced from 161 to 160.
 
 ## Commands
 
@@ -55,7 +55,14 @@ secret_scan: skipped, not wired; dependency_audit: skipped, no dependency change
 
 ## Overall
 
-result: partial_pass; accepted_for_next_step: true; reason: all objective code gates passed, while codex2 mutual review is unavailable because only the codex1 tmux pane is live.
+result: partial_pass; accepted_for_next_step: false; reason: codex2 independently passed the implementation code and focused/static gates but found stale STATE browser-freeze evidence. Codex1 reproduced the inventory drift and reran typecheck plus typecheck:no-unused successfully; final inventory synchronization and codex2 re-review remain pending.
+
+## Independent review
+
+- codex2 exact-path implementation verdict: pass; no behavior, patient-scope, Client boundary, API, JST, draft/idempotency, fail-closed, PHI/security, or performance regression found.
+- focused independent validation: pass, 6 files / 96 tests; targeted ESLint, Prettier, file-size, module-boundary, frontend-contract, client-json-schema, and client-PHI-log checks passed.
+- integration finding: `ops/refactor/STATE.md` changed after the recorded inventory pass, leaving its browser-asset SHA-256 stale; inventory synchronization is required after the final ledger content is fixed.
+- typecheck follow-up: codex2 audit-sandbox execution returned unrelated workspace errors, while codex1 reran the canonical `pnpm typecheck` and `pnpm typecheck:no-unused` in the unrestricted repository environment and both passed on the same HEAD.
 
 ## Evidence
 
