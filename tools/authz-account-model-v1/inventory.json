@@ -1291,15 +1291,15 @@
       },
       {
         "path": "src/app/(dashboard)/visits/[id]/record/visit-patient-reflection-panel.tsx",
-        "sha256": "c5f667bcc4ff22e0b67095e7ea12d6411378a5f8bfed767314bf1c80c424bacb"
+        "sha256": "fa6dbe2f43e19090d316d81b656da45eefcacbc1a2949c20a6934002ae4842e4"
       },
       {
         "path": "src/app/(dashboard)/visits/[id]/record/visit-patient-reflection-recovery.tsx",
-        "sha256": "9e8864240f5d39550c31e0a4d9b231b35ed7cb1699b63b6447b9c8ba41988d18"
+        "sha256": "10ba208baeb1bb0fa706ce1c54995f9e72622caa90a12dd66f2015320db2081c"
       },
       {
         "path": "src/app/(dashboard)/visits/[id]/record/visit-patient-reflection.ts",
-        "sha256": "c8edee86ca5a9a37560a659d740025ce1909546bf20add2fde0181b9c6c82f8f"
+        "sha256": "e7fa3494e0500e3b438bab28d58fd67e140e5971b9d31ed6526e91aaf30a81a4"
       },
       {
         "path": "src/app/(dashboard)/visits/[id]/record/visit-record-form-base.tsx",
@@ -1307,7 +1307,7 @@
       },
       {
         "path": "src/app/(dashboard)/visits/[id]/record/visit-record-form-controller.tsx",
-        "sha256": "4ad7bc843dd73c329a5d17e36b7af2d84225f71de9249ca7bc031c069e9bfae5"
+        "sha256": "bf76487f790bdfe4e9f6d406d385380a23cdc1ad3f5f591bddd35a94642d3248"
       },
       {
         "path": "src/app/(dashboard)/visits/[id]/record/visit-record-form-fields.tsx",
@@ -1315,7 +1315,7 @@
       },
       {
         "path": "src/app/(dashboard)/visits/[id]/record/visit-record-form-model.ts",
-        "sha256": "60e71e7f7bde65f16d231527ac4710ced5f9bb4bc209bc14a2b4d3c731a66b1d"
+        "sha256": "a3f010ad164b862cdf77e23cac950b5aad2b9237b1f178016e18916c369dc9fb"
       },
       {
         "path": "src/app/(dashboard)/visits/[id]/record/visit-record-form-response-schemas.ts",
@@ -1331,7 +1331,7 @@
       },
       {
         "path": "src/app/(dashboard)/visits/[id]/record/visit-record-form.patient-reflect.test.tsx",
-        "sha256": "94cf73d35cedceba2a051118c97193869873d29cc1a9ae34991fe5ddcdccd678"
+        "sha256": "d5cda6732a34b6460dec4a113e93076af159dd7574e34f10d5797169372f5e51"
       },
       {
         "path": "src/app/(dashboard)/visits/[id]/record/visit-record-form.persistence.test.tsx",
@@ -32258,7 +32258,7 @@
       "path": "src/app/api/patients/[id]/patient-patch-occ.integration.test.ts",
       "classes": ["test"],
       "detectors": ["raw_role_semantics", "rls_authz"],
-      "sha256": "afe42ba85c222ed43ada6a47c2a647eb0cbf9fafe6ef30ccd5a22a2d0b8caaef"
+      "sha256": "15a60329d6d60efc891fcaa94ccaf7d6db45d14605f49989fa2d437fa46aa89e"
     },
     {
       "path": "src/app/api/patients/[id]/prescriptions/e-prescription/route.test.ts",
@@ -34605,7 +34605,7 @@
       "path": "tools/scripts/run-postgres-integration-manifest.test.ts",
       "classes": ["test"],
       "detectors": ["rls_authz"],
-      "sha256": "4a0e4ea6659b3610dce6b874373534f9ca267057af90cecfd3f82604eaf4dbce"
+      "sha256": "7147ea52f8fc8487632a606c2bffc6a32d190450ff3e35fb2101919cb342fd68"
     },
     {
       "path": "tools/scripts/verify-phos-backend-live-readiness.test.ts",
