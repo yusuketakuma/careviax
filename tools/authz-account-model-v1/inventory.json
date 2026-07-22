@@ -695,7 +695,7 @@
       },
       {
         "path": ".github/workflows/ci.yml",
-        "sha256": "fca723136f8c8d68f31e65f8820506feda3330b06238dc8f71b7bb9623e39b8d"
+        "sha256": "10d105f49e9e52a35db77c3aae873672961c9d2df70e6e0798ae7b1f5765415c"
       },
       {
         "path": ".omx/context/repo-audit-20260404T114947Z.md",
@@ -735,7 +735,7 @@
       },
       {
         "path": "Plans.md",
-        "sha256": "32660a6305b92e45bd63f8d9454528d4a07978a2a6483ccb3a132c84123d0e36"
+        "sha256": "089367936a74ebd95faff96227eac97b342fa1b47f90632f3f756268b8a267fb"
       },
       {
         "path": "README.md",
@@ -903,7 +903,7 @@
       },
       {
         "path": "ops/refactor/STATE.md",
-        "sha256": "03d4607c58e107db5d637957de4bc40c3436f0e0589c54cd50efc0e68ca8819e"
+        "sha256": "d3e24d370af759223e912a25b223c2e1d28fe9f97db522350eac2995a20e95b6"
       },
       {
         "path": "ops/refactor/archive/PERF_FINDINGS.md",
@@ -915,7 +915,7 @@
       },
       {
         "path": "package.json",
-        "sha256": "23ab4bc0415fea85bab0df3099cb4aac72a6f4b2eb6d659a326b02c2992c781b"
+        "sha256": "0ee43579092cc43484f3a05ea8cb91cd4a58cd115e5d4d69a89385be037abbcf"
       },
       {
         "path": "playwright.audit.config.ts",

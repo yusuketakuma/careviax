@@ -48,11 +48,6 @@
       "task_id": "MAINT-FILE-SIZE-1000-001"
     },
     {
-      "path": "src/app/(dashboard)/admin/external-professionals/external-professionals-content.tsx",
-      "max_lines": 1187,
-      "task_id": "MAINT-FILE-SIZE-1000-001"
-    },
-    {
       "path": "src/app/(dashboard)/admin/facilities/facilities-content.tsx",
       "max_lines": 1404,
       "task_id": "MAINT-FILE-SIZE-1000-001"
