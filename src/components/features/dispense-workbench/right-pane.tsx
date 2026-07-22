@@ -20,6 +20,12 @@ import type { CSSProperties } from 'react';
 import styles from './dispensing-workbench.module.css';
 import { useWorkbenchStore } from './dispensing-workbench.store';
 import type { Phase, WorkbenchView } from './dispensing-workbench.types';
+import { RightPaneGridInfo } from './right-pane-grid-info';
+import {
+  RightPaneCheckBox,
+  rightPaneCheckboxLook,
+  RightPaneSectionHeading,
+} from './right-pane-primitives';
 import type { WorkbenchWriteHandlers } from './use-workbench-write-handlers';
 
 interface RightPaneProps {
@@ -27,73 +33,6 @@ interface RightPaneProps {
   phase: Phase;
   handlers?: WorkbenchWriteHandlers;
   isPending?: boolean;
-}
-
-/** チェックボックスの見た目（checked → 色つき / 未 → 白＋灰枠）*/
-interface CheckboxLook {
-  bg: string;
-  border: string;
-  mark: string;
-}
-
-/** セクション見出し（左に色付き縦バー）*/
-function SectionHeading({ color, label }: { color: string; label: string }) {
-  return (
-    <div
-      style={{
-        fontSize: '12px',
-        fontWeight: 700,
-        color: 'var(--wb-ink-muted)',
-        marginBottom: '5px',
-        display: 'flex',
-        alignItems: 'center',
-        gap: '5px',
-      }}
-    >
-      <span
-        aria-hidden
-        style={{
-          width: '4px',
-          height: '12px',
-          background: color,
-          display: 'inline-block',
-          borderRadius: '1px',
-        }}
-      />
-      {label}
-    </div>
-  );
-}
-
-/** 角丸チェックボックスの見た目（a11y のためアイコン＋aria で状態を表す）*/
-function CheckBox({ look, size = 17 }: { look: CheckboxLook; size?: number }) {
-  return (
-    <div
-      aria-hidden
-      style={{
-        width: `${size}px`,
-        height: `${size}px`,
-        flex: 'none',
-        borderRadius: '4px',
-        border: `1.5px solid ${look.border}`,
-        background: look.bg,
-        color: '#fff',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        fontSize: '12px',
-        fontWeight: 800,
-      }}
-    >
-      {look.mark}
-    </div>
-  );
-}
-
-function look(checked: boolean, onColor: string): CheckboxLook {
-  return checked
-    ? { bg: onColor, border: onColor, mark: '✓' }
-    : { bg: 'var(--wb-surface)', border: 'var(--wb-line)', mark: '' };
 }
 
 export function RightPane({ view, phase, handlers, isPending }: RightPaneProps) {
@@ -116,190 +55,13 @@ export function RightPane({ view, phase, handlers, isPending }: RightPaneProps) 
         {view.rightTitle}
       </div>
 
-      {view.isGrid && <GridInfo view={view} />}
+      {view.isGrid && <RightPaneGridInfo view={view} />}
       {view.isSet && (
         <SetWork view={view} phase={phase} handlers={handlers} isPending={isPending} />
       )}
       {view.isSeta && (
         <SetAudit view={view} phase={phase} handlers={handlers} isPending={isPending} />
       )}
-    </div>
-  );
-}
-
-/* ============================================================================
- * isGrid: 患者情報
- * ========================================================================== */
-
-function GridInfo({ view }: { view: WorkbenchView }) {
-  const { cur, infoItems } = view;
-  return (
-    <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-      {/* アバター + 氏名 + フリガナ */}
-      <div
-        style={{
-          flex: 'none',
-          padding: '9px 11px',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '10px',
-          borderBottom: '1px solid var(--wb-line)',
-          background: 'var(--wb-surface)',
-        }}
-      >
-        <div
-          aria-hidden
-          style={{
-            width: '42px',
-            height: '42px',
-            borderRadius: '7px',
-            background: cur.avatarBg,
-            color: '#fff',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            fontSize: '18px',
-            fontWeight: 700,
-          }}
-        >
-          {cur.initial}
-        </div>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div
-            style={{
-              fontSize: '15px',
-              fontWeight: 700,
-              color: 'var(--wb-ink)',
-              overflowWrap: 'anywhere',
-            }}
-          >
-            {cur.name}
-          </div>
-          <div
-            style={{
-              fontSize: '12px',
-              color: 'var(--wb-ink-muted)',
-              overflowWrap: 'anywhere',
-            }}
-          >
-            {cur.kana}
-          </div>
-        </div>
-      </div>
-
-      {/* 患者情報行 */}
-      <div style={{ flex: 'none', padding: '6px 11px', borderBottom: '1px solid var(--wb-line)' }}>
-        {infoItems.map((it) => (
-          <div
-            key={it.label}
-            style={{
-              display: 'flex',
-              alignItems: 'flex-start',
-              padding: '3px 0',
-              borderBottom: '1px dotted var(--wb-line)',
-            }}
-          >
-            <span
-              style={{
-                width: '96px',
-                flex: 'none',
-                fontSize: '12px',
-                color: 'var(--wb-ink-muted)',
-              }}
-            >
-              {it.label}
-            </span>
-            <span
-              style={{
-                flex: 1,
-                fontSize: '14px',
-                fontWeight: 700,
-                color: 'var(--wb-ink)',
-                lineHeight: 1.6,
-              }}
-            >
-              {it.value}
-            </span>
-          </div>
-        ))}
-      </div>
-
-      {/* 属性チップ */}
-      <div
-        style={{
-          flex: 'none',
-          padding: '8px 11px',
-          borderBottom: '1px solid var(--wb-line)',
-          display: 'flex',
-          flexWrap: 'wrap',
-          gap: '5px',
-        }}
-      >
-        {cur.chips.map((c, i) => (
-          <span
-            key={`${c.label}-${i}`}
-            style={{
-              fontSize: '12px',
-              fontWeight: 700,
-              color: c.color,
-              background: c.bg,
-              border: `1px solid ${c.border}`,
-              borderRadius: '11px',
-              padding: '2px 9px',
-            }}
-          >
-            {c.label}
-          </span>
-        ))}
-      </div>
-
-      {/* 備考・申し送り */}
-      <div
-        style={{
-          flex: 1,
-          minHeight: 0,
-          display: 'flex',
-          flexDirection: 'column',
-          padding: '8px 11px',
-        }}
-      >
-        <SectionHeading color="var(--wb-state-confirm)" label="備考・申し送り" />
-        <div
-          data-testid="calendar-outside-meds-confirmation"
-          className={styles.scrollRegion}
-          role="region"
-          aria-label="患者の備考・申し送り"
-          tabIndex={0}
-          style={{
-            flex: 1,
-            minHeight: 0,
-            overflowY: 'auto',
-            background: 'var(--wb-confirm-bg-pale)',
-            border: '1px solid var(--wb-confirm-border)',
-            borderRadius: '5px',
-            padding: '9px 11px',
-          }}
-        >
-          {cur.biko.map((b, i) => (
-            <div
-              key={`${b}-${i}`}
-              style={{
-                display: 'flex',
-                gap: '6px',
-                marginBottom: '5px',
-                fontSize: '14px',
-                lineHeight: 1.6,
-                color: 'var(--wb-state-confirm)',
-              }}
-            >
-              <span aria-hidden style={{ color: 'var(--wb-state-confirm)', fontWeight: 700 }}>
-                ●
-              </span>
-              <span style={{ flex: 1 }}>{b}</span>
-            </div>
-          ))}
-        </div>
-      </div>
     </div>
   );
 }
@@ -553,7 +315,10 @@ function SetWork({ view, phase, handlers, isPending = false }: SetWorkProps) {
           margin: '0 9px 9px 9px',
         }}
       >
-        <SectionHeading color="var(--wb-tag-gaiyo)" label="カレンダーその他薬（同梱確認）" />
+        <RightPaneSectionHeading
+          color="var(--wb-tag-gaiyo)"
+          label="カレンダーその他薬（同梱確認）"
+        />
         <div
           className={styles.scrollRegion}
           role="region"
@@ -588,7 +353,7 @@ function SetWork({ view, phase, handlers, isPending = false }: SetWorkProps) {
                 textAlign: 'left',
               }}
             >
-              <CheckBox look={look(o.checked, 'var(--wb-state-done)')} />
+              <RightPaneCheckBox look={rightPaneCheckboxLook(o.checked, 'var(--wb-state-done)')} />
               <span
                 style={{
                   flex: 'none',
@@ -632,7 +397,10 @@ function SetWork({ view, phase, handlers, isPending = false }: SetWorkProps) {
 
       {/* 訪問持出パケット 完成判定 */}
       <div style={{ flex: 'none', margin: '0 9px 9px 9px' }}>
-        <SectionHeading color="var(--wb-phase-setp-strong)" label="訪問持出パケット 完成判定" />
+        <RightPaneSectionHeading
+          color="var(--wb-phase-setp-strong)"
+          label="訪問持出パケット 完成判定"
+        />
         <div
           data-testid="visit-carry-packet-confirmation"
           style={{
@@ -661,7 +429,9 @@ function SetWork({ view, phase, handlers, isPending = false }: SetWorkProps) {
                 textAlign: 'left',
               }}
             >
-              <CheckBox look={look(pk.checked, 'var(--wb-phase-setp-strong)')} />
+              <RightPaneCheckBox
+                look={rightPaneCheckboxLook(pk.checked, 'var(--wb-phase-setp-strong)')}
+              />
               <span
                 style={{
                   flex: 1,
@@ -831,7 +601,10 @@ function SetAudit({ view, phase, handlers, isPending = false }: SetAuditProps) {
                 textAlign: 'left',
               }}
             >
-              <CheckBox look={look(ci.checked, 'var(--wb-phase-audit-strong)')} size={16} />
+              <RightPaneCheckBox
+                look={rightPaneCheckboxLook(ci.checked, 'var(--wb-phase-audit-strong)')}
+                size={16}
+              />
               <span
                 style={{ flex: 1, fontSize: '12px', color: 'var(--wb-ink-muted)', lineHeight: 1.6 }}
               >
@@ -956,7 +729,7 @@ function SetAudit({ view, phase, handlers, isPending = false }: SetAuditProps) {
 
       {/* 差戻し（セットへ戻す）*/}
       <div style={{ flex: 'none', margin: '0 9px 9px 9px' }}>
-        <SectionHeading color="var(--wb-state-blocked)" label="差戻し（セットへ戻す）" />
+        <RightPaneSectionHeading color="var(--wb-state-blocked)" label="差戻し（セットへ戻す）" />
         <div
           style={{
             background: 'var(--wb-surface)',
@@ -1048,7 +821,10 @@ function SetAudit({ view, phase, handlers, isPending = false }: SetAuditProps) {
           margin: '0 9px 9px 9px',
         }}
       >
-        <SectionHeading color="var(--wb-state-blocked)" label="リスク確認順（上位を先に）" />
+        <RightPaneSectionHeading
+          color="var(--wb-state-blocked)"
+          label="リスク確認順（上位を先に）"
+        />
         <div
           className={styles.scrollRegion}
           role="region"
