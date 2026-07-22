@@ -583,11 +583,6 @@
       "task_id": "MAINT-FILE-SIZE-1000-001"
     },
     {
-      "path": "src/components/features/visits/visit-medication-stock-observation-panel.tsx",
-      "max_lines": 1073,
-      "task_id": "MAINT-FILE-SIZE-1000-001"
-    },
-    {
       "path": "src/lib/api/rate-limit.test.ts",
       "max_lines": 1438,
       "task_id": "MAINT-FILE-SIZE-1000-001"
