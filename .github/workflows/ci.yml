@@ -415,6 +415,11 @@ jobs:
       - name: Prepare E2E database
         run: pnpm --config.verify-deps-before-run=false db:e2e:prepare
 
+      - name: Run required PostgreSQL integration manifest
+        env:
+          POSTGRES_INTEGRATION_DATABASE_URL: ${{ env.DATABASE_URL }}
+        run: pnpm --config.verify-deps-before-run=false test:postgres-integration:manifest
+
       - name: Verify stable cursor pagination ordering
         env:
           PAGINATION_ORDER_DATABASE_URL: ${{ env.DATABASE_URL }}
