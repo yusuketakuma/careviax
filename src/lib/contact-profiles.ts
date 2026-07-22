@@ -1,4 +1,4 @@
-import type { CommunicationChannel, ProfessionTypeEnum } from '@prisma/client';
+import type { CommunicationChannel, Prisma, ProfessionTypeEnum } from '@prisma/client';
 import { buildCareTeamContactChannelReadiness } from '@/lib/patient/care-team-contact';
 import type { ContactProfileKind } from './contact-profile-options';
 import type {

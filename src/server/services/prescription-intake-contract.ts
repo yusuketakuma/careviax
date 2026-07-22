@@ -100,6 +100,12 @@ export type MedicationProfileSyncLine = {
   start_date?: Date | string | null;
 };
 
+export interface ProfileSyncResult {
+  created: number;
+  updated: number;
+  discontinued: number;
+}
+
 export type PrescriptionLineDrugResolutionStatus =
   | 'resolved'
   | 'missing_code'

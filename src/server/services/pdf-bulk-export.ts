@@ -2,6 +2,7 @@ import { Prisma } from '@prisma/client';
 import { zipSync } from 'fflate';
 import { withOrgContext } from '@/lib/db/rls';
 import type { RequestAuthContext } from '@/lib/auth/request-context';
+import type { VisitScheduleAccessContext } from '@/lib/auth/visit-schedule-access';
 import { hasPermission } from '@/lib/auth/permissions';
 import { buildFileDownloadHref } from '@/lib/files/navigation';
 import { mapWithConcurrency } from '@/lib/utils/concurrency';

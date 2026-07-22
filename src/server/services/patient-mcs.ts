@@ -32,9 +32,21 @@ export {
   parseAgentBrowserEvalJson,
   sanitizePatientMcsExternalErrorMessage,
 } from './patient-mcs-browser';
-import type {} from './patient-mcs.types';
+import type {
+  PatientMcsOverview,
+  PatientMcsProfileRecord,
+  PatientMcsSyncResult,
+} from './patient-mcs.types';
 
-export type {} from './patient-mcs.types';
+export type {
+  PatientMcsCheckLogRecord,
+  PatientMcsLinkRecord,
+  PatientMcsMessageRecord,
+  PatientMcsOverview,
+  PatientMcsProfileRecord,
+  PatientMcsSummaryRecord,
+  PatientMcsSyncResult,
+} from './patient-mcs.types';
 
 const MCS_HOST = 'www.medical-care.net';
 const DEFAULT_MAX_MESSAGES = 50;

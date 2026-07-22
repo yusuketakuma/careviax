@@ -225,8 +225,12 @@ import {
   buildDrugMasterCodeWheres,
   normalizePrescriptionDrugCode,
   resolveCreateIntakeLineDrugIdentities,
+  type DrugMasterReader,
   type PreparedIntakeReads,
-  type SourcePrescriptionLineValidationResult,
+} from './prescription-intake-drug-identity';
+export {
+  PRESCRIPTION_INTAKE_WRITE_TX_MAX_WAIT_MS,
+  PRESCRIPTION_INTAKE_WRITE_TX_TIMEOUT_MS,
 } from './prescription-intake-drug-identity';
 
 async function createStructuringBlockExceptionIfNeeded(

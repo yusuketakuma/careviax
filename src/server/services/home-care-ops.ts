@@ -21,6 +21,7 @@ import {
   finalizeHomeCareFeatureSummary,
   hasAnyKeyword,
   type DbClient,
+  type FeatureTaskCountMap,
 } from './home-care-ops-shared';
 export {
   HOME_CARE_FEATURE_DEFINITIONS,

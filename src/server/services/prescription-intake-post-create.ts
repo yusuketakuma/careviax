@@ -15,7 +15,8 @@ import {
   applyPrescriptionSupplyForIntake,
   type ApplyPrescriptionSupplyForIntakeResult,
 } from '@/modules/pharmacy/medication-stock/application/apply-prescription-supply';
-import type { MedicationProfileSyncLine } from './prescription-intake-contract';
+import type { MedicationProfileSyncLine, ProfileSyncResult } from './prescription-intake-contract';
+export type { ProfileSyncResult } from './prescription-intake-contract';
 import {
   buildDrugMasterCodeWheres,
   normalizePrescriptionLineDrugMasterId,
@@ -134,12 +135,6 @@ export async function detectIntakeChanges(
 // ────────────────────────────────────────────────────────────────────────────
 // #2 服薬プロファイル自動同期 — QR 処方確定時に MedicationProfile を更新
 // ────────────────────────────────────────────────────────────────────────────
-
-export interface ProfileSyncResult {
-  created: number;
-  updated: number;
-  discontinued: number;
-}
 
 export async function syncMedicationProfiles(
   patientId: string,
