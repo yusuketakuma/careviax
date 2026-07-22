@@ -695,7 +695,7 @@
       },
       {
         "path": ".github/workflows/ci.yml",
-        "sha256": "10d105f49e9e52a35db77c3aae873672961c9d2df70e6e0798ae7b1f5765415c"
+        "sha256": "1866491d6ff2e5f4c4138a0af9fbdf9ef308ccb1c899c982d8c0c36d8c435241"
       },
       {
         "path": ".omx/context/repo-audit-20260404T114947Z.md",
@@ -735,7 +735,7 @@
       },
       {
         "path": "Plans.md",
-        "sha256": "089367936a74ebd95faff96227eac97b342fa1b47f90632f3f756268b8a267fb"
+        "sha256": "f226c34b2964219debf8b4ac23eb39158e868d887a5ae4193f73b29ad9faab3d"
       },
       {
         "path": "README.md",
@@ -903,7 +903,7 @@
       },
       {
         "path": "ops/refactor/STATE.md",
-        "sha256": "d3e24d370af759223e912a25b223c2e1d28fe9f97db522350eac2995a20e95b6"
+        "sha256": "8e461a8a264fd81d9dc7dc3d021c7ca90ddb98ea2088d5d4d2cd0f5944052dc6"
       },
       {
         "path": "ops/refactor/archive/PERF_FINDINGS.md",
@@ -1147,7 +1147,7 @@
       },
       {
         "path": "src/app/(dashboard)/patients/[id]/card-workspace-response-schemas.ts",
-        "sha256": "794ceaea595e6da7603ad219fe888e7467cff4044b14c8097d2cd562887fcacc"
+        "sha256": "a59cb10909c72cecd30ba33bf4be1d74fa9cfe0ef7dc349a05f71e01f466d7d9"
       },
       {
         "path": "src/app/(dashboard)/patients/[id]/card-workspace.tsx",
@@ -1290,20 +1290,72 @@
         "sha256": "38f209327ad8ad055b34f66b1fc1549ea006cf8a3c57fc5bbabc1a306359fc25"
       },
       {
+        "path": "src/app/(dashboard)/visits/[id]/record/visit-patient-reflection-panel.tsx",
+        "sha256": "c5f667bcc4ff22e0b67095e7ea12d6411378a5f8bfed767314bf1c80c424bacb"
+      },
+      {
+        "path": "src/app/(dashboard)/visits/[id]/record/visit-patient-reflection-recovery.tsx",
+        "sha256": "9e8864240f5d39550c31e0a4d9b231b35ed7cb1699b63b6447b9c8ba41988d18"
+      },
+      {
+        "path": "src/app/(dashboard)/visits/[id]/record/visit-patient-reflection.ts",
+        "sha256": "c8edee86ca5a9a37560a659d740025ce1909546bf20add2fde0181b9c6c82f8f"
+      },
+      {
+        "path": "src/app/(dashboard)/visits/[id]/record/visit-record-form-base.tsx",
+        "sha256": "4c00d6dcdc40269bbe217f4f6e11443fecd368c80e9c7386d80cfc0574861730"
+      },
+      {
+        "path": "src/app/(dashboard)/visits/[id]/record/visit-record-form-controller.tsx",
+        "sha256": "4ad7bc843dd73c329a5d17e36b7af2d84225f71de9249ca7bc031c069e9bfae5"
+      },
+      {
+        "path": "src/app/(dashboard)/visits/[id]/record/visit-record-form-fields.tsx",
+        "sha256": "66c3c83e8573f0dab6861381bb923983b3a5569ddabbdac2445220ca92ec9651"
+      },
+      {
+        "path": "src/app/(dashboard)/visits/[id]/record/visit-record-form-model.ts",
+        "sha256": "60e71e7f7bde65f16d231527ac4710ced5f9bb4bc209bc14a2b4d3c731a66b1d"
+      },
+      {
         "path": "src/app/(dashboard)/visits/[id]/record/visit-record-form-response-schemas.ts",
-        "sha256": "ea28116aa4859983c7088ccd8777aa9afb722db58e2882957ec9c32bf18b81a1"
+        "sha256": "6697391a687867f97256ce987cc61710aa502dd9175d8961f95371336fa11123"
+      },
+      {
+        "path": "src/app/(dashboard)/visits/[id]/record/visit-record-form-view.tsx",
+        "sha256": "74881276e21c4d6335b0f5ba1055e1bf2d01286f0275a46327d90d0b0dd3ef42"
+      },
+      {
+        "path": "src/app/(dashboard)/visits/[id]/record/visit-record-form.completion.test.tsx",
+        "sha256": "71f0226b756667c93beb78812b26d84234ddc040c8db6a3aeec06d7ed063da29"
+      },
+      {
+        "path": "src/app/(dashboard)/visits/[id]/record/visit-record-form.patient-reflect.test.tsx",
+        "sha256": "94cf73d35cedceba2a051118c97193869873d29cc1a9ae34991fe5ddcdccd678"
+      },
+      {
+        "path": "src/app/(dashboard)/visits/[id]/record/visit-record-form.persistence.test.tsx",
+        "sha256": "550b09df45d55c30aa75dcc9a18bedc62506f190b0021af63d732109dacdc783"
       },
       {
         "path": "src/app/(dashboard)/visits/[id]/record/visit-record-form.shared.ts",
         "sha256": "70f6e23a7368b4e66c05f900073dc314a700c31aaeff91e8b3648d0721b51106"
       },
       {
+        "path": "src/app/(dashboard)/visits/[id]/record/visit-record-form.test-support.tsx",
+        "sha256": "924dc3009e62a59dedcae868c6c2532ef3d0b0b72cb56c87debdb738f2ffa329"
+      },
+      {
         "path": "src/app/(dashboard)/visits/[id]/record/visit-record-form.test.tsx",
-        "sha256": "93df9e9eab31b6dc63a87fcf9318bea83bf97bc56156a419e8c041d6318fdae7"
+        "sha256": "2f987364a41300aac5650daa04840b96aea8016d2d69beb4326777df90eb9e50"
       },
       {
         "path": "src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx",
-        "sha256": "75abe71b098c8ea292a9ced6156630b799a7ccfd729c341f90859aad94ad8fdc"
+        "sha256": "c63dfd904a1930701997e99032bb82d1ec3c04221fcaf90a681f925076f17985"
+      },
+      {
+        "path": "src/app/(dashboard)/visits/[id]/record/visit-record-readiness.ts",
+        "sha256": "1c3c14652494c92b75ef649f8d1ba5b5812d7ca4e30d55dfa0bf4971ddbe201f"
       },
       {
         "path": "src/app/(dashboard)/visits/[id]/record/visit-step-nav.tsx",
@@ -1651,11 +1703,11 @@
       },
       {
         "path": "src/lib/stores/offline-db.test.ts",
-        "sha256": "e4ccee5fd1f2a546d07411cc972efaad7e00b135ab48aaef016afb19d6df7c25"
+        "sha256": "23d96316f28b0caedb474537a69b9339240efca65deb6ce547a1aac579d2772d"
       },
       {
         "path": "src/lib/stores/offline-db.ts",
-        "sha256": "16d35aa902ffb2236b766a5ab6bd9cc226704d5d93d035213e6036138abeffd5"
+        "sha256": "f404202f10a5c4a70dde49c9ba1bf1e0fe3619f95fc9168c2dab16b4b70c727f"
       },
       {
         "path": "src/lib/utils/performance.ts",
@@ -2183,7 +2235,7 @@
       },
       {
         "path": "tools/scripts/check-authz-account-model-v1-inventory.test.ts",
-        "sha256": "c3bfe89bd3ecd4306e50d469e8245048c8df4bdde72e29b47b407e7ac9958d69"
+        "sha256": "69c9df5f7ff4655b50810fdb1011ad599a9da5cc2ad1d2addf9e89f2e05d40d5"
       },
       {
         "path": "tools/scripts/check-care-report-duplicates.ts",
@@ -2291,7 +2343,7 @@
       },
       {
         "path": "tools/scripts/setup-rls-test-role.sql",
-        "sha256": "317fa70b62180690d70c4728aebbdf4f3c679313956c9bc1704781cd8c208196"
+        "sha256": "313a1d72f12bdcafcf305f0b9e6079bc3416b9b762ee856339adabd4a63c656a"
       },
       {
         "path": "tools/scripts/start-next-standalone.ts",
@@ -17137,24 +17189,28 @@
       "capability_profile": "p_81cb4b837bd5"
     },
     {
-      "id": "phos_role:src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx",
+      "id": "phos_role:src/app/(dashboard)/visits/[id]/record/visit-record-form-fields.tsx",
       "detector": "phos_role",
-      "path": "src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx",
+      "path": "src/app/(dashboard)/visits/[id]/record/visit-record-form-fields.tsx",
       "evidence_sha256": "7aedf80d3260081bc1720598992270ac1d4fa3e2a1a00e1a891dc98a3d606d14",
       "principal": "human",
       "lifecycles": ["request"],
       "surfaces": ["ui_affordance"],
-      "exact_values_or_scopes": ["PHARMACIST"],
-      "route_method_purpose": "not_applicable:non-route-source:src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx",
-      "precedence_selection": "not_applicable:no-selection-observed:src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx",
-      "synthetic_derived_mapping": "not_applicable:no-synthetic-mapping-observed:src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx",
-      "persistence_contract": "not_applicable:no-persistence-observed:src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx",
-      "ttl_contract": "not_applicable:no-ttl-observed:src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx",
+      "exact_values_or_scopes": [
+        "not_applicable:phos_role:no-enumerated-value:src/app/(dashboard)/visits/[id]/record/visit-record-form-fields.tsx"
+      ],
+      "route_method_purpose": "not_applicable:non-route-source:src/app/(dashboard)/visits/[id]/record/visit-record-form-fields.tsx",
+      "precedence_selection": "not_applicable:no-selection-observed:src/app/(dashboard)/visits/[id]/record/visit-record-form-fields.tsx",
+      "synthetic_derived_mapping": "not_applicable:no-synthetic-mapping-observed:src/app/(dashboard)/visits/[id]/record/visit-record-form-fields.tsx",
+      "persistence_contract": "not_applicable:no-persistence-observed:src/app/(dashboard)/visits/[id]/record/visit-record-form-fields.tsx",
+      "ttl_contract": "not_applicable:no-ttl-observed:src/app/(dashboard)/visits/[id]/record/visit-record-form-fields.tsx",
       "mapping_disposition": "candidate_requires_human",
       "owner": "PHOS / Authz",
       "approval_status": "pending_owner_review",
-      "test_refs": ["src/app/(dashboard)/visits/[id]/record/visit-record-form.test.tsx"],
-      "reprojection_or_removal": "owner_review_required_before_cutover:src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx",
+      "test_refs": [
+        "uncovered:no-focused-test:src/app/(dashboard)/visits/[id]/record/visit-record-form-fields.tsx"
+      ],
+      "reprojection_or_removal": "owner_review_required_before_cutover:src/app/(dashboard)/visits/[id]/record/visit-record-form-fields.tsx",
       "binding_profile": "p_5e92e76aae4e",
       "capability_profile": "p_37e1edd98840"
     },
@@ -20016,7 +20072,7 @@
       "id": "rls_authz:tools/scripts/setup-rls-test-role.sql",
       "detector": "rls_authz",
       "path": "tools/scripts/setup-rls-test-role.sql",
-      "evidence_sha256": "3a544739599f6ec3433ca5509239c1e8a62fe3f317f3f03ae6880a1e547e3d42",
+      "evidence_sha256": "2f35f22a4f89aeaa35c9e78b560a09929a79b2a1afe84081a8fb649838752a87",
       "principal": "human",
       "lifecycles": ["request"],
       "surfaces": ["rls"],
@@ -22904,7 +22960,7 @@
       "mapping_disposition": "candidate_requires_human",
       "owner": "Identity / Authz",
       "approval_status": "pending_owner_review",
-      "test_refs": ["uncovered:no-focused-test:src/server/services/patient-detail-documents.ts"],
+      "test_refs": ["src/server/services/patient-detail-documents.test.ts"],
       "reprojection_or_removal": "owner_review_required_before_cutover:src/server/services/patient-detail-documents.ts",
       "binding_profile": "p_351022b71b3b",
       "capability_profile": "p_bbf8bda2a24c"
@@ -27233,6 +27289,120 @@
       "reprojection_or_removal": "owner_review_required_before_cutover:src/server/services/nav-badges.ts",
       "binding_profile": "p_b02161036e9d",
       "capability_profile": "p_182a48efe1c9"
+    },
+    {
+      "id": "mapping_precedence:src/app/api/patients/[id]/route.ts",
+      "detector": "mapping_precedence",
+      "path": "src/app/api/patients/[id]/route.ts",
+      "evidence_sha256": "6782ee68f37abc01653f9691281ca4ac733f24a62b15804d53fe863c60458e5d",
+      "principal": "human",
+      "lifecycles": ["request"],
+      "surfaces": ["rls", "writer"],
+      "exact_values_or_scopes": [
+        "not_applicable:mapping_precedence:no-enumerated-value:src/app/api/patients/[id]/route.ts"
+      ],
+      "route_method_purpose": "GET,PATCH /api/patients/[id] purpose=legacy_unspecified_pending_review",
+      "precedence_selection": "legacy_observed_requires_human_review",
+      "synthetic_derived_mapping": "not_applicable:no-synthetic-mapping-observed:src/app/api/patients/[id]/route.ts",
+      "persistence_contract": "not_applicable:no-persistence-observed:src/app/api/patients/[id]/route.ts",
+      "ttl_contract": "not_applicable:no-ttl-observed:src/app/api/patients/[id]/route.ts",
+      "mapping_disposition": "candidate_requires_human",
+      "owner": "Identity / Authz",
+      "approval_status": "pending_owner_review",
+      "test_refs": ["src/app/api/patients/[id]/route.test.ts"],
+      "reprojection_or_removal": "owner_review_required_before_cutover:src/app/api/patients/[id]/route.ts",
+      "binding_profile": "p_d3f8b85adfe7",
+      "capability_profile": "p_a04a7f9d4aaf"
+    },
+    {
+      "id": "permission_capability:src/app/api/patients/[id]/patient-get-handler.ts",
+      "detector": "permission_capability",
+      "path": "src/app/api/patients/[id]/patient-get-handler.ts",
+      "evidence_sha256": "98c8ebf875966206afb6b768efbd926468233985dc30ca85a73e8620a7982207",
+      "principal": "human",
+      "lifecycles": ["request"],
+      "surfaces": ["reader_evaluator"],
+      "exact_values_or_scopes": ["supporting_literal:canManageBilling"],
+      "route_method_purpose": "not_applicable:non-route-source:src/app/api/patients/[id]/patient-get-handler.ts",
+      "precedence_selection": "not_applicable:no-selection-observed:src/app/api/patients/[id]/patient-get-handler.ts",
+      "synthetic_derived_mapping": "not_applicable:no-synthetic-mapping-observed:src/app/api/patients/[id]/patient-get-handler.ts",
+      "persistence_contract": "not_applicable:no-persistence-observed:src/app/api/patients/[id]/patient-get-handler.ts",
+      "ttl_contract": "not_applicable:no-ttl-observed:src/app/api/patients/[id]/patient-get-handler.ts",
+      "mapping_disposition": "inventory_only",
+      "owner": "Permission matrix",
+      "approval_status": "pending_owner_review",
+      "test_refs": ["uncovered:no-focused-test:src/app/api/patients/[id]/patient-get-handler.ts"],
+      "reprojection_or_removal": "owner_review_required_before_cutover:src/app/api/patients/[id]/patient-get-handler.ts",
+      "binding_profile": "p_d30ff6d0cd63",
+      "capability_profile": "p_d89f555cccec"
+    },
+    {
+      "id": "raw_role_semantics:src/app/api/patients/[id]/route.test-support.ts",
+      "detector": "raw_role_semantics",
+      "path": "src/app/api/patients/[id]/route.test-support.ts",
+      "evidence_sha256": "1a5b91b017f92c09bf614bdea280cc212e58fb6a3b528eea691da19c6ddc03ee",
+      "principal": "human",
+      "lifecycles": ["request"],
+      "surfaces": ["rls", "writer"],
+      "exact_values_or_scopes": ["pharmacist"],
+      "route_method_purpose": "not_applicable:non-route-source:src/app/api/patients/[id]/route.test-support.ts",
+      "precedence_selection": "not_applicable:no-selection-observed:src/app/api/patients/[id]/route.test-support.ts",
+      "synthetic_derived_mapping": "not_applicable:no-synthetic-mapping-observed:src/app/api/patients/[id]/route.test-support.ts",
+      "persistence_contract": "not_applicable:no-persistence-observed:src/app/api/patients/[id]/route.test-support.ts",
+      "ttl_contract": "not_applicable:no-ttl-observed:src/app/api/patients/[id]/route.test-support.ts",
+      "mapping_disposition": "candidate_requires_human",
+      "owner": "Identity / Authz",
+      "approval_status": "pending_owner_review",
+      "test_refs": ["uncovered:no-focused-test:src/app/api/patients/[id]/route.test-support.ts"],
+      "reprojection_or_removal": "owner_review_required_before_cutover:src/app/api/patients/[id]/route.test-support.ts",
+      "binding_profile": "p_2a62cb15a377",
+      "capability_profile": "p_25e54dcf8b32"
+    },
+    {
+      "id": "raw_role_semantics:src/app/api/visit-schedules/[id]/route.test-support.ts",
+      "detector": "raw_role_semantics",
+      "path": "src/app/api/visit-schedules/[id]/route.test-support.ts",
+      "evidence_sha256": "1a5b91b017f92c09bf614bdea280cc212e58fb6a3b528eea691da19c6ddc03ee",
+      "principal": "human",
+      "lifecycles": ["request"],
+      "surfaces": ["rls", "writer"],
+      "exact_values_or_scopes": ["pharmacist"],
+      "route_method_purpose": "not_applicable:non-route-source:src/app/api/visit-schedules/[id]/route.test-support.ts",
+      "precedence_selection": "not_applicable:no-selection-observed:src/app/api/visit-schedules/[id]/route.test-support.ts",
+      "synthetic_derived_mapping": "not_applicable:no-synthetic-mapping-observed:src/app/api/visit-schedules/[id]/route.test-support.ts",
+      "persistence_contract": "not_applicable:no-persistence-observed:src/app/api/visit-schedules/[id]/route.test-support.ts",
+      "ttl_contract": "not_applicable:no-ttl-observed:src/app/api/visit-schedules/[id]/route.test-support.ts",
+      "mapping_disposition": "candidate_requires_human",
+      "owner": "Identity / Authz",
+      "approval_status": "pending_owner_review",
+      "test_refs": [
+        "uncovered:no-focused-test:src/app/api/visit-schedules/[id]/route.test-support.ts"
+      ],
+      "reprojection_or_removal": "owner_review_required_before_cutover:src/app/api/visit-schedules/[id]/route.test-support.ts",
+      "binding_profile": "p_2a62cb15a377",
+      "capability_profile": "p_25e54dcf8b32"
+    },
+    {
+      "id": "rls_authz:tools/scripts/run-postgres-integration-manifest.ts",
+      "detector": "rls_authz",
+      "path": "tools/scripts/run-postgres-integration-manifest.ts",
+      "evidence_sha256": "612ff83bbcd731e7a3dd9a403e39cd4f5f56c405f72d96153eb71f3dbdca4d46",
+      "principal": "human",
+      "lifecycles": ["request"],
+      "surfaces": ["rls"],
+      "exact_values_or_scopes": ["marker:BYPASSRLS"],
+      "route_method_purpose": "not_applicable:non-route-source:tools/scripts/run-postgres-integration-manifest.ts",
+      "precedence_selection": "not_applicable:no-selection-observed:tools/scripts/run-postgres-integration-manifest.ts",
+      "synthetic_derived_mapping": "not_applicable:no-synthetic-mapping-observed:tools/scripts/run-postgres-integration-manifest.ts",
+      "persistence_contract": "not_applicable:no-persistence-observed:tools/scripts/run-postgres-integration-manifest.ts",
+      "ttl_contract": "not_applicable:no-ttl-observed:tools/scripts/run-postgres-integration-manifest.ts",
+      "mapping_disposition": "inventory_only",
+      "owner": "DB / Authz",
+      "approval_status": "pending_owner_review",
+      "test_refs": ["tools/scripts/run-postgres-integration-manifest.test.ts"],
+      "reprojection_or_removal": "owner_review_required_before_cutover:tools/scripts/run-postgres-integration-manifest.ts",
+      "binding_profile": "p_5e92e76aae4e",
+      "capability_profile": "p_1739990293a0"
     }
   ],
   "binding_profiles": {
@@ -32085,6 +32255,12 @@
       "sha256": "589ceb4cb78b006c4f44c3e7b0703461df21eaa8e492cdf47d0224d0ce3d8f5f"
     },
     {
+      "path": "src/app/api/patients/[id]/patient-patch-occ.integration.test.ts",
+      "classes": ["test"],
+      "detectors": ["raw_role_semantics", "rls_authz"],
+      "sha256": "afe42ba85c222ed43ada6a47c2a647eb0cbf9fafe6ef30ccd5a22a2d0b8caaef"
+    },
+    {
       "path": "src/app/api/patients/[id]/prescriptions/e-prescription/route.test.ts",
       "classes": ["test"],
       "detectors": ["permission_capability", "raw_role_semantics"],
@@ -32121,10 +32297,16 @@
       "sha256": "3ff7eede6d494f750873f44e9fbcb1f2fc3b0fecf91aa94cda710e0d4b43501b"
     },
     {
+      "path": "src/app/api/patients/[id]/route.get-projection.test.ts",
+      "classes": ["test"],
+      "detectors": ["raw_role_semantics", "tenant_role"],
+      "sha256": "f4801cf5484b7e464af1eb95389075d8576c9c0eab45a57ce2a88dc63146d6e9"
+    },
+    {
       "path": "src/app/api/patients/[id]/route.test.ts",
       "classes": ["test"],
-      "detectors": ["permission_capability", "raw_role_semantics", "tenant_role"],
-      "sha256": "cb138c2750aa86a719954dc1c5f31d39383663abbab5a1ad0d44422a18e38307"
+      "detectors": ["permission_capability", "raw_role_semantics"],
+      "sha256": "67e7f5ce08c56c1241426af06224ef6fe99183923cd5ae21f45a03c2976c4700"
     },
     {
       "path": "src/app/api/patients/[id]/structured-care/route.test.ts",
@@ -32963,10 +33145,40 @@
       "sha256": "b9dbd285319d70b80da5dd88f121d59f6867d8e13b4950e0c021e570e47ba2ba"
     },
     {
-      "path": "src/app/api/visit-schedules/[id]/route.test.ts",
+      "path": "src/app/api/visit-schedules/[id]/route.authorization.test.ts",
       "classes": ["test"],
       "detectors": ["mapping_precedence", "raw_role_semantics", "tenant_role"],
-      "sha256": "da110f36bef177e8ecde61f9b11b0b75abf769b76ac0ac0ba868be3a96e90682"
+      "sha256": "1d1dff98846a55ade69edbe17cc0e570b4c83717575e5dd6d1967e9ff1850d0a"
+    },
+    {
+      "path": "src/app/api/visit-schedules/[id]/route.patch-assignment.test.ts",
+      "classes": ["test"],
+      "detectors": ["mapping_precedence"],
+      "sha256": "8e156cffb4fdbed9155dae46c7868a8b8e02e41825ddf4eb9c2774a10d3b9097"
+    },
+    {
+      "path": "src/app/api/visit-schedules/[id]/route.patch-conflicts.test.ts",
+      "classes": ["test"],
+      "detectors": ["mapping_precedence"],
+      "sha256": "f3a7965e8f41a9bd8619c1bda6e603a498f8118afe85bda34a460bfd53f1890d"
+    },
+    {
+      "path": "src/app/api/visit-schedules/[id]/route.patch-readiness.test.ts",
+      "classes": ["test"],
+      "detectors": ["mapping_precedence", "raw_role_semantics"],
+      "sha256": "5e7af9efeda826fd1cfb3ddedd4c1b79283eda4da6900f98b021c91489a74ef8"
+    },
+    {
+      "path": "src/app/api/visit-schedules/[id]/route.patch.test.ts",
+      "classes": ["test"],
+      "detectors": ["mapping_precedence"],
+      "sha256": "e80e05a6334f21d4eecc04847b72e568c39ded83889ee36f07faf98c56a6a078"
+    },
+    {
+      "path": "src/app/api/visit-schedules/[id]/route.test.ts",
+      "classes": ["test"],
+      "detectors": ["mapping_precedence", "raw_role_semantics"],
+      "sha256": "49c8c84c8177db3306256491e3d0361e586e9be1c775fc79941f8808bbe7dd7e"
     },
     {
       "path": "src/app/api/visit-schedules/day-board/route.test.ts",
@@ -34035,6 +34247,30 @@
       "sha256": "4d5c53516df66a2ffe34fe83ed64ebe69db963054cdfa5a8fcbc62520aa373a5"
     },
     {
+      "path": "src/server/services/patient-detail-documents.test.ts",
+      "classes": ["test"],
+      "detectors": ["raw_role_semantics", "tenant_role"],
+      "sha256": "2ec16a50cc9936d31284b31c2a84ee80bd3ece5abe3fd6f2f27be0f2acee1710"
+    },
+    {
+      "path": "src/server/services/patient-detail-overview-foundation.test.ts",
+      "classes": ["test"],
+      "detectors": ["raw_role_semantics"],
+      "sha256": "64ba771e586359efa5fea9cf53be67afdb6c02586e71e6bf097058afb008f890"
+    },
+    {
+      "path": "src/server/services/patient-detail-overview-privacy.test.ts",
+      "classes": ["test"],
+      "detectors": ["raw_role_semantics", "tenant_role"],
+      "sha256": "a245b7c351f194fa96c98de0d7fcafaeb9abe9189be780aaee3a3559f00e8f10"
+    },
+    {
+      "path": "src/server/services/patient-detail-readiness-data.test.ts",
+      "classes": ["test"],
+      "detectors": ["raw_role_semantics"],
+      "sha256": "d296ce8ea94c7412ed477b20d63eb41372d049184f87bbde03bfbf181bf3b57c"
+    },
+    {
       "path": "src/server/services/patient-detail-readiness.test.ts",
       "classes": ["test"],
       "detectors": ["raw_role_semantics"],
@@ -34045,6 +34281,30 @@
       "classes": ["test"],
       "detectors": ["raw_role_semantics"],
       "sha256": "6ee577c3a9dd20cc09aee3d3d111682ee90a12f1f5e9bac626c252fd8d7b03f8"
+    },
+    {
+      "path": "src/server/services/patient-detail-timeline-billing-documents.test.ts",
+      "classes": ["test"],
+      "detectors": ["raw_role_semantics"],
+      "sha256": "09d9a21074a4fede7cb734ce2f557388bb25752659fa10acf10bc30808e717c4"
+    },
+    {
+      "path": "src/server/services/patient-detail-timeline-clinical-ops.test.ts",
+      "classes": ["test"],
+      "detectors": ["raw_role_semantics"],
+      "sha256": "b8d763005aa622d9276280182c73e7bf0b8c2be0ffff411b89e141dc640858e8"
+    },
+    {
+      "path": "src/server/services/patient-detail-timeline-links.test.ts",
+      "classes": ["test"],
+      "detectors": ["raw_role_semantics"],
+      "sha256": "171334fb1fc8ac3a98234e3532b85b02623bcc0b5f6c61ae3c221a421bfbd1eb"
+    },
+    {
+      "path": "src/server/services/patient-detail-timeline-operations.test.ts",
+      "classes": ["test"],
+      "detectors": ["raw_role_semantics", "tenant_role"],
+      "sha256": "e411c4f7c87d8b8e8ca1919cde22f91c139e879e04b1e2851fab2e3edaca3f03"
     },
     {
       "path": "src/server/services/patient-detail-timeline-query.test.ts",
@@ -34059,10 +34319,28 @@
       "sha256": "2c73235dbeb3de2fab68deb44337b1e20ca3984c7ab0699dbf0e8c5b2dda1e4e"
     },
     {
+      "path": "src/server/services/patient-detail-timeline-resilience.test.ts",
+      "classes": ["test"],
+      "detectors": ["raw_role_semantics"],
+      "sha256": "06c1801b4afba5bfbf1da459ee40c0972bcf337800b955ae34359ae6b80560c1"
+    },
+    {
+      "path": "src/server/services/patient-detail-visits.test.ts",
+      "classes": ["test"],
+      "detectors": ["raw_role_semantics"],
+      "sha256": "b743e34e812fbdeec6194a850197cc7df814720deadc0c052e6d9251fea09dfb"
+    },
+    {
+      "path": "src/server/services/patient-detail-workflow-preview.test.ts",
+      "classes": ["test"],
+      "detectors": ["raw_role_semantics"],
+      "sha256": "8931882efa3c49a2dddc84a88f93138ec0fd0ca4d527247c98a2bdc1d752f614"
+    },
+    {
       "path": "src/server/services/patient-detail.test.ts",
       "classes": ["test"],
-      "detectors": ["raw_role_semantics", "tenant_role"],
-      "sha256": "44f1727ecea260ecf31db4fefb8e7edc90f8a85f4560682de8878bf37fc78242"
+      "detectors": ["raw_role_semantics"],
+      "sha256": "7cc1a28d0bfa1d2dd98215c3c7ff5ca0e12f016ac8682c6ef4d182ebe4875b05"
     },
     {
       "path": "src/server/services/patient-home-operations.test.ts",
@@ -34303,7 +34581,7 @@
         "tenant_role",
         "ui_role_affordance"
       ],
-      "sha256": "c3bfe89bd3ecd4306e50d469e8245048c8df4bdde72e29b47b407e7ac9958d69"
+      "sha256": "69c9df5f7ff4655b50810fdb1011ad599a9da5cc2ad1d2addf9e89f2e05d40d5"
     },
     {
       "path": "tools/scripts/check-human-maintained-file-size.mjs",
@@ -34322,6 +34600,12 @@
       "classes": ["test"],
       "detectors": ["service_job"],
       "sha256": "b1b03c0dc083a84f6332eecdd32075055dd86c82124e56a883efa9c799bf7d21"
+    },
+    {
+      "path": "tools/scripts/run-postgres-integration-manifest.test.ts",
+      "classes": ["test"],
+      "detectors": ["rls_authz"],
+      "sha256": "4a0e4ea6659b3610dce6b874373534f9ca267057af90cecfd3f82604eaf4dbce"
     },
     {
       "path": "tools/scripts/verify-phos-backend-live-readiness.test.ts",

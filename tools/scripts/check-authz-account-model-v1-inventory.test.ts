@@ -30,9 +30,9 @@ import {
 describe('check-authz-account-model-v1-inventory', { timeout: 120_000 }, () => {
   it('accepts the checked-in independent declarations while the dedicated suite owns browser freeze', () => {
     expect(checkInventory({ validateBrowser: false })).toEqual({
-      entries: 975,
+      entries: 969,
       detectors: 15,
-      browserAssets: 448,
+      browserAssets: 474,
       browserScenarios: 381,
       nonRuntimeContracts: expect.any(Number),
       migrationContracts: 58,
