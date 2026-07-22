@@ -20,6 +20,22 @@ export type OrgReferenceInput = {
   line_ids?: string[];
 };
 
+/** Minimal Prisma surface required to validate organization-scoped references. */
+export type OrgReferenceDb = Pick<
+  typeof prisma,
+  | 'patient'
+  | 'careCase'
+  | 'visitRecord'
+  | 'medicationIssue'
+  | 'medicationCycle'
+  | 'setPlan'
+  | 'dispenseTask'
+  | 'pharmacySite'
+  | 'membership'
+  | 'visitSchedule'
+  | 'prescriptionLine'
+>;
+
 /** 担当薬剤師に割り当て可能なロール。 */
 const PHARMACIST_ASSIGNABLE_ROLES = [
   'owner',
@@ -39,13 +55,14 @@ export const STAFF_ASSIGNABLE_ROLES = [
 
 /** 渡された全 ID が同一 org の有効メンバーかつ指定ロールに該当するか。空配列は true。 */
 async function areAllEligibleMembers(
+  db: Pick<OrgReferenceDb, 'membership'>,
   orgId: string,
   ids: string[],
   roles: readonly MemberRole[],
 ): Promise<boolean> {
   const unique = Array.from(new Set(ids));
   if (unique.length === 0) return true;
-  const memberships = await prisma.membership.findMany({
+  const memberships = await db.membership.findMany({
     where: { user_id: { in: unique }, org_id: orgId, is_active: true, role: { in: [...roles] } },
     select: { user_id: true },
   });
@@ -80,6 +97,7 @@ export type OrgReferenceData = {
 export async function validateOrgReferences(
   orgId: string,
   refs: OrgReferenceInput,
+  db: OrgReferenceDb = prisma,
 ): Promise<
   { ok: true; data: OrgReferenceData } | { ok: false; response: ReturnType<typeof validationError> }
 > {
@@ -96,55 +114,55 @@ export async function validateOrgReferences(
     schedule,
   ] = await Promise.all([
     refs.patient_id
-      ? prisma.patient.findFirst({
+      ? db.patient.findFirst({
           where: { id: refs.patient_id, org_id: orgId },
           select: { id: true },
         })
       : Promise.resolve(null),
     refs.case_id
-      ? prisma.careCase.findFirst({
+      ? db.careCase.findFirst({
           where: { id: refs.case_id, org_id: orgId },
           select: { id: true, patient_id: true },
         })
       : Promise.resolve(null),
     refs.visit_record_id
-      ? prisma.visitRecord.findFirst({
+      ? db.visitRecord.findFirst({
           where: { id: refs.visit_record_id, org_id: orgId },
           select: { id: true, patient_id: true },
         })
       : Promise.resolve(null),
     refs.issue_id
-      ? prisma.medicationIssue.findFirst({
+      ? db.medicationIssue.findFirst({
           where: { id: refs.issue_id, org_id: orgId },
           select: { id: true, patient_id: true, case_id: true },
         })
       : Promise.resolve(null),
     refs.cycle_id
-      ? prisma.medicationCycle.findFirst({
+      ? db.medicationCycle.findFirst({
           where: { id: refs.cycle_id, org_id: orgId },
           select: { id: true, patient_id: true, case_id: true, overall_status: true },
         })
       : Promise.resolve(null),
     refs.plan_id
-      ? prisma.setPlan.findFirst({
+      ? db.setPlan.findFirst({
           where: { id: refs.plan_id, org_id: orgId },
           select: { id: true, cycle_id: true },
         })
       : Promise.resolve(null),
     refs.task_id
-      ? prisma.dispenseTask.findFirst({
+      ? db.dispenseTask.findFirst({
           where: { id: refs.task_id, org_id: orgId },
           select: { id: true, cycle_id: true },
         })
       : Promise.resolve(null),
     refs.site_id
-      ? prisma.pharmacySite.findFirst({
+      ? db.pharmacySite.findFirst({
           where: { id: refs.site_id, org_id: orgId },
           select: { id: true },
         })
       : Promise.resolve(null),
     refs.pharmacist_id
-      ? prisma.membership.findFirst({
+      ? db.membership.findFirst({
           where: {
             user_id: refs.pharmacist_id,
             org_id: orgId,
@@ -157,7 +175,7 @@ export async function validateOrgReferences(
         })
       : Promise.resolve(null),
     refs.schedule_id
-      ? prisma.visitSchedule.findFirst({
+      ? db.visitSchedule.findFirst({
           where: { id: refs.schedule_id, org_id: orgId },
           select: { id: true, case_id: true, cycle_id: true },
         })
@@ -165,7 +183,9 @@ export async function validateOrgReferences(
   ]);
 
   if (refs.pharmacist_ids && refs.pharmacist_ids.length > 0) {
-    if (!(await areAllEligibleMembers(orgId, refs.pharmacist_ids, PHARMACIST_ASSIGNABLE_ROLES))) {
+    if (
+      !(await areAllEligibleMembers(db, orgId, refs.pharmacist_ids, PHARMACIST_ASSIGNABLE_ROLES))
+    ) {
       return {
         ok: false,
         response: validationError('指定された薬剤師はこの組織に所属していません'),
@@ -174,7 +194,7 @@ export async function validateOrgReferences(
   }
 
   if (refs.staff_ids && refs.staff_ids.length > 0) {
-    if (!(await areAllEligibleMembers(orgId, refs.staff_ids, STAFF_ASSIGNABLE_ROLES))) {
+    if (!(await areAllEligibleMembers(db, orgId, refs.staff_ids, STAFF_ASSIGNABLE_ROLES))) {
       return {
         ok: false,
         response: validationError('指定されたスタッフはこの組織に所属していません'),
@@ -260,7 +280,7 @@ export async function validateOrgReferences(
     const scheduleCase =
       careCase && careCase.id === schedule.case_id
         ? careCase
-        : await prisma.careCase.findFirst({
+        : await db.careCase.findFirst({
             where: { id: schedule.case_id, org_id: orgId },
             select: { id: true, patient_id: true },
           });
@@ -275,7 +295,7 @@ export async function validateOrgReferences(
 
   if (refs.line_ids?.length) {
     const uniqueLineIds = [...new Set(refs.line_ids)];
-    const lines = await prisma.prescriptionLine.findMany({
+    const lines = await db.prescriptionLine.findMany({
       where: {
         id: { in: uniqueLineIds },
         org_id: orgId,

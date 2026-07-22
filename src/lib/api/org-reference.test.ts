@@ -17,7 +17,7 @@ vi.mock('@/lib/db/client', () => ({
   },
 }));
 
-import { validateOrgReferences } from '@/lib/api/org-reference';
+import { type OrgReferenceDb, validateOrgReferences } from '@/lib/api/org-reference';
 
 describe('validateOrgReferences staff_ids', () => {
   beforeEach(() => {
@@ -52,6 +52,19 @@ describe('validateOrgReferences staff_ids', () => {
   it('does not query memberships when no staff ids are supplied', async () => {
     const result = await validateOrgReferences('org_1', {});
     expect(result.ok).toBe(true);
+    expect(membershipFindManyMock).not.toHaveBeenCalled();
+  });
+
+  it('uses the injected membership delegate for staff eligibility', async () => {
+    const injectedFindMany = vi.fn().mockResolvedValue([{ user_id: 'u1' }]);
+    const injectedDb = {
+      membership: { findMany: injectedFindMany },
+    } as unknown as OrgReferenceDb;
+
+    const result = await validateOrgReferences('org_1', { staff_ids: ['u1'] }, injectedDb);
+
+    expect(result.ok).toBe(true);
+    expect(injectedFindMany).toHaveBeenCalledOnce();
     expect(membershipFindManyMock).not.toHaveBeenCalled();
   });
 });
