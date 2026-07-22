@@ -735,7 +735,7 @@
       },
       {
         "path": "Plans.md",
-        "sha256": "949e6f58aa28c813d67dc34d3cf5aeafc686bd543dcd64fe2ca310d4a3b1c108"
+        "sha256": "0762152d9d52f885641c20824de0a7f03361a245c5dec9c7fa9f91f706ed3621"
       },
       {
         "path": "README.md",
@@ -903,7 +903,7 @@
       },
       {
         "path": "ops/refactor/STATE.md",
-        "sha256": "173150f97bf6c0a730e51129e6483a57ffa9c761db5c5d1d314a89a8be343f81"
+        "sha256": "9b498f781cd7fa10db2ff9d2d853829f46616bed425da5494c7503ca528937c0"
       },
       {
         "path": "ops/refactor/archive/PERF_FINDINGS.md",
@@ -976,6 +976,10 @@
       {
         "path": "projects/careviax/gates/2026-07-16/medsafe-print-hub-explicit-patient-5a59f58be.md",
         "sha256": "78ca23275ed6fca60a6d08ddaf99d583c7aa89ee2821cb6b3273eda8e0c10539"
+      },
+      {
+        "path": "projects/careviax/gates/2026-07-22/maint-file-size-1000-001br.md",
+        "sha256": "4deb8622e456a42bc625ebc7288db22578916b19dc727d6698029ee9060330d7"
       },
       {
         "path": "sentry.edge.config.ts",
@@ -30360,10 +30364,16 @@
       "sha256": "06e5bb746720f58464ec8cd38d042eac0807fcc61d8a677cc0fc183a8c8e6804"
     },
     {
+      "path": "src/app/(dashboard)/admin/shifts/shifts-content.test-pagination.test.tsx",
+      "classes": ["test"],
+      "detectors": ["raw_role_semantics"],
+      "sha256": "34faaf2834d0eb98c8f01f37c1e9c583f89b779e9c0afd4ea7a2079b3290bb3b"
+    },
+    {
       "path": "src/app/(dashboard)/admin/shifts/shifts-content.test.tsx",
       "classes": ["test"],
       "detectors": ["mapping_precedence", "raw_role_semantics"],
-      "sha256": "e829f10fb5f87ce5b17f96b816504c383b4af429afd9e44fc0648bdfe0e1f128"
+      "sha256": "6f8e6e41252716428a98ffc13da12a0e4816160689ec3e262504b62714ab15eb"
     },
     {
       "path": "src/app/(dashboard)/admin/staff/staff-kpi-panel.test.tsx",
@@ -30890,10 +30900,16 @@
       "sha256": "4ea4aa5fbe71b6c6c64eb4ff7e0be20906eebf908ca51982b5cd4705e673a009"
     },
     {
+      "path": "src/app/api/care-reports/[id]/route.test-update.test.ts",
+      "classes": ["test"],
+      "detectors": ["raw_role_semantics", "tenant_role"],
+      "sha256": "4754efa315b98c7c77310637c47611c94f3af9ee4bb8eed02f1da051dc1cff5e"
+    },
+    {
       "path": "src/app/api/care-reports/[id]/route.test.ts",
       "classes": ["test"],
       "detectors": ["raw_role_semantics", "tenant_role"],
-      "sha256": "53d3ee1ac148a992e716727c4f3350787b7782d0328539a16689e578a8a62006"
+      "sha256": "17eb58a18359afcffa268d94d08665f5ea7ef90213a1e7bcfde3bcc0ef88a6e5"
     },
     {
       "path": "src/app/api/care-reports/[id]/send/route.test.ts",
@@ -31013,10 +31029,16 @@
       "sha256": "2fa7c9f05f01ca850696afb8cc196b5ef82f06617c6a127bf066d315ebd61c1e"
     },
     {
+      "path": "src/app/api/communication-requests/[id]/responses/route.test-post.test.ts",
+      "classes": ["test"],
+      "detectors": ["mapping_precedence", "permission_capability", "raw_role_semantics"],
+      "sha256": "3bea641770b3364970d5968c57854453efc7d2b19521da1d4d61884a2b8a4189"
+    },
+    {
       "path": "src/app/api/communication-requests/[id]/responses/route.test.ts",
       "classes": ["test"],
       "detectors": ["mapping_precedence", "permission_capability", "raw_role_semantics"],
-      "sha256": "72d6366136f60248a84e06072e9c732016ceb3bdd59c3911f2229c1f1049139d"
+      "sha256": "797599234e3a68e9b89706c2331c7dfeedbe7b3377d9d122dadb2ba1e0b0db1e"
     },
     {
       "path": "src/app/api/communication-requests/[id]/route.test.ts",
@@ -31031,10 +31053,16 @@
       "sha256": "02fb19d75bf74e4c13f7ef13dfafe5c81b2ee78c1ed4a69926aa450553da4a24"
     },
     {
+      "path": "src/app/api/communication-requests/route.test-list-and-create.test.ts",
+      "classes": ["test"],
+      "detectors": ["mapping_precedence", "raw_role_semantics"],
+      "sha256": "c3f99343a65481c24219366c08a728b9141c99ec9d89e0d9d1f946c31147ea24"
+    },
+    {
       "path": "src/app/api/communication-requests/route.test.ts",
       "classes": ["test"],
       "detectors": ["mapping_precedence", "raw_role_semantics", "tenant_role"],
-      "sha256": "c075dd8a832844526fb3fe170485976fe68222530e76dae31ee827c360c62e80"
+      "sha256": "89b167829166a488e03c01a4cc7beaa9950c9511fca9fcf29dde29198e6bb98f"
     },
     {
       "path": "src/app/api/communications/inbound/[id]/detail/route.test.ts",
@@ -31205,10 +31233,16 @@
       "sha256": "913965ab543dcdc9396e2471df1bdb8cea878c1e56455566e6a61d60f344ac3d"
     },
     {
+      "path": "src/app/api/dashboard/workflow/route.test-views-and-security.test.ts",
+      "classes": ["test"],
+      "detectors": ["mapping_precedence", "raw_role_semantics"],
+      "sha256": "ecab03721ea3beaf3ce80b421af8cff0b886f74d1248be8d38c7e9298b29b765"
+    },
+    {
       "path": "src/app/api/dashboard/workflow/route.test.ts",
       "classes": ["test"],
       "detectors": ["mapping_precedence", "permission_capability", "raw_role_semantics"],
-      "sha256": "f2d764f05802e320b2af83e32ae3a2407a4c2e39af7dbcbbbe9c14b95a009ca9"
+      "sha256": "3097d043329ac2a04b35c8c2fbe5f936230ae60b46adc2cc88cad4c902288aa8"
     },
     {
       "path": "src/app/api/dispense-audits/route.test.ts",
@@ -31853,6 +31887,17 @@
       "sha256": "b23206294e91a51b605a549cce4fae1f21725f1da1980b78ffdea9f1fdaf8a4a"
     },
     {
+      "path": "src/app/api/patient-share-cases/route.test-post.test.ts",
+      "classes": ["test"],
+      "detectors": [
+        "mapping_precedence",
+        "permission_capability",
+        "raw_role_semantics",
+        "tenant_role"
+      ],
+      "sha256": "ca89ac05cea4541a20d7d3d0e30ebec02972cc87fe2d997d4ffb4f57b10e37cb"
+    },
+    {
       "path": "src/app/api/patient-share-cases/route.test.ts",
       "classes": ["test"],
       "detectors": [
@@ -31861,7 +31906,7 @@
         "raw_role_semantics",
         "tenant_role"
       ],
-      "sha256": "8461321201d59f13349c6ed33ccab5b34de1c6fb2ae09478158dded5af977ad3"
+      "sha256": "e7dce742164f948f70796c30b05b705653d2acf2f01c39d728bb8b75779e4a5c"
     },
     {
       "path": "src/app/api/patients/[id]/archive/route.test.ts",
@@ -34006,10 +34051,16 @@
       "sha256": "3fe03dda4defb0ce7aa67cffff77ff068cb6840d659316e62e42e3c2691b7706"
     },
     {
+      "path": "src/server/services/pdf-bulk-export.test-recovery-and-drain.test.ts",
+      "classes": ["test"],
+      "detectors": ["mapping_precedence", "raw_role_semantics"],
+      "sha256": "e3698d9a77cf05b43280cd5ea2d4d5f56939b2b8cbea4963c005240b89db26c8"
+    },
+    {
       "path": "src/server/services/pdf-bulk-export.test.ts",
       "classes": ["test"],
       "detectors": ["mapping_precedence", "raw_role_semantics"],
-      "sha256": "c92f88acd428bd9d87be755276ed86a936362cb83e19176b3aae76bbb9ad650b"
+      "sha256": "2dd34e34510b83b6f728649c14da0f0d4d9c55d9981d1ee5780f9fc74039f539"
     },
     {
       "path": "src/server/services/pdf-care-report-record.test.ts",
@@ -34063,7 +34114,7 @@
       "path": "src/server/services/report-generator.test.ts",
       "classes": ["test"],
       "detectors": ["raw_role_semantics"],
-      "sha256": "20795091d6ea5ee98574d58a6c750cf425a48256e80ab648dee7a4f71b7a24bb"
+      "sha256": "f452fd13b5337a477a06deea0aad1ddbf0a4743be68b90bf3f4cfefb282d9edb"
     },
     {
       "path": "src/server/services/risk-task-resolution.test.ts",
