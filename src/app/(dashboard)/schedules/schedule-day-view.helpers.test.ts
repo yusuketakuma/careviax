@@ -40,6 +40,7 @@ import {
   toDateKey,
   type CaseOption,
   type Proposal,
+  type VisitSchedule,
 } from './day-view.shared';
 
 describe('schedule-day-view.helpers', () => {
