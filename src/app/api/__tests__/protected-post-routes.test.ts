@@ -116,7 +116,7 @@ const routes: RouteEntry[] = [
   },
   {
     name: 'medication-issues POST',
-    handler: (req) => medicationIssuesPost(req),
+    handler: (req) => medicationIssuesPost(req, emptyRouteContext),
   },
   {
     name: 'communication-events POST',
@@ -159,7 +159,7 @@ const routes: RouteEntry[] = [
     handler: (req) => documentDeliveryRulesPost(req, emptyRouteContext),
     invalidBody: [],
   },
-  { name: 'tasks POST', handler: (req) => tasksPost(req), invalidBody: [] },
+  { name: 'tasks POST', handler: (req) => tasksPost(req, emptyRouteContext), invalidBody: [] },
   {
     name: 'consent-records POST',
     handler: (req) => consentRecordsPost(req, emptyRouteContext),
@@ -176,7 +176,7 @@ const routes: RouteEntry[] = [
     handler: (req) => visitSchedulesGeneratePost(req, emptyRouteContext),
     invalidBodyStatus: 410,
   },
-  { name: 'visit-records POST', handler: (req) => visitRecordsPost(req) },
+  { name: 'visit-records POST', handler: (req) => visitRecordsPost(req, emptyRouteContext) },
   {
     name: 'visit-records/[id]/medication-stock-observations POST',
     handler: (req) =>
@@ -191,7 +191,7 @@ const routes: RouteEntry[] = [
   },
   {
     name: 'prescription-intakes/facility-batch POST',
-    handler: (req) => prescriptionIntakesFacilityBatchPost(req),
+    handler: (req) => prescriptionIntakesFacilityBatchPost(req, emptyRouteContext),
   },
   {
     name: 'pharmacist-shifts POST',
@@ -201,15 +201,15 @@ const routes: RouteEntry[] = [
     name: 'pharmacist-shifts/bulk POST',
     handler: (req) => pharmacistShiftsBulkPost(req, emptyRouteContext),
   },
-  { name: 'set-plans POST', handler: (req) => setPlansPost(req) },
+  { name: 'set-plans POST', handler: (req) => setPlansPost(req, emptyRouteContext) },
   {
     name: 'set-plans/[id]/generate-batches POST',
     handler: (req) =>
       setPlanGenerateBatchesPost(req, { params: Promise.resolve({ id: 'plan_1' }) }),
     invalidBody: [],
   },
-  { name: 'set-batches POST', handler: (req) => setBatchesPost(req) },
-  { name: 'set-audits POST', handler: (req) => setAuditsPost(req) },
+  { name: 'set-batches POST', handler: (req) => setBatchesPost(req, emptyRouteContext) },
+  { name: 'set-audits POST', handler: (req) => setAuditsPost(req, emptyRouteContext) },
   {
     name: 'dispense-audits POST',
     handler: (req) => dispenseAuditsPost(req, emptyRouteContext),
@@ -220,8 +220,11 @@ const routes: RouteEntry[] = [
   },
   { name: 'inquiry-records POST', handler: (req) => inquiryRecordsPost(req, emptyRouteContext) },
   { name: 'incident-reports POST', handler: (req) => incidentReportsPost(req, emptyRouteContext) },
-  { name: 'pca-pumps POST', handler: (req) => pcaPumpsPost(req) },
-  { name: 'pca-pump-rentals POST', handler: (req) => pcaPumpRentalsPost(req) },
+  { name: 'pca-pumps POST', handler: (req) => pcaPumpsPost(req, emptyRouteContext) },
+  {
+    name: 'pca-pump-rentals POST',
+    handler: (req) => pcaPumpRentalsPost(req, emptyRouteContext),
+  },
   {
     name: 'residual-medications POST',
     handler: (req) => residualMedicationsPost(req, emptyRouteContext),
@@ -253,7 +256,10 @@ const routes: RouteEntry[] = [
     name: 'visit-schedule-proposals POST',
     handler: (req) => visitScheduleProposalsPost(req, emptyRouteContext),
   },
-  { name: 'visit-preparations/brief-batch POST', handler: visitPreparationBriefBatchPost },
+  {
+    name: 'visit-preparations/brief-batch POST',
+    handler: (req) => visitPreparationBriefBatchPost(req, emptyRouteContext),
+  },
   {
     name: 'visit-schedules/[id]/reschedule POST',
     handler: (req) =>
@@ -301,6 +307,12 @@ describe('protected POST routes auth/body matrix', () => {
         },
         auditLog: {
           create: vi.fn().mockResolvedValue({}),
+        },
+        webhookRegistration: {
+          findMany: vi.fn().mockResolvedValue([]),
+        },
+        webhookDelivery: {
+          createMany: vi.fn().mockResolvedValue({ count: 0 }),
         },
       }),
     );

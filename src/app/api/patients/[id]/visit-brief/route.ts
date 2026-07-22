@@ -9,7 +9,7 @@ import { applyPatientAssignmentWhere } from '@/lib/auth/visit-schedule-access';
 import { listAccessiblePatientCaseIds } from '@/server/services/patient-access';
 
 async function authenticatedGET(
-  req: NextRequest,
+  _req: NextRequest,
   ctx: AuthContext,
   { params }: { params: Promise<{ id: string }> },
 ) {

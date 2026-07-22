@@ -43,7 +43,7 @@ function logUnhandledRouteError(method: string, err: unknown) {
 }
 
 async function authenticatedDELETE(
-  req: NextRequest,
+  _req: NextRequest,
   ctx: AuthContext,
   { params }: AuthRouteContext<{ id: string }>,
 ) {

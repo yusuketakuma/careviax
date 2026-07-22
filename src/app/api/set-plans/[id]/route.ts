@@ -151,7 +151,7 @@ const setPlanSelect = {
 } satisfies Prisma.SetPlanSelect;
 
 async function handleGET(
-  req: NextRequest,
+  _req: NextRequest,
   ctx: AuthContext,
   routeContext: AuthRouteContext<{ id: string }>,
 ): Promise<NextResponse> {
@@ -210,7 +210,7 @@ async function handleGET(
   });
 }
 
-export const GET = withAuthContext(
+export const GET = withAuthContext<{ id: string }>(
   async (req, ctx, routeContext) => {
     try {
       return await handleGET(req, ctx, routeContext);
@@ -466,7 +466,7 @@ async function handlePATCH(
   });
 }
 
-export const PATCH = withAuthContext(
+export const PATCH = withAuthContext<{ id: string }>(
   async (req, ctx, routeContext) => {
     try {
       return await handlePATCH(req, ctx, routeContext);

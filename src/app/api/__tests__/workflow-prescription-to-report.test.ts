@@ -391,6 +391,12 @@ describe('Workflow: prescription intake to care report', () => {
         cycleTransitionLog: {
           create: vi.fn().mockResolvedValue({}),
         },
+        webhookRegistration: {
+          findMany: vi.fn().mockResolvedValue([]),
+        },
+        webhookDelivery: {
+          createMany: vi.fn().mockResolvedValue({ count: 0 }),
+        },
       }),
     );
 
@@ -853,6 +859,7 @@ describe('Workflow: prescription intake to care report', () => {
         soap_plan: '現処方継続。次回訪問時に血液検査結果確認。',
         structured_soap: completedVisitStructuredSoap,
       }),
+      { params: Promise.resolve({}) },
     );
 
     expect(response).toBeDefined();

@@ -83,7 +83,7 @@ import {
 } from './route.test-helpers';
 import { expectNoStore } from '@/test/api-response-assertions';
 
-const POST = (req: NextRequest) => rawPOST(req);
+const POST = (req: NextRequest) => rawPOST(req, { params: Promise.resolve({}) });
 
 describe('/api/prescription-intakes/facility-batch POST', () => {
   beforeEach(() => {

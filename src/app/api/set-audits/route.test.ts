@@ -107,8 +107,8 @@ vi.mock('@/lib/dispensing/set-batch-history', () => ({
 
 import { GET as rawGET, POST as rawPOST } from './route';
 
-const POST = (req: NextRequest) => rawPOST(req);
-const GET = (req: NextRequest) => rawGET(req);
+const POST = (req: NextRequest) => rawPOST(req, { params: Promise.resolve({}) });
+const GET = (req: NextRequest) => rawGET(req, { params: Promise.resolve({}) });
 
 function createRequest(body: unknown, headers?: Record<string, string>) {
   return new NextRequest('http://localhost/api/set-audits', {

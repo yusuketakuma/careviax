@@ -35,7 +35,7 @@ class PatientSelfReportConflictError extends Error {}
 const sensitiveResponse = withSensitiveNoStore;
 
 async function authenticatedGET(
-  req: NextRequest,
+  _req: NextRequest,
   ctx: AuthContext,
   { params }: { params: Promise<{ id: string }> },
 ) {

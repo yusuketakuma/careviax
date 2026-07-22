@@ -41,7 +41,7 @@ function staleContactsConflict(expectedUpdatedAt: string, currentUpdatedAt: Date
 }
 
 async function authenticatedGET(
-  req: NextRequest,
+  _req: NextRequest,
   ctx: AuthContext,
   { params }: { params: Promise<{ id: string }> },
 ) {

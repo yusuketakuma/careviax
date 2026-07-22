@@ -49,7 +49,11 @@ vi.mock('@/server/services/workflow-dashboard-cache', () => ({
   notifyWorkflowMutation: notifyWorkflowMutationMock,
 }));
 
-import { GET, POST } from './route';
+import { GET as rawGET, POST as rawPOST } from './route';
+
+const emptyRouteContext = { params: Promise.resolve({}) };
+const GET = (req: NextRequest) => rawGET(req, emptyRouteContext);
+const POST = (req: NextRequest) => rawPOST(req, emptyRouteContext);
 
 const CURRENT_PLAN_UPDATED_AT = '2026-06-18T00:00:00.000Z';
 const CURRENT_PLAN_UPDATED_AT_DATE = new Date(CURRENT_PLAN_UPDATED_AT);

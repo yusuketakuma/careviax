@@ -74,7 +74,7 @@ async function handleGET(
   });
 }
 
-const wrappedGET = withAuthContext(
+const wrappedGET = withAuthContext<{ id: string }>(
   async (req, ctx, routeContext) => {
     try {
       return await handleGET(req, ctx, routeContext);

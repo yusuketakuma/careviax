@@ -108,7 +108,7 @@ export const validPatientDefaults = {
   name: '山田 太郎',
   name_kana: 'ヤマダ タロウ',
   birth_date: '1950-01-01',
-  gender: 'male',
+  gender: 'male' as const,
 };
 
 export const duplicatePatientResponse = {

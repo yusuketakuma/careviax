@@ -54,7 +54,11 @@ vi.mock('@/server/services/management-plans', () => ({
   syncOnboardingRenewalTasks: syncOnboardingRenewalTasksMock,
 }));
 
-import { GET, POST } from './route';
+import { GET as rawGET, POST as rawPOST } from './route';
+
+const emptyRouteContext = { params: Promise.resolve({}) };
+const GET = (req: NextRequest) => rawGET(req, emptyRouteContext);
+const POST = (req: NextRequest) => rawPOST(req, emptyRouteContext);
 
 function makeRequest(path: string, init?: ConstructorParameters<typeof NextRequest>[1]) {
   return new NextRequest(`http://localhost${path}`, init);

@@ -16,7 +16,7 @@ function toTimeValue(value?: string) {
 }
 
 async function authenticatedGET(
-  req: NextRequest,
+  _req: NextRequest,
   ctx: AuthContext,
   { params }: { params: Promise<{ id: string }> },
 ) {

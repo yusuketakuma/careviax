@@ -159,7 +159,7 @@ async function withSerializableVisitSchedulePatchTransaction<T>(
 }
 
 async function authenticatedGET(
-  req: NextRequest,
+  _req: NextRequest,
   ctx: AuthContext,
   { params }: AuthRouteContext<{ id: string }>,
 ) {

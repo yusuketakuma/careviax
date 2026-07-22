@@ -1148,12 +1148,10 @@ function buildTx(state: TestState) {
           .map((report) => ({ status: report.status })),
       ),
     },
-    communicationEvent: {
-      create: vi.fn(async () => ({ id: 'event_1' })),
-    },
-    auditLog: {
-      create: vi.fn(async () => ({ id: 'audit_log_1' })),
-    },
+    communicationEvent: { create: vi.fn(async () => ({ id: 'event_1' })) },
+    webhookRegistration: { findMany: webhookRegistrationFindManyMock },
+    webhookDelivery: { createMany: vi.fn(async () => ({ count: 0 })) },
+    auditLog: { create: vi.fn(async () => ({ id: 'audit_log_1' })) },
   };
 }
 
@@ -1490,6 +1488,7 @@ describe('workflow full-cycle integration', () => {
         },
         { 'x-org-id': 'org_1' },
       ),
+      emptyRouteContext,
     );
 
     expect(visitResponse?.status).toBe(201);
@@ -1671,6 +1670,7 @@ describe('workflow full-cycle integration', () => {
         },
         { 'x-org-id': 'org_1' },
       ),
+      emptyRouteContext,
     );
 
     expect(visitResponse?.status).toBe(201);

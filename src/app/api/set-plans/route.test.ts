@@ -62,8 +62,9 @@ vi.mock('@/server/services/workflow-dashboard-cache', () => ({
 import { GET as rawGET, POST as rawPOST } from './route';
 import { expectSensitiveNoStore } from '@/test/api-response-assertions';
 
-const GET = (req: NextRequest) => rawGET(req);
-const POST = (req: NextRequest) => rawPOST(req);
+const emptyRouteContext = { params: Promise.resolve({}) };
+const GET = (req: NextRequest) => rawGET(req, emptyRouteContext);
+const POST = (req: NextRequest) => rawPOST(req, emptyRouteContext);
 
 function createRequest(url: string, body?: unknown) {
   return new NextRequest(url, {

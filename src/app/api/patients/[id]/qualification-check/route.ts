@@ -100,7 +100,7 @@ function qualificationCheckAdapterErrorResponse(cause: QualificationCheckAdapter
 }
 
 async function authenticatedPOST(
-  req: NextRequest,
+  _req: NextRequest,
   ctx: AuthContext,
   { params }: { params: Promise<{ id: string }> },
 ): Promise<Response> {

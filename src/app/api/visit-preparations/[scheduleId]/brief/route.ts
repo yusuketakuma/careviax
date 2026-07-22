@@ -7,7 +7,7 @@ import { prisma } from '@/lib/db/client';
 import { getScheduleVisitBrief } from '@/server/services/visit-brief';
 
 async function getVisitPreparationBrief(
-  req: NextRequest,
+  _req: NextRequest,
   ctx: AuthContext,
   { params }: { params: Promise<{ scheduleId: string }> },
 ) {

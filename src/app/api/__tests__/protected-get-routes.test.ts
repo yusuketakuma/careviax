@@ -339,7 +339,7 @@ import { GET as visitPreparationBriefGet } from '../visit-preparations/[schedule
 
 type Handler = () => Promise<Response | undefined>;
 const emptyRouteContext = { params: Promise.resolve({}) };
-
+const createOrgRequest = (url: string) => createRequest(url, { 'x-org-id': 'org_1' });
 function createRequest(url: string, headers?: Record<string, string>) {
   return new NextRequest(url, { headers });
 }
@@ -1233,7 +1233,8 @@ const routes: Array<{ name: string; handler: Handler; setupSuccess?: () => void 
     name: 'medication-issues GET',
     handler: () =>
       medicationIssuesGet(
-        createRequest('http://localhost/api/medication-issues', { 'x-org-id': 'org_1' }),
+        createOrgRequest('http://localhost/api/medication-issues'),
+        emptyRouteContext,
       ),
   },
   {
@@ -1587,13 +1588,14 @@ const routes: Array<{ name: string; handler: Handler; setupSuccess?: () => void 
   {
     name: 'pca-pumps GET',
     handler: () =>
-      pcaPumpsGet(createRequest('http://localhost/api/pca-pumps', { 'x-org-id': 'org_1' })),
+      pcaPumpsGet(createOrgRequest('http://localhost/api/pca-pumps'), emptyRouteContext),
   },
   {
     name: 'pca-pump-rentals GET',
     handler: () =>
       pcaPumpRentalsGet(
-        createRequest('http://localhost/api/pca-pump-rentals', { 'x-org-id': 'org_1' }),
+        createOrgRequest('http://localhost/api/pca-pump-rentals'),
+        emptyRouteContext,
       ),
   },
   {
@@ -1679,21 +1681,20 @@ const routes: Array<{ name: string; handler: Handler; setupSuccess?: () => void 
   {
     name: 'set-audits GET',
     handler: () =>
-      setAuditsGet(createRequest('http://localhost/api/set-audits', { 'x-org-id': 'org_1' })),
+      setAuditsGet(createOrgRequest('http://localhost/api/set-audits'), emptyRouteContext),
   },
   {
     name: 'set-batches GET',
     handler: () =>
       setBatchesGet(
-        createRequest('http://localhost/api/set-batches?plan_id=plan_1', {
-          'x-org-id': 'org_1',
-        }),
+        createOrgRequest('http://localhost/api/set-batches?plan_id=plan_1'),
+        emptyRouteContext,
       ),
   },
   {
     name: 'set-plans GET',
     handler: () =>
-      setPlansGet(createRequest('http://localhost/api/set-plans', { 'x-org-id': 'org_1' })),
+      setPlansGet(createOrgRequest('http://localhost/api/set-plans'), emptyRouteContext),
   },
   {
     name: 'set-batches/[id] GET',
@@ -1751,14 +1752,13 @@ const routes: Array<{ name: string; handler: Handler; setupSuccess?: () => void 
     name: 'staff-workload GET',
     handler: () =>
       staffWorkloadGet(
-        createRequest('http://localhost/api/staff-workload?date=2026-06-12', {
-          'x-org-id': 'org_1',
-        }),
+        createOrgRequest('http://localhost/api/staff-workload?date=2026-06-12'),
+        emptyRouteContext,
       ),
   },
   {
     name: 'tasks GET',
-    handler: () => tasksGet(createRequest('http://localhost/api/tasks', { 'x-org-id': 'org_1' })),
+    handler: () => tasksGet(createOrgRequest('http://localhost/api/tasks'), emptyRouteContext),
   },
   {
     name: 'tracing-reports GET',
@@ -1781,7 +1781,7 @@ const routes: Array<{ name: string; handler: Handler; setupSuccess?: () => void 
   {
     name: 'visit-records GET',
     handler: () =>
-      visitRecordsGet(createRequest('http://localhost/api/visit-records', { 'x-org-id': 'org_1' })),
+      visitRecordsGet(createOrgRequest('http://localhost/api/visit-records'), emptyRouteContext),
   },
   {
     name: 'visit-records/[id] GET',

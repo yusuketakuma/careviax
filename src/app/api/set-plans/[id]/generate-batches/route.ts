@@ -670,7 +670,7 @@ async function handlePOST(
   });
 }
 
-export const POST = withAuthContext(
+export const POST = withAuthContext<{ id: string }>(
   async (req, ctx, routeContext) => {
     try {
       return await handlePOST(req, ctx, routeContext);

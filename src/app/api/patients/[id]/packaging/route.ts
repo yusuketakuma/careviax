@@ -12,7 +12,7 @@ import { applyPatientAssignmentWhere } from '@/lib/auth/visit-schedule-access';
 import { requireWritablePatient } from '@/server/services/patient-write-guard';
 
 async function authenticatedGET(
-  req: NextRequest,
+  _req: NextRequest,
   ctx: AuthContext,
   { params }: { params: Promise<{ id: string }> },
 ) {
