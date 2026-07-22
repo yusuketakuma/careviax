@@ -458,11 +458,6 @@
       "task_id": "MAINT-FILE-SIZE-1000-001"
     },
     {
-      "path": "src/app/api/set-audits/route.ts",
-      "max_lines": 1318,
-      "task_id": "MAINT-FILE-SIZE-1000-001"
-    },
-    {
       "path": "src/app/api/set-plans/[id]/generate-batches/route.test.ts",
       "max_lines": 1485,
       "task_id": "MAINT-FILE-SIZE-1000-001"
