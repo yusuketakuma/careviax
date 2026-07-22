@@ -735,7 +735,7 @@
       },
       {
         "path": "Plans.md",
-        "sha256": "0762152d9d52f885641c20824de0a7f03361a245c5dec9c7fa9f91f706ed3621"
+        "sha256": "32660a6305b92e45bd63f8d9454528d4a07978a2a6483ccb3a132c84123d0e36"
       },
       {
         "path": "README.md",
@@ -903,7 +903,7 @@
       },
       {
         "path": "ops/refactor/STATE.md",
-        "sha256": "9b498f781cd7fa10db2ff9d2d853829f46616bed425da5494c7503ca528937c0"
+        "sha256": "03d4607c58e107db5d637957de4bc40c3436f0e0589c54cd50efc0e68ca8819e"
       },
       {
         "path": "ops/refactor/archive/PERF_FINDINGS.md",
@@ -1195,7 +1195,11 @@
       },
       {
         "path": "src/app/(dashboard)/patients/[id]/patient-insurance-card.tsx",
-        "sha256": "f955bd0c9ff71dfaf755a4ad4b259d31f7a682db1fdb001c9e8f2e9bd265bc11"
+        "sha256": "06b1db4f0a8c9bc3a62e34d96aae688abcdf8bd3aed06ec42f3155d5c7aad220"
+      },
+      {
+        "path": "src/app/(dashboard)/patients/[id]/patient-insurance-model.ts",
+        "sha256": "fb6773798aae5f9dbf27f6be3e1e81060bf5344c4f37868bc83c7c5e09920928"
       },
       {
         "path": "src/app/(dashboard)/patients/[id]/patient-movement-timeline.tsx",
@@ -1235,11 +1239,15 @@
       },
       {
         "path": "src/app/(dashboard)/qr-scan/page.tsx",
-        "sha256": "cad899d67214e5c1aed03f5a3b31f7902cd44c2344b1f29d65e96e26a4bd6262"
+        "sha256": "f7fec61a59c30bc2dd24a3fd7710f5e8f671c5c4e676d5aa649e5bfcf68560b6"
       },
       {
         "path": "src/app/(dashboard)/qr-scan/qr-scan-draft-payload.ts",
         "sha256": "9f6a23b7e3a51a1b9a1ae71e1f655afea87934a16d9d32146b4dd5ddfe048577"
+      },
+      {
+        "path": "src/app/(dashboard)/qr-scan/qr-scan-presentation.tsx",
+        "sha256": "d82877f5e982c3d19eaa193d14fd25e07c5f242c43b0d7358059fea7b308efff"
       },
       {
         "path": "src/app/(dashboard)/referrals/new/referral-form.test-fixtures.tsx",
@@ -5297,26 +5305,26 @@
       "capability_profile": "p_2075c448b73a"
     },
     {
-      "id": "mapping_precedence:src/app/(dashboard)/admin/notification-settings/notification-settings-content.tsx",
+      "id": "mapping_precedence:src/app/(dashboard)/admin/notification-settings/notification-settings-config.ts",
       "detector": "mapping_precedence",
-      "path": "src/app/(dashboard)/admin/notification-settings/notification-settings-content.tsx",
+      "path": "src/app/(dashboard)/admin/notification-settings/notification-settings-config.ts",
       "evidence_sha256": "108246361db97456195740a8fe8e9a29615dcd968c6e3f6265ccd353954ca4e6",
       "principal": "human",
       "lifecycles": ["request"],
       "surfaces": ["notification", "ui_affordance", "writer"],
       "exact_values_or_scopes": ["ADMIN", "MANAGER", "PHARMACIST", "admin", "pharmacist"],
-      "route_method_purpose": "not_applicable:non-route-source:src/app/(dashboard)/admin/notification-settings/notification-settings-content.tsx",
+      "route_method_purpose": "not_applicable:non-route-source:src/app/(dashboard)/admin/notification-settings/notification-settings-config.ts",
       "precedence_selection": "legacy_observed_requires_human_review",
-      "synthetic_derived_mapping": "not_applicable:no-synthetic-mapping-observed:src/app/(dashboard)/admin/notification-settings/notification-settings-content.tsx",
-      "persistence_contract": "not_applicable:no-persistence-observed:src/app/(dashboard)/admin/notification-settings/notification-settings-content.tsx",
-      "ttl_contract": "not_applicable:no-ttl-observed:src/app/(dashboard)/admin/notification-settings/notification-settings-content.tsx",
+      "synthetic_derived_mapping": "not_applicable:no-synthetic-mapping-observed:src/app/(dashboard)/admin/notification-settings/notification-settings-config.ts",
+      "persistence_contract": "not_applicable:no-persistence-observed:src/app/(dashboard)/admin/notification-settings/notification-settings-config.ts",
+      "ttl_contract": "not_applicable:no-ttl-observed:src/app/(dashboard)/admin/notification-settings/notification-settings-config.ts",
       "mapping_disposition": "candidate_requires_human",
       "owner": "Identity / Authz",
       "approval_status": "pending_owner_review",
       "test_refs": [
-        "src/app/(dashboard)/admin/notification-settings/notification-settings-content.test.tsx"
+        "src/app/(dashboard)/admin/notification-settings/notification-settings-config.test.ts"
       ],
-      "reprojection_or_removal": "owner_review_required_before_cutover:src/app/(dashboard)/admin/notification-settings/notification-settings-content.tsx",
+      "reprojection_or_removal": "owner_review_required_before_cutover:src/app/(dashboard)/admin/notification-settings/notification-settings-config.ts",
       "binding_profile": "p_5a1a5e55993d",
       "capability_profile": "p_d999cbc5fda8"
     },
@@ -17057,26 +17065,26 @@
       "capability_profile": "p_769b13719cdf"
     },
     {
-      "id": "phos_role:src/app/(dashboard)/admin/notification-settings/notification-settings-content.tsx",
+      "id": "phos_role:src/app/(dashboard)/admin/notification-settings/notification-settings-config.ts",
       "detector": "phos_role",
-      "path": "src/app/(dashboard)/admin/notification-settings/notification-settings-content.tsx",
+      "path": "src/app/(dashboard)/admin/notification-settings/notification-settings-config.ts",
       "evidence_sha256": "666efb89ba82020d0bc3f79e6a92853bc9b1e176fa0e601f7ec2c2da6976ad77",
       "principal": "human",
       "lifecycles": ["request"],
       "surfaces": ["notification", "ui_affordance", "writer"],
       "exact_values_or_scopes": ["ADMIN", "MANAGER", "PHARMACIST"],
-      "route_method_purpose": "not_applicable:non-route-source:src/app/(dashboard)/admin/notification-settings/notification-settings-content.tsx",
-      "precedence_selection": "not_applicable:no-selection-observed:src/app/(dashboard)/admin/notification-settings/notification-settings-content.tsx",
-      "synthetic_derived_mapping": "not_applicable:no-synthetic-mapping-observed:src/app/(dashboard)/admin/notification-settings/notification-settings-content.tsx",
-      "persistence_contract": "not_applicable:no-persistence-observed:src/app/(dashboard)/admin/notification-settings/notification-settings-content.tsx",
-      "ttl_contract": "not_applicable:no-ttl-observed:src/app/(dashboard)/admin/notification-settings/notification-settings-content.tsx",
+      "route_method_purpose": "not_applicable:non-route-source:src/app/(dashboard)/admin/notification-settings/notification-settings-config.ts",
+      "precedence_selection": "not_applicable:no-selection-observed:src/app/(dashboard)/admin/notification-settings/notification-settings-config.ts",
+      "synthetic_derived_mapping": "not_applicable:no-synthetic-mapping-observed:src/app/(dashboard)/admin/notification-settings/notification-settings-config.ts",
+      "persistence_contract": "not_applicable:no-persistence-observed:src/app/(dashboard)/admin/notification-settings/notification-settings-config.ts",
+      "ttl_contract": "not_applicable:no-ttl-observed:src/app/(dashboard)/admin/notification-settings/notification-settings-config.ts",
       "mapping_disposition": "candidate_requires_human",
       "owner": "PHOS / Authz",
       "approval_status": "pending_owner_review",
       "test_refs": [
-        "src/app/(dashboard)/admin/notification-settings/notification-settings-content.test.tsx"
+        "src/app/(dashboard)/admin/notification-settings/notification-settings-config.test.ts"
       ],
-      "reprojection_or_removal": "owner_review_required_before_cutover:src/app/(dashboard)/admin/notification-settings/notification-settings-content.tsx",
+      "reprojection_or_removal": "owner_review_required_before_cutover:src/app/(dashboard)/admin/notification-settings/notification-settings-config.ts",
       "binding_profile": "p_5a1a5e55993d",
       "capability_profile": "p_d999cbc5fda8"
     },
@@ -17701,24 +17709,24 @@
       "capability_profile": "p_a325f45c9b2a"
     },
     {
-      "id": "phos_role:src/phos/ui/board/BoardClient.tsx",
+      "id": "phos_role:src/phos/ui/board/board-client-helpers.ts",
       "detector": "phos_role",
-      "path": "src/phos/ui/board/BoardClient.tsx",
-      "evidence_sha256": "f8a236960c74f70025c767069a73e7c83c7a03bfed9020397f96aa2a77452072",
+      "path": "src/phos/ui/board/board-client-helpers.ts",
+      "evidence_sha256": "9b6ee95a54855ec053823fd74d2bcf7a25b11e536cea769af1a434df419656d7",
       "principal": "human",
       "lifecycles": ["offline_replay"],
       "surfaces": ["projection", "ui_affordance"],
       "exact_values_or_scopes": ["ADMIN", "MANAGER"],
-      "route_method_purpose": "not_applicable:non-route-source:src/phos/ui/board/BoardClient.tsx",
-      "precedence_selection": "not_applicable:no-selection-observed:src/phos/ui/board/BoardClient.tsx",
-      "synthetic_derived_mapping": "not_applicable:no-synthetic-mapping-observed:src/phos/ui/board/BoardClient.tsx",
-      "persistence_contract": "not_applicable:no-persistence-observed:src/phos/ui/board/BoardClient.tsx",
-      "ttl_contract": "not_applicable:no-ttl-observed:src/phos/ui/board/BoardClient.tsx",
+      "route_method_purpose": "not_applicable:non-route-source:src/phos/ui/board/board-client-helpers.ts",
+      "precedence_selection": "not_applicable:no-selection-observed:src/phos/ui/board/board-client-helpers.ts",
+      "synthetic_derived_mapping": "not_applicable:no-synthetic-mapping-observed:src/phos/ui/board/board-client-helpers.ts",
+      "persistence_contract": "not_applicable:no-persistence-observed:src/phos/ui/board/board-client-helpers.ts",
+      "ttl_contract": "not_applicable:no-ttl-observed:src/phos/ui/board/board-client-helpers.ts",
       "mapping_disposition": "candidate_requires_human",
       "owner": "PHOS / Authz",
       "approval_status": "pending_owner_review",
-      "test_refs": ["src/phos/ui/board/BoardClient.test.tsx"],
-      "reprojection_or_removal": "owner_review_required_before_cutover:src/phos/ui/board/BoardClient.tsx",
+      "test_refs": ["src/phos/ui/board/board-client-helpers.test.ts"],
+      "reprojection_or_removal": "owner_review_required_before_cutover:src/phos/ui/board/board-client-helpers.ts",
       "binding_profile": "p_b4d82ee63b7c",
       "capability_profile": "p_84b0d17f712d"
     },
@@ -30352,6 +30360,12 @@
       "sha256": "8ce5270e601ed5a35a3ff00ac80fa67e3599b11c5b7c83778417c20873842142"
     },
     {
+      "path": "src/app/(dashboard)/admin/notification-settings/notification-settings-config.test.ts",
+      "classes": ["test"],
+      "detectors": ["phos_role"],
+      "sha256": "2648f899fa6f5959b4444415de0a41bd5b27a8f3711bf726c3db5d611a48ee68"
+    },
+    {
       "path": "src/app/(dashboard)/admin/pharmacist-credentials/pharmacist-credentials-content.test.tsx",
       "classes": ["test"],
       "detectors": ["mapping_precedence", "qualification", "raw_role_semantics"],
@@ -31436,10 +31450,22 @@
       "sha256": "03d04e313fb43e2cb70eb4751e99512e1a7453dda8008814706f7ab185a43ac1"
     },
     {
+      "path": "src/app/api/external-access/route.post-boundaries.test.ts",
+      "classes": ["test"],
+      "detectors": ["permission_capability", "raw_role_semantics", "tenant_role"],
+      "sha256": "c8e023d128aabc28bca2f8deb3bb21be8b53d4231c7b0f602f1f34ca12e797bc"
+    },
+    {
+      "path": "src/app/api/external-access/route.post-issuance.test.ts",
+      "classes": ["test"],
+      "detectors": ["permission_capability", "raw_role_semantics", "tenant_role"],
+      "sha256": "32ad1aea4727cd96c18666816890d62290d6b51fc6e1c1979d32c3fb2a5e8594"
+    },
+    {
       "path": "src/app/api/external-access/route.test.ts",
       "classes": ["test"],
       "detectors": ["permission_capability", "tenant_role"],
-      "sha256": "34a26adc10b3fae3e4f4d41fc472cb3aecd3ee65767062b6719cac7abb0f2443"
+      "sha256": "7e47b58c73e47b85b3f22548c40de61d22ef43ea5aed328ba017eb63f7fa3b1d"
     },
     {
       "path": "src/app/api/external-professionals/route.test.ts",
@@ -33084,13 +33110,13 @@
       "path": "src/lib/api/__tests__/org-reference.test.ts",
       "classes": ["test"],
       "detectors": ["mapping_precedence"],
-      "sha256": "a2e511dc2a2022cb5d1f23e7773d2f70a8db00eeb44529321fe35e4695dc0d64"
+      "sha256": "f9c772077fae04cb9efd3dd8151b8aa34b2db547bc02e1224e02f2a71aca35e0"
     },
     {
       "path": "src/lib/api/org-reference.test.ts",
       "classes": ["test"],
       "detectors": ["mapping_precedence", "tenant_role"],
-      "sha256": "06ef892cf7655273811ed6fb45744fabbc0ffdaab04423e0ef9413d54af66da4"
+      "sha256": "4b08cfbe7150fade077ce85dc4d9a132bfdd077a3e5b3b91ceda64a5dee7f736"
     },
     {
       "path": "src/lib/api/request-body.test.ts",
@@ -33653,7 +33679,7 @@
       "path": "src/phos/infra/api-gateway-lambda-template.test.ts",
       "classes": ["test"],
       "detectors": ["phos_role", "phos_scope", "raw_role_semantics", "service_job"],
-      "sha256": "ba7bfcf906a5b22d12f2adbb270b6de2a971c7334212b6c7e8b16577bed530d8"
+      "sha256": "f05d875ee13c74d0a9038244874abfdc93d11f81e6f043ee70c043826f68d390"
     },
     {
       "path": "src/phos/infra/api-gateway-routes.test.ts",
@@ -33672,6 +33698,12 @@
       "classes": ["test"],
       "detectors": ["phos_scope", "raw_role_semantics", "service_job"],
       "sha256": "f39f12bd239fd0bbfe0693d8380f07fb3c76b0a41be7f5af362959d872f27722"
+    },
+    {
+      "path": "src/phos/ui/board/board-client-helpers.test.ts",
+      "classes": ["test"],
+      "detectors": ["phos_role"],
+      "sha256": "ba928deb6f39db53be9cbdde5fdcd61a63a0d409a013f8609a9e271d0afb48a0"
     },
     {
       "path": "src/phos/ui/board/BoardClient.test.tsx",

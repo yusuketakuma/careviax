@@ -58,11 +58,6 @@
       "task_id": "MAINT-FILE-SIZE-1000-001"
     },
     {
-      "path": "src/app/(dashboard)/admin/notification-settings/notification-settings-content.tsx",
-      "max_lines": 1113,
-      "task_id": "MAINT-FILE-SIZE-1000-001"
-    },
-    {
       "path": "src/app/(dashboard)/admin/pca-pumps/pca-pumps-content.tsx",
       "max_lines": 1596,
       "task_id": "MAINT-FILE-SIZE-1000-001"
@@ -158,11 +153,6 @@
       "task_id": "MAINT-FILE-SIZE-1000-001"
     },
     {
-      "path": "src/app/(dashboard)/patients/[id]/patient-insurance-card.tsx",
-      "max_lines": 1091,
-      "task_id": "MAINT-FILE-SIZE-1000-001"
-    },
-    {
       "path": "src/app/(dashboard)/patients/[id]/patient-movement-timeline.tsx",
       "max_lines": 1540,
       "task_id": "MAINT-FILE-SIZE-1000-001"
@@ -208,11 +198,6 @@
       "task_id": "MAINT-FILE-SIZE-1000-001"
     },
     {
-      "path": "src/app/(dashboard)/qr-scan/page.tsx",
-      "max_lines": 1101,
-      "task_id": "MAINT-FILE-SIZE-1000-001"
-    },
-    {
       "path": "src/app/(dashboard)/reports/[id]/page.test.tsx",
       "max_lines": 2173,
       "task_id": "MAINT-FILE-SIZE-1000-001"
@@ -225,11 +210,6 @@
     {
       "path": "src/app/(dashboard)/reports/[id]/share/interprofessional-share-content.test.tsx",
       "max_lines": 2143,
-      "task_id": "MAINT-FILE-SIZE-1000-001"
-    },
-    {
-      "path": "src/app/(dashboard)/reports/[id]/share/interprofessional-share-content.tsx",
-      "max_lines": 1096,
       "task_id": "MAINT-FILE-SIZE-1000-001"
     },
     {
@@ -365,11 +345,6 @@
     {
       "path": "src/app/api/dispense-results/route.test.ts",
       "max_lines": 4066,
-      "task_id": "MAINT-FILE-SIZE-1000-001"
-    },
-    {
-      "path": "src/app/api/external-access/route.test.ts",
-      "max_lines": 1500,
       "task_id": "MAINT-FILE-SIZE-1000-001"
     },
     {
@@ -513,11 +488,6 @@
       "task_id": "MAINT-FILE-SIZE-1000-001"
     },
     {
-      "path": "src/components/features/dispense-workbench/right-pane.tsx",
-      "max_lines": 1137,
-      "task_id": "MAINT-FILE-SIZE-1000-001"
-    },
-    {
       "path": "src/components/features/dispense-workbench/use-workbench-view.ts",
       "max_lines": 1340,
       "task_id": "MAINT-FILE-SIZE-1000-001"
@@ -553,11 +523,6 @@
       "task_id": "MAINT-FILE-SIZE-1000-001"
     },
     {
-      "path": "src/phos/infra/api-gateway-lambda-template.test.ts",
-      "max_lines": 1185,
-      "task_id": "MAINT-FILE-SIZE-1000-001"
-    },
-    {
       "path": "src/phos/infra/api-gateway-lambda-template.ts",
       "max_lines": 1193,
       "task_id": "MAINT-FILE-SIZE-1000-001"
@@ -570,11 +535,6 @@
     {
       "path": "src/phos/ui/board/BoardClient.test.tsx",
       "max_lines": 1571,
-      "task_id": "MAINT-FILE-SIZE-1000-001"
-    },
-    {
-      "path": "src/phos/ui/board/BoardClient.tsx",
-      "max_lines": 1140,
       "task_id": "MAINT-FILE-SIZE-1000-001"
     },
     {

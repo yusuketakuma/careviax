@@ -91,15 +91,6 @@
       "expectedCount": 1
     },
     {
-      "path": "src/app/api/external-access/route.ts",
-      "rule": "missing_org_scope",
-      "owner": "RLS-RAW-READ-GUARD-001",
-      "debtId": "RAW-READ-ORG-011",
-      "reason": "externalAccessGrant list/cursor read receives a caller-built where (args.where) already carrying org_id: ctx.orgId; org-scoped but not statically resolvable through the parameter.",
-      "plannedAction": "Consider inlining the org_id filter or routing through withOrgContext to make the scope statically verifiable.",
-      "expectedCount": 2
-    },
-    {
       "path": "src/app/api/jobs/route.ts",
       "rule": "missing_org_scope",
       "owner": "JOB-TENANT-EXECUTION-001",
