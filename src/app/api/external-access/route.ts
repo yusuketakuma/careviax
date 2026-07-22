@@ -3,9 +3,10 @@ import { createHash, randomInt, randomUUID } from 'crypto';
 import type { Prisma } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
-import { withAuthContext } from '@/lib/auth/context';
+import { type AuthContext, withAuthContext } from '@/lib/auth/context';
 import { validateOrgReferences } from '@/lib/api/org-reference';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
+import { isPrismaErrorCode } from '@/lib/db/prisma-errors';
 import { withOrgContext } from '@/lib/db/rls';
 import { toPrismaJsonInput } from '@/lib/db/json';
 import { conflict, forbidden, registeredError, success, validationError } from '@/lib/api/response';
@@ -49,6 +50,7 @@ const createGrantSchema = z.object({
 
 const EXTERNAL_ACCESS_LIST_PAGE_SIZE = 200;
 const EXTERNAL_ACCESS_LIST_QUERY_LIMIT = EXTERNAL_ACCESS_LIST_PAGE_SIZE + 1;
+const EXTERNAL_ACCESS_GRANT_SERIALIZABLE_ATTEMPTS = 2;
 const externalAccessGrantListSelect = {
   id: true,
   org_id: true,
@@ -190,6 +192,76 @@ async function findActiveExternalSharingConsent(args: {
     orderBy: [{ obtained_date: 'desc' }],
     select: { id: true, case_id: true },
   });
+}
+
+async function validateExternalAccessGrantPreconditions(args: {
+  db: Prisma.TransactionClient;
+  ctx: AuthContext;
+  patientId: string;
+  scope: ExternalAccessScope;
+}): Promise<
+  { ok: true; storedScope: ExternalAccessScope } | { ok: false; response: NextResponse }
+> {
+  const refResult = await validateOrgReferences(
+    args.ctx.orgId,
+    { patient_id: args.patientId },
+    args.db,
+  );
+  if (!refResult.ok) return { ok: false, response: refResult.response };
+
+  const canAccessTargetPatient = await canAccessPatient({
+    db: args.db,
+    orgId: args.ctx.orgId,
+    patientId: args.patientId,
+    accessContext: args.ctx,
+  });
+  if (!canAccessTargetPatient) {
+    return {
+      ok: false,
+      response: forbidden('患者への外部共有権限がありません'),
+    };
+  }
+
+  const writable = await requireWritablePatient(args.db, args.ctx, args.patientId);
+  if ('response' in writable) return { ok: false, response: writable.response };
+
+  const requiresCaseBoundary = externalAccessScopeRequiresCaseBoundary(args.scope);
+  const allowedCaseIds = requiresCaseBoundary
+    ? await listAccessiblePatientCaseIds({
+        db: args.db,
+        orgId: args.ctx.orgId,
+        patientId: args.patientId,
+        accessContext: args.ctx,
+      })
+    : [];
+  if (requiresCaseBoundary && allowedCaseIds.length === 0) {
+    return {
+      ok: false,
+      response: forbidden('患者ケースへの外部共有権限がありません'),
+    };
+  }
+
+  const storedScope = requiresCaseBoundary
+    ? attachExternalAccessCaseBoundary(args.scope, allowedCaseIds)
+    : args.scope;
+  const activeExternalSharingConsent = await findActiveExternalSharingConsent({
+    db: args.db,
+    orgId: args.ctx.orgId,
+    patientId: args.patientId,
+    scope: args.scope,
+    allowedCaseIds,
+  });
+  if (!activeExternalSharingConsent) {
+    return {
+      ok: false,
+      response: conflict('外部共有の有効な同意が未登録または期限切れです', {
+        consent_type: 'external_sharing',
+        scope_keys: readScopeKeys(args.scope),
+      }),
+    };
+  }
+
+  return { ok: true, storedScope };
 }
 
 async function listExternalGrantsForContext(args: {
@@ -484,6 +556,19 @@ export const POST = withAuthContext(
     const normalizedGrantedToContact =
       granted_to_contact && granted_to_contact.trim().length > 0 ? granted_to_contact.trim() : null;
 
+    const preflightResult = await withOrgContext(
+      ctx.orgId,
+      (tx) =>
+        validateExternalAccessGrantPreconditions({
+          db: tx,
+          ctx,
+          patientId: patient_id,
+          scope,
+        }),
+      { requestContext: ctx },
+    );
+    if (!preflightResult.ok) return withSensitiveNoStore(preflightResult.response);
+
     const rawOtp = randomInt(100000, 999999).toString();
     const otpHash = await bcrypt.hash(rawOtp, 12);
     const expiresAt = new Date(Date.now() + expires_hours * 60 * 60 * 1000);
@@ -494,145 +579,109 @@ export const POST = withAuthContext(
         ? 'sms'
         : 'manual';
 
-    const grantResult = await withOrgContext(
-      ctx.orgId,
-      async (tx) => {
-        const refResult = await validateOrgReferences(ctx.orgId, { patient_id }, tx);
-        if (!refResult.ok) return { ok: false as const, response: refResult.response };
+    const issueGrant = () =>
+      withOrgContext(
+        ctx.orgId,
+        async (tx) => {
+          const preconditions = await validateExternalAccessGrantPreconditions({
+            db: tx,
+            ctx,
+            patientId: patient_id,
+            scope,
+          });
+          if (!preconditions.ok) return preconditions;
+          const { storedScope } = preconditions;
 
-        const canAccessTargetPatient = await canAccessPatient({
-          db: tx,
-          orgId: ctx.orgId,
-          patientId: patient_id,
-          accessContext: ctx,
-        });
-        if (!canAccessTargetPatient) {
+          const created = await tx.externalAccessGrant.create({
+            data: {
+              org_id: ctx.orgId,
+              patient_id,
+              token_hash: provisionalTokenHash,
+              otp_hash: otpHash,
+              granted_to_name,
+              granted_to_contact: normalizedGrantedToContact,
+              scope: toPrismaJsonInput(storedScope),
+              expires_at: expiresAt,
+            },
+            select: {
+              id: true,
+              patient_id: true,
+              granted_to_name: true,
+              granted_to_contact: true,
+              scope: true,
+              expires_at: true,
+              created_at: true,
+            },
+          });
+
+          const jwtToken = await issueExternalAccessToken({
+            grantId: created.id,
+            orgId: ctx.orgId,
+            patientId: patient_id,
+            expiresHours: expires_hours,
+          });
+
+          const finalTokenHash = createHash('sha256').update(jwtToken).digest('hex');
+          await tx.externalAccessGrant.update({
+            where: { id: created.id },
+            data: { token_hash: finalTokenHash },
+          });
+
+          await createAuditLogEntry(tx, ctx, {
+            action: 'external_access_grant_created',
+            targetType: 'external_access_grant',
+            targetId: created.id,
+            changes: {
+              patient_id,
+              granted_to_name,
+              granted_to_contact_masked: maskExternalAccessContact(normalizedGrantedToContact),
+              scope: toPublicExternalAccessScope(storedScope),
+              scope_keys: readScopeKeys(toPublicExternalAccessScope(storedScope)),
+              expires_at: expiresAt.toISOString(),
+              expires_hours,
+              otp_delivery_intent: otpDeliveryIntent,
+              actor_id: ctx.userId,
+            },
+          });
+
           return {
-            ok: false as const,
-            response: forbidden('患者への外部共有権限がありません'),
+            ok: true as const,
+            grant: {
+              ...created,
+              token: jwtToken,
+            },
           };
-        }
+        },
+        {
+          requestContext: ctx,
+          isolationLevel: 'Serializable',
+        },
+      );
 
-        const writable = await requireWritablePatient(tx, ctx, patient_id);
-        if ('response' in writable) return { ok: false as const, response: writable.response };
-
-        const requiresCaseBoundary = externalAccessScopeRequiresCaseBoundary(scope);
-        const allowedCaseIds = requiresCaseBoundary
-          ? await listAccessiblePatientCaseIds({
-              db: tx,
-              orgId: ctx.orgId,
-              patientId: patient_id,
-              accessContext: ctx,
-            })
-          : [];
-        if (requiresCaseBoundary && allowedCaseIds.length === 0) {
-          return {
-            ok: false as const,
-            response: forbidden('患者ケースへの外部共有権限がありません'),
-          };
-        }
-
-        const storedScope = requiresCaseBoundary
-          ? attachExternalAccessCaseBoundary(scope, allowedCaseIds)
-          : scope;
-        const activeExternalSharingConsent = await findActiveExternalSharingConsent({
-          db: tx,
-          orgId: ctx.orgId,
-          patientId: patient_id,
-          scope,
-          allowedCaseIds,
-        });
-        if (!activeExternalSharingConsent) {
-          return {
-            ok: false as const,
-            response: conflict('外部共有の有効な同意が未登録または期限切れです', {
-              consent_type: 'external_sharing',
-              scope_keys: readScopeKeys(scope),
-            }),
-          };
-        }
-
-        const created = await tx.externalAccessGrant.create({
-          data: {
-            org_id: ctx.orgId,
-            patient_id,
-            token_hash: provisionalTokenHash,
-            otp_hash: otpHash,
-            granted_to_name,
-            granted_to_contact: normalizedGrantedToContact,
-            scope: toPrismaJsonInput(storedScope),
-            expires_at: expiresAt,
-          },
-          select: {
-            id: true,
-            patient_id: true,
-            granted_to_name: true,
-            granted_to_contact: true,
-            scope: true,
-            expires_at: true,
-            created_at: true,
-          },
-        });
-
-        const jwtToken = await issueExternalAccessToken({
-          grantId: created.id,
-          orgId: ctx.orgId,
-          patientId: patient_id,
-          expiresHours: expires_hours,
-        });
-
-        const finalTokenHash = createHash('sha256').update(jwtToken).digest('hex');
-        await tx.externalAccessGrant.update({
-          where: { id: created.id },
-          data: { token_hash: finalTokenHash },
-        });
-
-        await createAuditLogEntry(tx, ctx, {
-          action: 'external_access_grant_created',
-          targetType: 'external_access_grant',
-          targetId: created.id,
-          changes: {
-            patient_id,
-            granted_to_name,
-            granted_to_contact_masked: maskExternalAccessContact(normalizedGrantedToContact),
-            scope: toPublicExternalAccessScope(storedScope),
-            scope_keys: readScopeKeys(toPublicExternalAccessScope(storedScope)),
-            expires_at: expiresAt.toISOString(),
-            expires_hours,
-            otp_delivery_intent: otpDeliveryIntent,
-            actor_id: ctx.userId,
-          },
-        });
-
-        return {
-          ok: true as const,
-          grant: {
-            ...created,
-            token: jwtToken,
-          },
-        };
-      },
-      {
-        requestContext: ctx,
-        isolationLevel: 'Serializable',
-      },
-    )
-      .then((grant) => ({ ok: true as const, grant }))
-      .catch((errorValue) => {
+    let grantResult: Awaited<ReturnType<typeof issueGrant>> | undefined;
+    for (let attempt = 0; attempt < EXTERNAL_ACCESS_GRANT_SERIALIZABLE_ATTEMPTS; attempt += 1) {
+      try {
+        grantResult = await issueGrant();
+        break;
+      } catch (errorValue) {
         if (errorValue instanceof MissingExternalAccessSecretError) {
-          return {
-            ok: false as const,
-            response: registeredError(
+          return withSensitiveNoStore(
+            registeredError(
               'EXTERNAL_ACCESS_SECRET_MISSING',
               '外部共有リンクの署名設定が不足しています',
             ),
-          };
+          );
         }
-        throw errorValue;
-      });
+        if (!isPrismaErrorCode(errorValue, 'P2034')) throw errorValue;
+      }
+    }
+    if (!grantResult) {
+      return withSensitiveNoStore(
+        conflict('外部共有の発行状態が同時に更新されました。もう一度お試しください'),
+      );
+    }
     if (!grantResult.ok) return withSensitiveNoStore(grantResult.response);
-    if (!grantResult.grant.ok) return withSensitiveNoStore(grantResult.grant.response);
-    const grant = grantResult.grant.grant;
+    const grant = grantResult.grant;
 
     let otpDelivery: 'sms' | 'manual' = 'manual';
     let otpDeliveryDestination: string | null = null;
