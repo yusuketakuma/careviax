@@ -12,6 +12,7 @@ import { toast } from 'sonner';
 import type { ScheduleDetail, PendingPatientReflectionSubmission } from './visit-record-form-model';
 import {
   clearPatientReflectionContinuation,
+  finalizeResolvedReflectionContinuation,
   patchPatientReflection,
   loadPatientReflectionContinuation,
   persistPatientReflectionContinuation,
@@ -141,7 +142,7 @@ export function usePatientReflectionRecovery({
           scheduleId,
           reflection: pending.reflection,
           record: pending.record,
-          status: pending.status === 'stale' ? 'stale' : 'failed',
+          status: pending.status === 'ready' ? 'failed' : pending.status,
         });
       const task = persistenceChainRef.current.catch(() => undefined).then(persist);
       persistenceChainRef.current = task;
@@ -159,7 +160,7 @@ export function usePatientReflectionRecovery({
   }, [alertRef, orgId, pending, scheduleId]);
 
   async function refreshAuthority() {
-    if (!pending || !beginAction()) return;
+    if (!pending || pending.status === 'resolved' || !beginAction()) return;
     try {
       const [scheduleResult, headerResult] = await Promise.all([
         refetchSchedule(),
@@ -211,7 +212,18 @@ export function usePatientReflectionRecovery({
         return;
       }
       await persistenceChainRef.current.catch(() => undefined);
-      await clearPatientReflectionContinuation(orgId, scheduleId, pending.record.id);
+      const finalized = await finalizeResolvedReflectionContinuation(
+        orgId,
+        scheduleId,
+        pending.reflection,
+        pending.record,
+      );
+      if (!finalized) {
+        setPending((current) =>
+          current ? { ...current, status: 'resolved', reconfirmed: false } : current,
+        );
+        return;
+      }
       setPending(null);
       toast.success('患者詳細への反映が完了しました');
       await onResolved(pending);
@@ -230,7 +242,11 @@ export function usePatientReflectionRecovery({
       setPending(null);
       await onResolved(pending);
     } catch {
-      toast.error('未完了の患者反映情報を消去できませんでした');
+      toast.error(
+        pending.status === 'resolved'
+          ? '完了した患者反映の回復情報を消去できませんでした'
+          : '未完了の患者反映情報を消去できませんでした',
+      );
     } finally {
       endAction();
     }

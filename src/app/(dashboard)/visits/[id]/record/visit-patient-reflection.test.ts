@@ -65,6 +65,7 @@ vi.mock('@/lib/stores/offline-db', () => ({
 import {
   buildPatientReflectionPayload,
   clearPatientReflectionContinuation,
+  finalizeResolvedReflectionContinuation,
   loadPatientReflectionContinuation,
   patchPatientReflection,
   persistPatientReflectionContinuation,
@@ -272,6 +273,25 @@ describe('visit patient reflection OCC', () => {
       }),
     ).rejects.toThrow('crypto unavailable');
     expect(reflectionRows).toHaveLength(0);
+  });
+
+  it('loads a resolved tombstone distinctly and finalizes it without another PATCH', async () => {
+    const record = { id: 'record_1', version: 1, patient_id: 'patient_1' };
+    await persistPatientReflectionContinuation('org_1', {
+      scheduleId: 'schedule_1',
+      reflection: pending,
+      record,
+      status: 'resolved',
+    });
+
+    await expect(loadPatientReflectionContinuation('org_1', 'schedule_1')).resolves.toEqual({
+      kind: 'loaded',
+      continuation: { scheduleId: 'schedule_1', reflection: pending, record, status: 'resolved' },
+    });
+    await expect(
+      finalizeResolvedReflectionContinuation('org_1', 'schedule_1', pending, record),
+    ).resolves.toBe(true);
+    await expect(loadPatientReflectionContinuation('org_1', 'schedule_1')).resolves.toBeNull();
   });
 
   it('returns an unavailable sentinel when encrypted continuation cannot be decrypted', async () => {

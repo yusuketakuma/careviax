@@ -40,6 +40,7 @@ import { buildPatientDetailWhere } from '@/server/services/patient-detail-scope'
 import { authenticatedPatientGET, normalizeInputJsonObject } from './patient-get-handler';
 import {
   normalizeExpectedUpdatedAt,
+  lockPatientPatchCareCaseAuthority,
   PatientPatchConflictError,
   PatientPatchResponseError,
   preparePatientPatchTransaction,
@@ -149,7 +150,7 @@ export async function executeAuthenticatedPatientPatch(
     const transactionResult = await withOrgContext(
       ctx.orgId,
       async (tx) => {
-        const { existing, duplicateCandidates, assignedCareCaseWhere, canonicalIntakeCase } =
+        const { existing, duplicateCandidates, assignedCareCaseWhere } =
           await preparePatientPatchTransaction({
             tx,
             ctx,
@@ -159,12 +160,20 @@ export async function executeAuthenticatedPatientPatch(
             staffIds: careTeamStaffIds,
             duplicateAcknowledged,
             hasIntakeWrites: intakePatch.hasAnyWrites,
-            careCaseId: care_case_id,
-            expectedCareCaseVersion: expected_care_case_version,
             hasCareCasePair:
               Object.prototype.hasOwnProperty.call(parsed.data, 'care_case_id') &&
               Object.prototype.hasOwnProperty.call(parsed.data, 'expected_care_case_version'),
           });
+        const canonicalIntakeCase = intakePatch.hasAnyWrites
+          ? await lockPatientPatchCareCaseAuthority({
+              tx,
+              ctx,
+              patientId: id,
+              assignedCareCaseWhere,
+              careCaseId: care_case_id,
+              expectedCareCaseVersion: expected_care_case_version,
+            })
+          : null;
 
         let preparedCaseMutation: {
           canonicalCase: NonNullable<typeof canonicalIntakeCase>;
@@ -192,7 +201,7 @@ export async function executeAuthenticatedPatientPatch(
           preparedCaseMutation = { canonicalCase: canonicalIntakeCase, nextHomeVisitIntake };
         }
 
-        // 患者項目の業務差分履歴(層b/層c)。各更新サイトで old→new を算出し、tx 末尾で一括追記する。
+        // Collect old→new business revisions once and persist them at the transaction tail.
         const revisionEntries: PatientFieldRevisionEntry[] = [];
         const revisionDate = utcDateFromLocalKey(localDateKey());
         let claimedCaseMutation: {
@@ -200,8 +209,7 @@ export async function executeAuthenticatedPatientPatch(
           nextHomeVisitIntake: HomeVisitIntake | null;
         } | null = null;
 
-        // 反映導線の出所(source_visit_record_id)は provenance 汚染を防ぐため、
-        // 同一 org かつ同一患者の訪問記録に限り採用する(他患者/他org/不正IDは無視)。
+        // Accept visit provenance only when it belongs to this org and patient.
         let effectiveSourceVisitRecordId: string | null = null;
         if (source_visit_record_id) {
           const sourceVisit = await tx.visitRecord.findFirst({
@@ -606,7 +614,6 @@ export async function executeAuthenticatedPatientPatch(
               : null,
             notes: condition.notes ?? null,
           });
-          // 順序のみの差(GET は is_primary desc, 保存経路は created_at asc)で偽の履歴を出さないため安定ソートする
           const previousSnapshot = sortJsonArrayStable(
             previousConditions.map(normalizeConditionSnapshot),
           );
@@ -637,10 +644,11 @@ export async function executeAuthenticatedPatientPatch(
         }
 
         const preferredContactPhoneCandidate =
-          (intake && hasOwnKey(intake, 'contact_phone') ? intake.contact_phone : undefined) ??
-          updated.phone ??
-          (intake && hasOwnKey(intake, 'contact_mobile') ? intake.contact_mobile : undefined) ??
-          existing.phone;
+          intake && hasOwnKey(intake, 'contact_phone')
+            ? intake.contact_phone
+            : (updated.phone ??
+              (intake && hasOwnKey(intake, 'contact_mobile') ? intake.contact_mobile : undefined) ??
+              existing.phone);
         const nextPreferredContactPhone =
           normalizeNullableText(preferredContactPhoneCandidate) ?? null;
 
@@ -762,7 +770,6 @@ export async function executeAuthenticatedPatientPatch(
           const hasClinicalChange = Object.keys(clinicalFieldLabels).some(
             (key) => key in schedulePreferencePatchData,
           );
-          // upsert が上書きする前に旧値を取得する
           const existingPreference = hasClinicalChange
             ? await tx.patientSchedulePreference.findUnique({
                 where: { patient_id: id },
@@ -870,10 +877,8 @@ export async function executeAuthenticatedPatientPatch(
             const numberChanged = currentInsurance ? currentInsurance.number !== nextNumber : true;
 
             if (numberChanged) {
-              // Close ALL active rows for this insurance type (Fix #3: multi-active guard)
               await closeActiveInsuranceRows(insuranceType);
 
-              // Create new active row
               await tx.patientInsurance.create({
                 data: {
                   org_id: ctx.orgId,
@@ -885,7 +890,6 @@ export async function executeAuthenticatedPatientPatch(
                 },
               });
             } else if (currentInsurance) {
-              // If stale duplicate active rows exist, keep the current row and close the rest.
               await closeActiveInsuranceRows(insuranceType, { id: { not: currentInsurance.id } });
             }
           } else {
@@ -893,8 +897,6 @@ export async function executeAuthenticatedPatientPatch(
           }
         }
 
-        // 変更があった項目のみ業務差分履歴(層b)+時点管理(層c)を追記する。
-        // 差分は上の各更新サイトで算出済み。本呼び出しはDBを再読込しない(二重実装回避)。
         if (revisionEntries.length > 0) {
           await writePatientFieldRevisions(tx, {
             orgId: ctx.orgId,
@@ -907,8 +909,6 @@ export async function executeAuthenticatedPatientPatch(
             entries: revisionEntries,
           });
 
-          // 重要な変更は確認タスクを自動生成する(dedupe_key で冪等)。
-          // 実変更のみ対象とするため writePatientFieldRevisions と同じ no-op フィルタを再適用する。
           const changedFieldKeys = new Set(
             revisionEntries
               .filter((entry) => !isJsonEqual(entry.old_value, entry.new_value))

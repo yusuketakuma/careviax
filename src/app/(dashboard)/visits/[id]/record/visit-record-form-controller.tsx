@@ -45,6 +45,7 @@ import {
   buildVisitRecordCreateResponseSchema,
 } from './visit-record-form-response-schemas';
 import {
+  finalizeResolvedReflectionContinuation as finalizeReflection,
   patchPatientReflection,
   persistPatientReflectionContinuation,
   requiresPatientReflectionCareCaseTarget,
@@ -214,7 +215,6 @@ export function useVisitRecordFormController({
     visitPreparationPack?.intake_context?.initial_transition_management_expected ?? null;
   const submitAttemptLockRef = useRef(false);
 
-  // Create visit record mutation
   const createRecord = useMutation({
     mutationFn: async ({ values }: VisitRecordMutationInput) => {
       const payload = normalizeVisitReceiptPayload({
@@ -276,6 +276,19 @@ export function useVisitRecordFormController({
             careCaseId: intakeEditTarget?.careCaseId ?? null,
             expectedCareCaseVersion: intakeEditTarget?.expectedCareCaseVersion ?? null,
           };
+          const persistReflection = async (status: 'stale' | 'failed') => {
+            try {
+              const continuation = { scheduleId: id, reflection, record, status };
+              await persistPatientReflectionContinuation(orgId, continuation);
+              return true;
+            } catch {
+              toast.error(
+                '患者詳細への未完了反映を安全に保存できません。この画面で解決してください',
+              );
+              return false;
+            }
+          };
+          await persistReflection('failed');
           if (
             !headerSummary?.patientUpdatedAt ||
             headerSummary.patientId !== labPatientId ||
@@ -289,13 +302,18 @@ export function useVisitRecordFormController({
           } else {
             const reflectionResult = await patchPatientReflection(reflection, orgId);
             if (reflectionResult.ok) {
-              toast.success('確認した内容を患者詳細に反映しました');
+              const finalized = await finalizeReflection(orgId, id, reflection, record);
+              if (finalized) toast.success('確認した内容を患者詳細に反映しました');
+              else {
+                failedReflection = { reflection, status: 'resolved', reconfirmed: false };
+              }
             } else {
               failedReflection = {
                 reflection,
                 status: reflectionResult.reason,
                 reconfirmed: false,
               };
+              if (reflectionResult.reason === 'stale') await persistReflection('stale');
             }
           }
         }
@@ -347,7 +365,6 @@ export function useVisitRecordFormController({
           ),
           fallbackMessage: '訪問記録は保存しましたが、添付の紐づけに失敗しました',
         });
-
         return {
           record: patchedRecord,
           attachmentWarning: null,
@@ -391,16 +408,6 @@ export function useVisitRecordFormController({
           attachmentWarning,
           reconfirmed: false,
         } satisfies PendingPatientReflectionSubmission;
-        try {
-          await persistPatientReflectionContinuation(orgId, {
-            scheduleId: id,
-            reflection: continuation.reflection,
-            record,
-            status: continuation.status === 'stale' ? 'stale' : 'failed',
-          });
-        } catch {
-          toast.error('患者詳細への未完了反映を安全に保存できません。この画面で解決してください');
-        }
         setPendingPatientReflection(continuation);
         toast.warning('訪問記録は保存しましたが、患者詳細への反映は完了していません');
       }
@@ -708,7 +715,6 @@ export function useVisitRecordFormController({
       event?.preventDefault();
       return;
     }
-    // React state updates are not synchronous enough to protect a shortcut + click in one tick.
     submitAttemptLockRef.current = true;
     void form.handleSubmit(runValidatedSubmit, () => {
       submitAttemptLockRef.current = false;
@@ -731,10 +737,8 @@ export function useVisitRecordFormController({
     };
   });
 
-  // p0_22 訪問ステップ: スクロール現在地(左レール+下部固定バーで共有)
   const activeStepId = useVisitStepSpy();
 
-  // p0_23 モバイルウィザード: ステップ移動(移動後は先頭から読めるよう最上部へ)
   const handleMobileStepSelect = useCallback(
     (stepId: VisitRecordStepId) => {
       flushCurrentDraftSnapshot();
@@ -750,7 +754,6 @@ export function useVisitRecordFormController({
     [flushCurrentDraftSnapshot, setMobileStepId],
   );
 
-  // p0_23 撮影用 dev フック: 未同期写真 2 件相当(橙バナー+未同期バッジ)を再現する
   useEffect(() => {
     if (process.env.NODE_ENV === 'production') return;
     const target = window;
@@ -777,7 +780,6 @@ export function useVisitRecordFormController({
   });
   const currentPendingSyncCount = visitSavePresentation.pendingCount;
   const visitSaveState: VisitSaveState = visitSavePresentation.state;
-  // 下部固定バーの「一時保存」(Cmd/Ctrl+S と同じ下書き保存)
   const handleManualDraftSave = useCallback(() => {
     const {
       watchedValues: vals,
@@ -834,7 +836,6 @@ export function useVisitRecordFormController({
     />
   );
 
-  // p0_22 右レール「写真・証跡」: 保存前の添付は端末上のみ=未同期として表示
   const evidenceRailItems = selectedAttachments.map((attachment) => ({
     id: attachment.id,
     name: attachment.file.name,

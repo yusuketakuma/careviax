@@ -23,7 +23,7 @@
       "path": "src/app/api/patients/[id]/patient-patch-occ.integration.test.ts",
       "database_url_env": "PATIENT_PATCH_OCC_DATABASE_URL",
       "database_role": "rls_app",
-      "expected_test_count": 5
+      "expected_test_count": 7
     }
   ]
 }

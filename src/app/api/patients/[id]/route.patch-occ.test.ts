@@ -22,6 +22,7 @@ const {
   patientUpdateManyMock,
   residenceFindFirstMock,
   residenceUpdateMock,
+  transactionQueryRawMock,
   visitRecordFindFirstMock,
   withOrgContextMock,
 } = patientRouteMocks;
@@ -333,6 +334,7 @@ describe('/api/patients/[id] PATCH optimistic concurrency', () => {
       }),
     });
     expect(patientUpdateManyMock.mock.calls[0]?.[0].data).not.toHaveProperty('expected_updated_at');
+    expect(transactionQueryRawMock).not.toHaveBeenCalled();
   });
 
   it('returns 409 before updating when PATCH changes identity into a visible duplicate', async () => {
@@ -391,6 +393,17 @@ describe('/api/patients/[id] PATCH optimistic concurrency', () => {
     );
 
     expect(response.status).toBe(200);
+    expect(transactionQueryRawMock).toHaveBeenCalledTimes(2);
+    expect(transactionQueryRawMock.mock.calls[0]?.[0].sql).toContain('"Patient"');
+    expect(transactionQueryRawMock.mock.calls[1]?.[0].sql).toContain('"CareCase"');
+    expect(transactionQueryRawMock.mock.calls[0]?.[0].sql).toContain('FOR UPDATE');
+    expect(transactionQueryRawMock.mock.calls[1]?.[0].sql).toContain('FOR UPDATE');
+    expect(patientFindFirstMock.mock.invocationCallOrder[0]).toBeLessThan(
+      transactionQueryRawMock.mock.invocationCallOrder[0],
+    );
+    expect(transactionQueryRawMock.mock.invocationCallOrder[1]).toBeLessThan(
+      careCaseFindFirstMock.mock.invocationCallOrder[0],
+    );
     expect(patientSchedulePreferenceUpsertMock).toHaveBeenCalledWith(
       expect.objectContaining({
         create: expect.objectContaining({ care_level: null }),
@@ -798,6 +811,37 @@ describe('/api/patients/[id] PATCH optimistic concurrency', () => {
         >
       ).legacy_debug,
     ).toBeUndefined();
+  });
+
+  it('preserves an explicit intake contact phone clear without falling back to patient phone', async () => {
+    patientFindFirstMock.mockResolvedValue({
+      id: 'patient_1',
+      name: '患者A',
+      birth_date: new Date('1950-01-01T00:00:00.000Z'),
+      gender: 'male',
+      phone: '090-1111-2222',
+      updated_at: new Date('2026-03-30T09:00:00.000Z'),
+      cases: [],
+    });
+
+    const response = await PATCH(
+      createRequest(
+        {
+          care_case_id: 'case_1',
+          expected_care_case_version: 1,
+          intake: { contact_phone: null },
+        },
+        { 'x-org-id': 'corg1234567890123456789012' },
+      ),
+      { params: Promise.resolve({ id: 'patient_1' }) },
+    );
+
+    expect(response.status).toBe(200);
+    expect(patientSchedulePreferenceUpsertMock).toHaveBeenCalledWith({
+      where: { patient_id: 'patient_1' },
+      create: expect.objectContaining({ preferred_contact_phone: null }),
+      update: expect.objectContaining({ preferred_contact_phone: null }),
+    });
   });
 
   it('updates requester and intake fields on the latest in-org care case for org-wide roles regardless of assignment', async () => {

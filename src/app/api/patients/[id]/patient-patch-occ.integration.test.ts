@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { PrismaPg } from '@prisma/adapter-pg';
-import { PrismaClient, type Prisma } from '@prisma/client';
+import { Prisma, PrismaClient } from '@prisma/client';
 import { NextRequest } from 'next/server';
 import { Pool } from 'pg';
 import type { AuthContext } from '@/lib/auth/context';
@@ -50,14 +50,21 @@ const actorId = `${runId}_actor`;
 const patientIds = {
   concurrent: `${runId}_concurrent`,
   staleCase: `${runId}_stale_case`,
+  authorityInsert: `${runId}_authority_insert`,
+  authorityReorder: `${runId}_authority_reorder`,
   crossOrg: `${runId}_cross_org`,
   authorized: `${runId}_authorized`,
   caseNull: `${runId}_case_null`,
 } as const;
 const staleCaseId = `${runId}_case`;
+const authorityInsertCaseId = `${runId}_authority_insert_case`;
+const authorityInsertedCaseId = `${runId}_authority_inserted_case`;
+const authorityCurrentCaseId = `${runId}_authority_current_case`;
+const authorityOlderCaseId = `${runId}_authority_older_case`;
 const authorizedCaseId = `${runId}_authorized_case`;
 const seedUpdatedAt = new Date('2026-07-22T00:00:00.000Z');
 let admin: PrismaClient | null = null;
+let racePool: Pool | null = null;
 
 function adminDb() {
   if (!admin) throw new Error('admin integration database is not initialized');
@@ -114,6 +121,38 @@ async function countPatientWrites(patientId: string) {
   return { revisions, preferences, audits };
 }
 
+async function startBlockedCaseMutation(text: string, values: unknown[]) {
+  if (!racePool) throw new Error('patient PATCH OCC race pool is not initialized');
+  const client = await racePool.connect();
+  await client.query('BEGIN');
+  const pidResult = await client.query<{ pid: number }>('SELECT pg_backend_pid() AS pid');
+  const pid = pidResult.rows[0]!.pid;
+  const mutation = client.query(text, values);
+  try {
+    const deadline = Date.now() + 2_000;
+    while (Date.now() < deadline) {
+      const state = await adminDb().$queryRaw<Array<{ wait_event_type: string | null }>>(
+        Prisma.sql`SELECT wait_event_type FROM pg_stat_activity WHERE pid = ${pid}`,
+      );
+      if (state[0]?.wait_event_type === 'Lock') {
+        return async () => {
+          await mutation;
+          await client.query('COMMIT');
+          client.release();
+        };
+      }
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    throw new Error('concurrent CareCase mutation did not block on the PATCH authority locks');
+  } catch (error) {
+    await adminDb().$executeRaw(Prisma.sql`SELECT pg_cancel_backend(${pid})`);
+    await mutation.catch(() => undefined);
+    await client.query('ROLLBACK');
+    client.release();
+    throw error;
+  }
+}
+
 describeDatabase('patient PATCH optimistic concurrency on PostgreSQL with FORCE RLS', () => {
   beforeAll(async () => {
     const appPool = new Pool({ connectionString: appDatabaseUrl!, max: 1 });
@@ -162,6 +201,7 @@ describeDatabase('patient PATCH optimistic concurrency on PostgreSQL with FORCE 
     admin = new PrismaClient({
       adapter: new PrismaPg({ connectionString: adminDatabaseUrl! }),
     });
+    racePool = new Pool({ connectionString: adminDatabaseUrl!, max: 2 });
     await adminDb().organization.createMany({
       data: [
         { id: orgAId, name: 'Patient OCC integration org A' },
@@ -188,6 +228,26 @@ describeDatabase('patient PATCH optimistic concurrency on PostgreSQL with FORCE 
           birth_date: new Date('1951-01-01T00:00:00.000Z'),
           gender: 'other',
           notes: 'stale-case-before',
+          updated_at: seedUpdatedAt,
+        },
+        {
+          id: patientIds.authorityInsert,
+          org_id: orgAId,
+          name: 'OCC Authority Insert',
+          name_kana: 'オーシーシー オーソリティインサート',
+          birth_date: new Date('1951-02-01T00:00:00.000Z'),
+          gender: 'other',
+          notes: 'authority-insert-before',
+          updated_at: seedUpdatedAt,
+        },
+        {
+          id: patientIds.authorityReorder,
+          org_id: orgAId,
+          name: 'OCC Authority Reorder',
+          name_kana: 'オーシーシー オーソリティリオーダー',
+          birth_date: new Date('1951-03-01T00:00:00.000Z'),
+          gender: 'other',
+          notes: 'authority-reorder-before',
           updated_at: seedUpdatedAt,
         },
         {
@@ -238,6 +298,29 @@ describeDatabase('patient PATCH optimistic concurrency on PostgreSQL with FORCE 
           required_visit_support: { home_visit_intake: { care_level: 'before' } },
           version: 1,
         },
+        {
+          id: authorityInsertCaseId,
+          org_id: orgAId,
+          patient_id: patientIds.authorityInsert,
+          required_visit_support: { home_visit_intake: { primary_disease: 'original' } },
+          version: 1,
+        },
+        {
+          id: authorityCurrentCaseId,
+          org_id: orgAId,
+          patient_id: patientIds.authorityReorder,
+          required_visit_support: { home_visit_intake: { primary_disease: 'current' } },
+          version: 1,
+          updated_at: new Date('2026-07-22T00:00:02.000Z'),
+        },
+        {
+          id: authorityOlderCaseId,
+          org_id: orgAId,
+          patient_id: patientIds.authorityReorder,
+          required_visit_support: { home_visit_intake: { primary_disease: 'older' } },
+          version: 1,
+          updated_at: new Date('2026-07-22T00:00:01.000Z'),
+        },
       ],
     });
   });
@@ -256,6 +339,8 @@ describeDatabase('patient PATCH optimistic concurrency on PostgreSQL with FORCE 
     } finally {
       await admin.$disconnect();
       await prisma.$disconnect();
+      await racePool?.end();
+      racePool = null;
       admin = null;
     }
   }, 30_000);
@@ -350,6 +435,82 @@ describeDatabase('patient PATCH optimistic concurrency on PostgreSQL with FORCE 
     expect(await adminDb().auditLog.count({ where: { target_id: staleCaseId } })).toBe(
       caseAuditsBefore,
     );
+  });
+
+  it('holds canonical authority while a concurrent newer CareCase insert waits on the Patient lock', async () => {
+    const patientBefore = await readPatient(patientIds.authorityInsert);
+    let finishInsert: (() => Promise<void>) | null = null;
+    const response = await executePatch({
+      orgId: orgAId,
+      patientId: patientIds.authorityInsert,
+      body: {
+        expected_updated_at: patientBefore.updated_at.toISOString(),
+        care_case_id: authorityInsertCaseId,
+        expected_care_case_version: 1,
+        intake: { primary_disease: 'patched-before-insert' },
+      },
+      now: new Date('2026-07-22T00:02:10.000Z'),
+      testOnlyBeforeCareCaseClaim: async () => {
+        finishInsert = await startBlockedCaseMutation(
+          `INSERT INTO "CareCase" ("id", "org_id", "patient_id", "status", "version", "created_at", "updated_at")
+           VALUES ($1, $2, $3, 'active', 1, NOW(), NOW())`,
+          [authorityInsertedCaseId, orgAId, patientIds.authorityInsert],
+        );
+      },
+    });
+
+    expect(finishInsert).not.toBeNull();
+    await finishInsert!();
+    expect(response.status).toBe(200);
+    await expect(
+      adminDb().careCase.findUniqueOrThrow({
+        where: { id: authorityInsertCaseId },
+        select: { version: true, required_visit_support: true },
+      }),
+    ).resolves.toEqual({
+      version: 2,
+      required_visit_support: {
+        home_visit_intake: expect.objectContaining({ primary_disease: 'patched-before-insert' }),
+      },
+    });
+    expect(await adminDb().careCase.count({ where: { id: authorityInsertedCaseId } })).toBe(1);
+  });
+
+  it('holds canonical authority while a concurrent older Case reorder waits on its row lock', async () => {
+    const patientBefore = await readPatient(patientIds.authorityReorder);
+    let finishReorder: (() => Promise<void>) | null = null;
+    const response = await executePatch({
+      orgId: orgAId,
+      patientId: patientIds.authorityReorder,
+      body: {
+        expected_updated_at: patientBefore.updated_at.toISOString(),
+        care_case_id: authorityCurrentCaseId,
+        expected_care_case_version: 1,
+        intake: { primary_disease: 'patched-before-reorder' },
+      },
+      now: new Date('2026-07-22T00:02:20.000Z'),
+      testOnlyBeforeCareCaseClaim: async () => {
+        finishReorder = await startBlockedCaseMutation(
+          `UPDATE "CareCase" SET "updated_at" = $1 WHERE "id" = $2`,
+          [new Date('2026-07-22T00:10:00.000Z'), authorityOlderCaseId],
+        );
+      },
+    });
+
+    expect(finishReorder).not.toBeNull();
+    await finishReorder!();
+    expect(response.status).toBe(200);
+    await expect(
+      adminDb().careCase.findUniqueOrThrow({
+        where: { id: authorityCurrentCaseId },
+        select: { version: true, required_visit_support: true },
+      }),
+    ).resolves.toEqual({
+      version: 2,
+      required_visit_support: {
+        home_visit_intake: expect.objectContaining({ primary_disease: 'patched-before-reorder' }),
+      },
+    });
   });
 
   it('keeps a cross-org Patient invisible and performs zero writes', async () => {

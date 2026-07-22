@@ -25,7 +25,7 @@ export type DurablePatientReflectionContinuation = {
   scheduleId: string;
   reflection: PendingPatientReflection;
   record: { id: string; version: number; patient_id: string };
-  status: 'stale' | 'failed';
+  status: 'stale' | 'failed' | 'resolved';
 };
 
 export type PatientReflectionContinuationLoadResult =
@@ -109,7 +109,9 @@ function isDurableContinuation(
   const record = continuation.record as DurablePatientReflectionContinuation['record'] | undefined;
   return (
     continuation.scheduleId === scheduleId &&
-    (continuation.status === 'stale' || continuation.status === 'failed') &&
+    (continuation.status === 'stale' ||
+      continuation.status === 'failed' ||
+      continuation.status === 'resolved') &&
     record?.id === recordId &&
     typeof record.version === 'number' &&
     typeof record.patient_id === 'string' &&
@@ -195,6 +197,26 @@ export async function clearPatientReflectionContinuation(
     .where('[orgId+scheduleId+recordId]')
     .equals([orgId, scheduleId, recordId])
     .delete();
+}
+
+export async function finalizeResolvedReflectionContinuation(
+  orgId: string,
+  scheduleId: string,
+  reflection: PendingPatientReflection,
+  record: DurablePatientReflectionContinuation['record'],
+) {
+  try {
+    await persistPatientReflectionContinuation(orgId, {
+      scheduleId,
+      reflection,
+      record,
+      status: 'resolved',
+    });
+    await clearPatientReflectionContinuation(orgId, scheduleId, record.id);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export async function patchPatientReflection(

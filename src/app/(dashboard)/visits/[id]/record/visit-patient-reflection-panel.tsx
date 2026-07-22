@@ -8,7 +8,7 @@ import type { PatientReflectionHydrationState } from './visit-patient-reflection
 
 export type PatientReflectionRecoveryState = {
   reflection: PendingPatientReflection;
-  status: 'stale' | 'failed' | 'ready';
+  status: 'stale' | 'failed' | 'ready' | 'resolved';
   reconfirmed: boolean;
 };
 
@@ -54,6 +54,30 @@ export const VisitPatientReflectionPanel = forwardRef<
   { recovery, disabled = false, onRefresh, onReconfirmedChange, onRetry, onSkip },
   ref,
 ) {
+  if (recovery.status === 'resolved') {
+    return (
+      <div
+        ref={ref}
+        role="alert"
+        tabIndex={-1}
+        className="mx-4 mt-4 space-y-3 border-l-4 border-l-state-confirm px-4 py-3 outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        <p className="font-medium text-foreground">患者詳細への反映は完了しています</p>
+        <p className="text-sm leading-6 text-muted-foreground">
+          回復情報の後片付けだけが未完了です。患者詳細への反映は再実行しません。
+        </p>
+        <Button
+          type="button"
+          variant="outline"
+          className="min-h-11"
+          disabled={disabled}
+          onClick={onSkip}
+        >
+          完了情報を消去して続行
+        </Button>
+      </div>
+    );
+  }
   return (
     <div
       ref={ref}

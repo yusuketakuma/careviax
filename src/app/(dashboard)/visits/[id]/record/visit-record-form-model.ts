@@ -182,7 +182,7 @@ export type PendingPatientReflectionSubmission = {
   reflection: PendingPatientReflection;
   record: SavedVisitRecord;
   attachmentWarning: string | null;
-  status: 'stale' | 'failed' | 'ready';
+  status: 'stale' | 'failed' | 'ready' | 'resolved';
   reconfirmed: boolean;
 };
 

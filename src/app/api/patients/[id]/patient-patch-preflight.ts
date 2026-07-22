@@ -1,5 +1,5 @@
 import { format } from 'date-fns';
-import type { Gender, Prisma } from '@prisma/client';
+import { Prisma, type Gender } from '@prisma/client';
 import type { AuthContext } from '@/lib/auth/context';
 import { validateOrgReferences } from '@/lib/api/org-reference';
 import { conflict, notFound, validationError } from '@/lib/api/response';
@@ -37,6 +37,36 @@ export function normalizeExpectedUpdatedAt(value: string | null | undefined): Da
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
+export async function lockPatientPatchCareCaseAuthority(args: {
+  tx: Prisma.TransactionClient;
+  ctx: AuthContext;
+  patientId: string;
+  assignedCareCaseWhere?: Prisma.CareCaseWhereInput | null;
+  careCaseId: string | null | undefined;
+  expectedCareCaseVersion: number | null | undefined;
+}) {
+  await args.tx.$queryRaw(
+    Prisma.sql`SELECT "id" FROM "Patient" WHERE "id" = ${args.patientId} AND "org_id" = ${args.ctx.orgId} FOR UPDATE`,
+  );
+  await args.tx.$queryRaw(
+    Prisma.sql`SELECT "id" FROM "CareCase" WHERE "patient_id" = ${args.patientId} AND "org_id" = ${args.ctx.orgId} FOR UPDATE`,
+  );
+  const canonicalCase = await findCanonicalHomeVisitIntakeCase(args.tx, {
+    orgId: args.ctx.orgId,
+    patientId: args.patientId,
+    assignedCareCaseWhere: args.assignedCareCaseWhere,
+  });
+  if (
+    canonicalCase
+      ? args.careCaseId !== canonicalCase.id ||
+        args.expectedCareCaseVersion !== canonicalCase.version
+      : args.careCaseId !== null || args.expectedCareCaseVersion !== null
+  ) {
+    throw new PatientPatchConflictError('stale_care_case');
+  }
+  return canonicalCase;
+}
+
 type PreflightArgs = {
   tx: Prisma.TransactionClient;
   ctx: AuthContext;
@@ -46,8 +76,6 @@ type PreflightArgs = {
   staffIds: string[];
   duplicateAcknowledged: boolean;
   hasIntakeWrites: boolean;
-  careCaseId: string | null | undefined;
-  expectedCareCaseVersion: number | null | undefined;
   hasCareCasePair: boolean;
 };
 
@@ -114,27 +142,13 @@ export async function preparePatientPatchTransaction(args: PreflightArgs) {
   }
 
   const assignedCareCaseWhere = buildAssignedCareCaseWhere(ctx);
-  const canonicalIntakeCase = args.hasIntakeWrites
-    ? await findCanonicalHomeVisitIntakeCase(tx, {
-        orgId: ctx.orgId,
-        patientId,
-        assignedCareCaseWhere,
-      })
-    : null;
   if (args.hasIntakeWrites) {
     if (!args.hasCareCasePair) {
       throw new PatientPatchResponseError(
         validationError('受付情報を更新するにはケースIDと版情報の組が必要です'),
       );
     }
-    if (canonicalIntakeCase) {
-      if (args.careCaseId !== canonicalIntakeCase.id || args.expectedCareCaseVersion == null) {
-        throw new PatientPatchConflictError('stale_care_case');
-      }
-    } else if (args.careCaseId !== null || args.expectedCareCaseVersion !== null) {
-      throw new PatientPatchConflictError('stale_care_case');
-    }
   }
 
-  return { existing, duplicateCandidates, assignedCareCaseWhere, canonicalIntakeCase };
+  return { existing, duplicateCandidates, assignedCareCaseWhere };
 }

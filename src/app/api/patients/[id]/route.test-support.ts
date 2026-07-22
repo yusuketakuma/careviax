@@ -51,6 +51,7 @@ export const patientRouteMocks = {
   billingCandidateFindManyMock: vi.fn(),
   billingEvidenceBlockersMock: vi.fn(),
   withOrgContextMock: vi.fn(),
+  transactionQueryRawMock: vi.fn(),
   patientSchedulePreferenceUpsertMock: vi.fn(),
   patientSchedulePreferenceUpdateManyMock: vi.fn(),
   patientSchedulePreferenceFindUniqueMock: vi.fn(),
@@ -113,6 +114,7 @@ const {
   billingCandidateFindManyMock,
   billingEvidenceBlockersMock,
   withOrgContextMock,
+  transactionQueryRawMock,
   patientSchedulePreferenceUpsertMock,
   patientSchedulePreferenceUpdateManyMock,
   patientSchedulePreferenceFindUniqueMock,
@@ -292,8 +294,10 @@ beforeEach(() => {
     },
   });
   getFacilityVisitDefaultsMock.mockResolvedValue(null);
+  transactionQueryRawMock.mockResolvedValue([]);
   withOrgContextMock.mockImplementation(async (_orgId, callback) =>
     callback({
+      $queryRaw: transactionQueryRawMock,
       patient: {
         findFirst: patientFindFirstMock,
         findMany: patientFindManyMock,

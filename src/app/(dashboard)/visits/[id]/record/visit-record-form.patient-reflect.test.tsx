@@ -24,7 +24,7 @@ const {
     payload: string;
     updatedAt: Date;
   }> = [];
-  const dbState = { readError: null as Error | null };
+  const dbState = { readError: null as Error | null, clearError: null as Error | null };
   return {
     continuationRows: rows,
     continuationCryptoState: { plaintext: '' },
@@ -47,6 +47,9 @@ const {
             );
           return {
             delete: vi.fn(async () => {
+              if (index === '[orgId+scheduleId+recordId]' && dbState.clearError) {
+                throw dbState.clearError;
+              }
               for (const row of matching()) rows.splice(rows.indexOf(row), 1);
             }),
             reverse: () => ({
@@ -108,6 +111,10 @@ describe('VisitRecordForm patient-detail reflect (⑤)', () => {
   } | null = null;
   let patientPatchSuccessOverride: unknown | null = null;
   let schedulePatientId = 'patient_1';
+  let patientPatchGate: Promise<Response> | null = null;
+  let attachmentPresignGate: Promise<Response> | null = null;
+  let patientPatchRequested = false;
+  let attachmentPresignRequested = false;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -131,6 +138,10 @@ describe('VisitRecordForm patient-detail reflect (⑤)', () => {
       expected_care_case_version: 11,
     };
     patientPatchSuccessOverride = null;
+    patientPatchGate = null;
+    attachmentPresignGate = null;
+    patientPatchRequested = false;
+    attachmentPresignRequested = false;
     submitVisitMedicationStockObservationsMock.mockReset().mockResolvedValue({
       ok: true,
       data: {
@@ -141,6 +152,7 @@ describe('VisitRecordForm patient-detail reflect (⑤)', () => {
     schedulePatientId = 'patient_1';
     continuationRows.length = 0;
     continuationDbState.readError = null;
+    continuationDbState.clearError = null;
     continuationCryptoState.plaintext = '';
     encryptContinuationMock.mockReset().mockImplementation(async (value: string) => {
       continuationCryptoState.plaintext = value;
@@ -200,6 +212,10 @@ describe('VisitRecordForm patient-detail reflect (⑤)', () => {
             { status: 201 },
           );
         }
+        if (url === '/api/files/presigned-upload' && attachmentPresignGate) {
+          attachmentPresignRequested = true;
+          return await attachmentPresignGate;
+        }
         if (url.endsWith('/header-summary')) {
           const status = headerGetStatuses.shift() ?? 200;
           return new Response(
@@ -225,6 +241,10 @@ describe('VisitRecordForm patient-detail reflect (⑤)', () => {
             expected_care_case_version: number | null;
           };
           patientPatchBodies.push(patchBody);
+          if (patientPatchGate) {
+            patientPatchRequested = true;
+            return await patientPatchGate;
+          }
           const status = patientPatchStatuses.shift() ?? 200;
           const updatedAt = '2026-04-09T01:00:01.000Z';
           const responseBody =
@@ -319,6 +339,132 @@ describe('VisitRecordForm patient-detail reflect (⑤)', () => {
     expect(continuationTableMock.add).not.toHaveBeenCalled();
   });
 
+  it('persists the encrypted continuation before deferred Patient PATCH and attachment work', async () => {
+    let releasePatientPatch!: (response: Response) => void;
+    let releaseAttachmentPresign!: (response: Response) => void;
+    patientPatchGate = new Promise((resolve) => {
+      releasePatientPatch = resolve;
+    });
+    attachmentPresignGate = new Promise((resolve) => {
+      releaseAttachmentPresign = resolve;
+    });
+    renderForm();
+    await waitForPatientHydrated();
+
+    fireEvent.click(screen.getByRole('button', { name: '添付テスト追加' }));
+    fireEvent.click(screen.getByRole('button', { name: '延期' }));
+    fireEvent.click(screen.getByRole('button', { name: '家族' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'この内容を患者詳細に反映する' }));
+    fireEvent.submit(document.querySelector('form')!);
+
+    await waitFor(() => expect(patientPatchRequested).toBe(true));
+    expect(attachmentPresignRequested).toBe(false);
+    expect(clearDraftMock).not.toHaveBeenCalled();
+    expect(continuationRows).toHaveLength(1);
+    expect(continuationRows[0]?.payload).toBe('encv1:opaque-reflection');
+    expect(JSON.parse(continuationCryptoState.plaintext)).toMatchObject({
+      scheduleId: 'schedule_partial',
+      status: 'failed',
+      record: { id: 'record_1', version: 1, patient_id: 'patient_1' },
+    });
+
+    await act(async () => {
+      releasePatientPatch(new Response('{}', { status: 409 }));
+    });
+    await waitFor(() => expect(attachmentPresignRequested).toBe(true));
+    expect(continuationRows).toHaveLength(1);
+    expect(JSON.parse(continuationCryptoState.plaintext)).toMatchObject({ status: 'stale' });
+    expect(clearDraftMock).not.toHaveBeenCalled();
+    expect(visitRecordPostBodies).toHaveLength(1);
+
+    await act(async () => {
+      releaseAttachmentPresign(
+        new Response(JSON.stringify({ message: 'upload unavailable' }), { status: 503 }),
+      );
+    });
+    await screen.findByText('訪問記録は保存済みですが、患者詳細への反映は未完了です');
+    expect(visitRecordPostBodies).toHaveLength(1);
+  });
+
+  it('keeps in-memory recovery fail-closed when durable persistence is unavailable', async () => {
+    encryptContinuationMock.mockRejectedValue(new Error('encryption unavailable'));
+    patientPatchStatuses = [409];
+    renderForm();
+    await waitForPatientHydrated();
+
+    fireEvent.click(screen.getByRole('button', { name: '延期' }));
+    fireEvent.click(screen.getByRole('button', { name: '家族' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'この内容を患者詳細に反映する' }));
+    fireEvent.submit(document.querySelector('form')!);
+
+    await screen.findByText('訪問記録は保存済みですが、患者詳細への反映は未完了です');
+    fireEvent.submit(document.querySelector('form')!);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(visitRecordPostBodies).toHaveLength(1);
+    expect(continuationRows).toHaveLength(0);
+    expect(routerPushMock).not.toHaveBeenCalledWith('/visits/record_1');
+  });
+
+  it('reloads a resolved tombstone with clear-only cleanup and never repeats Patient PATCH', async () => {
+    continuationDbState.clearError = new Error('IndexedDB clear failed');
+    const initial = renderForm();
+    await waitForPatientHydrated();
+
+    fireEvent.click(screen.getByRole('button', { name: '延期' }));
+    fireEvent.click(screen.getByRole('button', { name: '家族' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'この内容を患者詳細に反映する' }));
+    fireEvent.submit(document.querySelector('form')!);
+
+    await screen.findByText('患者詳細への反映は完了しています');
+    expect(patientPatchBodies).toHaveLength(1);
+    expect(visitRecordPostBodies).toHaveLength(1);
+    expect(continuationRows).toHaveLength(1);
+    expect(JSON.parse(continuationCryptoState.plaintext)).toMatchObject({ status: 'resolved' });
+    expect(screen.queryByRole('button', { name: '最新情報を再取得' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '反映だけ再試行' })).toBeNull();
+    expect(screen.getByRole('button', { name: '完了情報を消去して続行' })).toBeTruthy();
+
+    initial.unmount();
+    renderForm();
+    await screen.findByText('患者詳細への反映は完了しています');
+    expect(patientPatchBodies).toHaveLength(1);
+    expect(screen.queryByRole('button', { name: '反映だけ再試行' })).toBeNull();
+
+    continuationDbState.clearError = null;
+    fireEvent.click(screen.getByRole('button', { name: '完了情報を消去して続行' }));
+    await waitFor(() => expect(continuationRows).toHaveLength(0));
+    await waitFor(() => expect(routerPushMock).toHaveBeenCalledWith('/visits/record_1'));
+    expect(patientPatchBodies).toHaveLength(1);
+    expect(visitRecordPostBodies).toHaveLength(1);
+  });
+
+  it('retries failed resolved-tombstone persistence without exposing Patient PATCH again', async () => {
+    let encryptionAttempt = 0;
+    encryptContinuationMock.mockImplementation(async (value: string) => {
+      encryptionAttempt += 1;
+      if (encryptionAttempt === 2) throw new Error('resolved persistence failed');
+      continuationCryptoState.plaintext = value;
+      return 'encv1:opaque-reflection';
+    });
+    renderForm();
+    await waitForPatientHydrated();
+
+    fireEvent.click(screen.getByRole('button', { name: '延期' }));
+    fireEvent.click(screen.getByRole('button', { name: '家族' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'この内容を患者詳細に反映する' }));
+    fireEvent.submit(document.querySelector('form')!);
+
+    await screen.findByText('患者詳細への反映は完了しています');
+    await waitFor(() =>
+      expect(JSON.parse(continuationCryptoState.plaintext)).toMatchObject({ status: 'resolved' }),
+    );
+    expect(encryptionAttempt).toBeGreaterThanOrEqual(3);
+    expect(patientPatchBodies).toHaveLength(1);
+    expect(screen.queryByRole('button', { name: '反映だけ再試行' })).toBeNull();
+  });
+
   it('schedule と異なる canonical intake target を使って患者詳細へ PATCH する', async () => {
     renderForm();
     await waitForPatientHydrated();
@@ -336,6 +482,8 @@ describe('VisitRecordForm patient-detail reflect (⑤)', () => {
     await waitFor(() => {
       expect(patientPatchBodies).toHaveLength(1);
     });
+    expect(continuationTableMock.add).toHaveBeenCalled();
+    expect(continuationRows).toHaveLength(0);
     expect(patientPatchBodies[0]).toEqual({
       intake: { care_level: '要介護3', medication_manager: 'family' },
       source_visit_record_id: 'record_1',
@@ -490,6 +638,50 @@ describe('VisitRecordForm patient-detail reflect (⑤)', () => {
     });
     expect(continuationRows).toHaveLength(0);
     expect(window.localStorage.length).toBe(0);
+  });
+
+  it('retry ACK clear failure becomes reload-safe resolved cleanup without a third PATCH', async () => {
+    patientPatchStatuses = [409, 200];
+    const initial = renderForm();
+    await waitForPatientHydrated();
+
+    fireEvent.click(screen.getByRole('button', { name: '延期' }));
+    fireEvent.click(screen.getByRole('button', { name: '家族' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'この内容を患者詳細に反映する' }));
+    fireEvent.submit(document.querySelector('form')!);
+    await screen.findByText('訪問記録は保存済みですが、患者詳細への反映は未完了です');
+
+    fireEvent.click(screen.getByRole('button', { name: '最新情報を再取得' }));
+    await screen.findByText(/最新版を取得しました/);
+    const reconfirm = screen
+      .getAllByRole('checkbox')
+      .find(
+        (checkbox) =>
+          checkbox.getAttribute('aria-describedby') === 'patient-reflection-reconfirm-description',
+      );
+    fireEvent.click(reconfirm!);
+    continuationDbState.clearError = new Error('IndexedDB clear failed');
+    fireEvent.click(screen.getByRole('button', { name: '反映だけ再試行' }));
+
+    await screen.findByText('患者詳細への反映は完了しています');
+    expect(patientPatchBodies).toHaveLength(2);
+    expect(visitRecordPostBodies).toHaveLength(1);
+    await waitFor(() =>
+      expect(JSON.parse(continuationCryptoState.plaintext)).toMatchObject({ status: 'resolved' }),
+    );
+    expect(screen.queryByRole('button', { name: '反映だけ再試行' })).toBeNull();
+
+    initial.unmount();
+    renderForm();
+    await screen.findByText('患者詳細への反映は完了しています');
+    expect(patientPatchBodies).toHaveLength(2);
+    expect(screen.queryByRole('button', { name: '反映だけ再試行' })).toBeNull();
+
+    continuationDbState.clearError = null;
+    fireEvent.click(screen.getByRole('button', { name: '完了情報を消去して続行' }));
+    await waitFor(() => expect(routerPushMock).toHaveBeenCalledWith('/visits/record_1'));
+    expect(patientPatchBodies).toHaveLength(2);
+    expect(visitRecordPostBodies).toHaveLength(1);
   });
 
   it.each(['retry', 'skip'] as const)(
