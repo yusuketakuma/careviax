@@ -1,15 +1,25 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 import {
+  assertDisposableGithubActionsContext,
   assertSuiteResult,
   resolveDatabaseUrl,
   runPostgresIntegrationManifest,
   validateManifest,
+  verifyPreparedE2eSchema,
   type PostgresIntegrationManifest,
   type VitestJsonResult,
 } from './run-postgres-integration-manifest';
 
 const SAFE_URL = 'postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public';
+const DISPOSABLE_CI_ENV = {
+  CI: 'true',
+  GITHUB_ACTIONS: 'true',
+  GITHUB_RUN_ID: '123456789',
+  GITHUB_RUN_ATTEMPT: '1',
+  POSTGRES_INTEGRATION_DISPOSABLE_DB: 'github-actions-postgres-service',
+  POSTGRES_INTEGRATION_DATABASE_URL: SAFE_URL,
+} satisfies NodeJS.ProcessEnv;
 const MANIFEST = JSON.parse(
   readFileSync('tools/postgres-integration-manifest.json', 'utf8'),
 ) as unknown;
@@ -58,25 +68,60 @@ describe('run-postgres-integration-manifest', () => {
     'postgresql://ph_os:ph_os@localhost:5433/ph_os?schema=public',
     'postgresql://postgres:postgres@localhost:5433/ph_os_e2e?schema=public',
     'postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=private',
+    'postgresql://ph_os:ph_os@127.0.0.1:5433/ph_os_e2e?schema=public',
+    'postgresql://ph_os:ph_os@[::1]:5433/ph_os_e2e?schema=public',
   ])('rejects unsafe database target %s', (databaseUrl) => {
     expect(() => resolveDatabaseUrl({ POSTGRES_INTEGRATION_DATABASE_URL: databaseUrl })).toThrow(
-      /must point to postgresql:\/\/ph_os@localhost:5433\/ph_os_e2e/,
+      /must (?:point to postgresql:\/\/ph_os@localhost:5433\/ph_os_e2e|use the literal localhost)/,
     );
   });
 
-  it('accepts localhost aliases and gives the dedicated override precedence', () => {
+  it('accepts only literal localhost and gives the dedicated override precedence', () => {
     expect(
       resolveDatabaseUrl({
-        POSTGRES_INTEGRATION_DATABASE_URL:
-          'postgresql://ph_os:ph_os@[::1]:5433/ph_os_e2e?schema=public',
+        POSTGRES_INTEGRATION_DATABASE_URL: SAFE_URL,
         DATABASE_URL: 'postgresql://ph_os:ph_os@db.internal:5432/production',
       }),
-    ).toContain('[::1]:5433/ph_os_e2e');
-    expect(
-      resolveDatabaseUrl({
-        DATABASE_URL: 'postgresql://ph_os:ph_os@127.0.0.1:5433/ph_os_e2e?schema=public',
+    ).toBe(SAFE_URL);
+  });
+
+  it.each([
+    ['CI'],
+    ['GITHUB_ACTIONS'],
+    ['GITHUB_RUN_ID'],
+    ['GITHUB_RUN_ATTEMPT'],
+    ['POSTGRES_INTEGRATION_DISPOSABLE_DB'],
+  ])('rejects a disposable CI proof missing %s', (missingKey) => {
+    const env = { ...DISPOSABLE_CI_ENV };
+    delete env[missingKey as keyof typeof env];
+    expect(() => assertDisposableGithubActionsContext(env)).toThrow(/disposable GitHub Actions/);
+  });
+
+  it('rejects spoof-incomplete or incorrect disposable service markers', () => {
+    expect(() =>
+      assertDisposableGithubActionsContext({
+        ...DISPOSABLE_CI_ENV,
+        GITHUB_RUN_ID: ' ',
       }),
-    ).toContain('127.0.0.1:5433/ph_os_e2e');
+    ).toThrow(/disposable GitHub Actions/);
+    expect(() =>
+      assertDisposableGithubActionsContext({
+        ...DISPOSABLE_CI_ENV,
+        POSTGRES_INTEGRATION_DISPOSABLE_DB: 'local-postgres',
+      }),
+    ).toThrow(/disposable GitHub Actions/);
+  });
+
+  it('rejects prepared schemas containing protected global allocator state', async () => {
+    await expect(
+      verifyPreparedE2eSchema(SAFE_URL, async () => ({
+        database_name: 'ph_os_e2e',
+        database_user: 'ph_os',
+        schema_name: 'public',
+        migration_count: 100,
+        protected_global_sequence_count: 1,
+      })),
+    ).rejects.toThrow(/protected pre-existing global display-ID allocator state/);
   });
 
   it('fails closed on count drift, failures, and skips', () => {
@@ -111,7 +156,7 @@ describe('run-postgres-integration-manifest', () => {
 
     await expect(
       runPostgresIntegrationManifest({
-        env: { POSTGRES_INTEGRATION_DATABASE_URL: SAFE_URL },
+        env: DISPOSABLE_CI_ENV,
         manifest: MANIFEST,
         verifyPreparedSchema,
         runSuite,
@@ -139,7 +184,7 @@ describe('run-postgres-integration-manifest', () => {
     const runSuite = vi.fn();
     await expect(
       runPostgresIntegrationManifest({
-        env: { POSTGRES_INTEGRATION_DATABASE_URL: SAFE_URL },
+        env: DISPOSABLE_CI_ENV,
         manifest: MANIFEST,
         verifyPreparedSchema: async () => {
           throw new Error('schema is not prepared');

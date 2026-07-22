@@ -8,6 +8,7 @@ import { parseLocalE2eDatabaseTarget } from './prepare-e2e-db-core';
 
 const MANIFEST_PATH = 'tools/postgres-integration-manifest.json';
 const DATABASE_URL_OVERRIDE_ENV = 'POSTGRES_INTEGRATION_DATABASE_URL';
+const DISPOSABLE_DATABASE_MARKER = 'github-actions-postgres-service';
 const REQUIRED_SUITES = [
   'src/server/services/standard-clinical-sync-queue.integration.test.ts',
   'src/server/services/first-visit-document-version.integration.test.ts',
@@ -31,6 +32,14 @@ export type VitestJsonResult = {
   numPassedTests: number;
   numFailedTests: number;
   numPendingTests: number;
+};
+
+export type PreparedE2eSchemaState = {
+  database_name: string;
+  database_user: string;
+  schema_name: string;
+  migration_count: number;
+  protected_global_sequence_count: number;
 };
 
 type RunnerOptions = {
@@ -94,8 +103,26 @@ export function resolveDatabaseUrl(env: NodeJS.ProcessEnv): string {
   if (!databaseUrl) {
     throw new Error(`${DATABASE_URL_OVERRIDE_ENV} or DATABASE_URL is required`);
   }
-  parseLocalE2eDatabaseTarget(databaseUrl, DATABASE_URL_OVERRIDE_ENV);
+  const target = parseLocalE2eDatabaseTarget(databaseUrl, DATABASE_URL_OVERRIDE_ENV);
+  if (target.host !== 'localhost') {
+    throw new Error(`${DATABASE_URL_OVERRIDE_ENV} must use the literal localhost hostname`);
+  }
   return databaseUrl;
+}
+
+export function assertDisposableGithubActionsContext(env: NodeJS.ProcessEnv): void {
+  const hasNonemptyRunIdentity =
+    Boolean(env.GITHUB_RUN_ID?.trim()) && Boolean(env.GITHUB_RUN_ATTEMPT?.trim());
+  if (
+    env.CI !== 'true' ||
+    env.GITHUB_ACTIONS !== 'true' ||
+    !hasNonemptyRunIdentity ||
+    env.POSTGRES_INTEGRATION_DISPOSABLE_DB !== DISPOSABLE_DATABASE_MARKER
+  ) {
+    throw new Error(
+      'Postgres integration manifest requires the marked disposable GitHub Actions PostgreSQL service context',
+    );
+  }
 }
 
 export function assertSuiteResult(suite: PostgresIntegrationSuite, result: VitestJsonResult): void {
@@ -119,15 +146,10 @@ export function assertSuiteResult(suite: PostgresIntegrationSuite, result: Vites
   }
 }
 
-export async function verifyPreparedE2eSchema(databaseUrl: string): Promise<void> {
+async function queryPreparedE2eSchema(databaseUrl: string): Promise<PreparedE2eSchemaState> {
   const pool = new Pool({ connectionString: databaseUrl, max: 1 });
   try {
-    const result = await pool.query<{
-      database_name: string;
-      database_user: string;
-      schema_name: string;
-      migration_count: number;
-    }>(`
+    const result = await pool.query<PreparedE2eSchemaState>(`
       SELECT
         current_database() AS database_name,
         current_user AS database_user,
@@ -136,20 +158,38 @@ export async function verifyPreparedE2eSchema(databaseUrl: string): Promise<void
           SELECT COUNT(*)::integer
           FROM public._prisma_migrations
           WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL
-        ) AS migration_count
+        ) AS migration_count,
+        (
+          SELECT COUNT(*)::integer
+          FROM public.id_sequence
+          WHERE org_id = '__global__' AND prefix IN ('bg', 'drug', 'dpv')
+        ) AS protected_global_sequence_count
     `);
     const row = result.rows[0];
-    if (
-      !row ||
-      row.database_name !== 'ph_os_e2e' ||
-      row.database_user !== 'ph_os' ||
-      row.schema_name !== 'public' ||
-      row.migration_count < 1
-    ) {
-      throw new Error('Postgres integration schema is not a prepared ph_os_e2e/public database');
-    }
+    if (!row) throw new Error('Postgres integration schema proof returned no rows');
+    return row;
   } finally {
     await pool.end();
+  }
+}
+
+export async function verifyPreparedE2eSchema(
+  databaseUrl: string,
+  querySchema: (databaseUrl: string) => Promise<PreparedE2eSchemaState> = queryPreparedE2eSchema,
+): Promise<void> {
+  const row = await querySchema(databaseUrl);
+  if (
+    row.database_name !== 'ph_os_e2e' ||
+    row.database_user !== 'ph_os' ||
+    row.schema_name !== 'public' ||
+    row.migration_count < 1
+  ) {
+    throw new Error('Postgres integration schema is not a prepared ph_os_e2e/public database');
+  }
+  if (row.protected_global_sequence_count !== 0) {
+    throw new Error(
+      'Postgres integration database contains protected pre-existing global display-ID allocator state',
+    );
   }
 }
 
@@ -199,6 +239,7 @@ export async function runPostgresIntegrationManifest(options: RunnerOptions = {}
   const manifest = validateManifest(
     options.manifest ?? JSON.parse(readFileSync(MANIFEST_PATH, 'utf8')),
   );
+  assertDisposableGithubActionsContext(env);
   const databaseUrl = resolveDatabaseUrl(env);
   await (options.verifyPreparedSchema ?? verifyPreparedE2eSchema)(databaseUrl);
 

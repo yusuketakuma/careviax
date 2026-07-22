@@ -418,6 +418,7 @@ jobs:
       - name: Run required PostgreSQL integration manifest
         env:
           POSTGRES_INTEGRATION_DATABASE_URL: ${{ env.DATABASE_URL }}
+          POSTGRES_INTEGRATION_DISPOSABLE_DB: github-actions-postgres-service
         run: pnpm --config.verify-deps-before-run=false test:postgres-integration:manifest
 
       - name: Verify stable cursor pagination ordering
