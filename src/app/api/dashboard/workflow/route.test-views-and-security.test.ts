@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { serverCache } from '@/lib/utils/server-cache';
 import { expectSensitiveNoStore } from '@/test/api-response-assertions';
 
@@ -245,15 +245,6 @@ const GET = (req: NextRequest) => rawGET(req, emptyRouteContext);
 
 function createRequest(headers?: Record<string, string>, search = '') {
   return new NextRequest(`http://localhost/api/dashboard/workflow${search}`, { headers });
-}
-
-async function readMeasuredJson(response: Response) {
-  const body = await response.text();
-  expect(response.headers.get('Content-Type')).toBe('application/json');
-  expect(response.headers.get('Content-Length')).toBe(
-    String(new TextEncoder().encode(body).length),
-  );
-  return JSON.parse(body);
 }
 
 describe('/api/dashboard/workflow GET', () => {
@@ -568,429 +559,282 @@ describe('/api/dashboard/workflow GET', () => {
     vi.restoreAllMocks();
   });
 
-  it('returns 401 when unauthenticated', async () => {
-    requireAuthContextMock.mockResolvedValueOnce({
-      response: NextResponse.json({ code: 'AUTH_UNAUTHORIZED' }, { status: 401 }),
-    });
-    const cacheGetSpy = vi.spyOn(serverCache, 'get');
-    const cacheSetSpy = vi.spyOn(serverCache, 'set');
+  it('serves phase navigation data without running full dashboard side-rail aggregations', async () => {
+    const response = await GET(createRequest({ 'x-org-id': 'org_1' }, '?view=phase'));
 
-    const response = await GET(createRequest({ 'x-org-id': 'org_1' }));
-
-    if (!response) throw new Error('response is required');
-    expect(response.status).toBe(401);
-    expect(withRoutePerformanceMock).toHaveBeenCalledTimes(1);
-    expect(requireAuthContextMock).toHaveBeenCalledWith(expect.any(NextRequest), {
-      permission: 'canViewDashboard',
-      message: 'ダッシュボードの閲覧権限がありません',
-    });
+    expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
-    expect(runWithRequestAuthContextMock).not.toHaveBeenCalled();
-    expect(cacheGetSpy).not.toHaveBeenCalled();
-    expect(cacheSetSpy).not.toHaveBeenCalled();
-    expect(careCaseFindManyMock).not.toHaveBeenCalled();
-    expect(cycleGroupByMock).not.toHaveBeenCalled();
-    expect(queryRawMock).not.toHaveBeenCalled();
-    expect(visitScheduleCountMock).not.toHaveBeenCalled();
-    expect(taskFindManyMock).not.toHaveBeenCalled();
-    expect(userFindManyMock).not.toHaveBeenCalled();
+    const payload = await response.json();
+
+    expect(payload.data).toMatchObject({
+      cycle_status_counts: {
+        visit_completed: 2,
+        dispensing: 1,
+      },
+      operations_queue: {
+        visit_demands: 2,
+        intake_linkages: 1,
+        self_reports_triage: 1,
+      },
+      visit_operations: {
+        overdue: 2,
+        awaiting_reports: 5,
+        missing_visit_consent: 0,
+        missing_management_plan: 0,
+        missing_first_visit_doc: 0,
+        missing_emergency_contact: 0,
+        missing_primary_physician: 0,
+      },
+      unified_workbench: expect.arrayContaining([
+        expect.objectContaining({ id: 'task:task_1' }),
+        expect.objectContaining({ id: 'proposal:proposal_1' }),
+      ]),
+      intake_linkage: [
+        expect.objectContaining({
+          patient_name: '山田 太郎',
+        }),
+      ],
+      refill_upcoming: [
+        expect.objectContaining({
+          id: 'intake_1',
+        }),
+      ],
+    });
     expect(communicationQueueMock).not.toHaveBeenCalled();
     expect(patientRiskQueueMock).not.toHaveBeenCalled();
     expect(homeCareFeatureSummaryMock).not.toHaveBeenCalled();
     expect(billingPreviewBatchMock).not.toHaveBeenCalled();
+    expect(conferenceNoteFindManyMock).not.toHaveBeenCalled();
+    expect(consentRecordFindManyMock).not.toHaveBeenCalled();
+    expect(managementPlanFindManyMock).not.toHaveBeenCalled();
+    expect(firstVisitDocumentCountMock).not.toHaveBeenCalled();
   });
 
-  it('returns unified workflow/workbench data', async () => {
+  it('serves realtime admin data with open exception counts but without full dashboard aggregations', async () => {
+    requireAuthContextMock.mockResolvedValueOnce({
+      ctx: { ...authContextMock, role: 'admin' },
+    });
+
+    const response = await GET(createRequest({ 'x-org-id': 'org_1' }, '?view=realtime'));
+
+    expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    const payload = await response.json();
+
+    expect(payload.data).toMatchObject({
+      workflow_exceptions: {
+        open: 3,
+        items: [],
+      },
+      operations_queue: {
+        callback_followups: 1,
+        self_reports_triage: 1,
+      },
+      outcome_metrics: {
+        awaiting_reports: 5,
+      },
+      route_control: {
+        pending_override_requests: 1,
+        locked_schedules: 0,
+      },
+      unified_workbench: expect.arrayContaining([expect.objectContaining({ id: 'task:task_1' })]),
+    });
+    expect(workflowExceptionCountMock).toHaveBeenCalledTimes(1);
+    expect(workflowExceptionFindManyMock).not.toHaveBeenCalled();
+    expect(communicationQueueMock).not.toHaveBeenCalled();
+    expect(patientRiskQueueMock).not.toHaveBeenCalled();
+    expect(homeCareFeatureSummaryMock).not.toHaveBeenCalled();
+    expect(billingPreviewBatchMock).not.toHaveBeenCalled();
+    expect(conferenceNoteFindManyMock).not.toHaveBeenCalled();
+    expect(consentRecordFindManyMock).not.toHaveBeenCalled();
+    expect(managementPlanFindManyMock).not.toHaveBeenCalled();
+    expect(firstVisitDocumentCountMock).not.toHaveBeenCalled();
+  });
+
+  it('serves performance admin data with workload metrics but without full dashboard aggregations', async () => {
+    requireAuthContextMock.mockResolvedValueOnce({
+      ctx: { ...authContextMock, role: 'admin' },
+    });
+
+    const response = await GET(createRequest({ 'x-org-id': 'org_1' }, '?view=performance'));
+
+    expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    const payload = await response.json();
+
+    expect(payload.data).toMatchObject({
+      outcome_metrics: {
+        awaiting_reports: 5,
+      },
+      route_control: {
+        pending_override_requests: 1,
+        emergency_impact_items: 0,
+      },
+      workload_metrics: {
+        pharmacists: [
+          expect.objectContaining({
+            pharmacist_name: '田中 薬剤師',
+            confirmed_visits: 2,
+            pending_tasks: 1,
+          }),
+        ],
+      },
+    });
+    expect(workflowExceptionCountMock).not.toHaveBeenCalled();
+    expect(workflowExceptionFindManyMock).not.toHaveBeenCalled();
+    expect(communicationQueueMock).not.toHaveBeenCalled();
+    expect(patientRiskQueueMock).not.toHaveBeenCalled();
+    expect(homeCareFeatureSummaryMock).not.toHaveBeenCalled();
+    expect(billingPreviewBatchMock).not.toHaveBeenCalled();
+    expect(conferenceNoteFindManyMock).not.toHaveBeenCalled();
+    expect(consentRecordFindManyMock).not.toHaveBeenCalled();
+    expect(managementPlanFindManyMock).not.toHaveBeenCalled();
+    expect(firstVisitDocumentCountMock).not.toHaveBeenCalled();
+  });
+
+  it('accepts an explicit full workflow view as the full dashboard aggregate', async () => {
+    requireAuthContextMock.mockResolvedValueOnce({
+      ctx: { ...authContextMock, role: 'admin' },
+    });
+
+    const response = await GET(createRequest({ 'x-org-id': 'org_1' }, '?view=full'));
+
+    expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    expect(communicationQueueMock).toHaveBeenCalled();
+    expect(patientRiskQueueMock).toHaveBeenCalled();
+    expect(billingPreviewBatchMock).toHaveBeenCalled();
+  });
+
+  it.each(['?view=', '?view=%20phase', '?view=phase%20', '?view=unknown'])(
+    'rejects malformed workflow view "%s" before cache or dashboard aggregate reads',
+    async (search) => {
+      requireAuthContextMock.mockResolvedValueOnce({
+        ctx: { ...authContextMock, role: 'admin' },
+      });
+      const cacheGetSpy = vi.spyOn(serverCache, 'get');
+
+      const response = await GET(createRequest({ 'x-org-id': 'org_1' }, search));
+
+      expect(response.status).toBe(400);
+      expectSensitiveNoStore(response);
+      await expect(response.json()).resolves.toMatchObject({
+        code: 'VALIDATION_ERROR',
+        message: '検索条件が不正です',
+        details: { view: ['view が不正です'] },
+      });
+      expect(cacheGetSpy).not.toHaveBeenCalled();
+      expect(careCaseFindManyMock).not.toHaveBeenCalled();
+      expect(cycleGroupByMock).not.toHaveBeenCalled();
+      expect(communicationQueueMock).not.toHaveBeenCalled();
+      expect(patientRiskQueueMock).not.toHaveBeenCalled();
+      expect(billingPreviewBatchMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it('rejects duplicate workflow view before cache or dashboard aggregate reads', async () => {
+    requireAuthContextMock.mockResolvedValueOnce({
+      ctx: { ...authContextMock, role: 'admin' },
+    });
+    const cacheGetSpy = vi.spyOn(serverCache, 'get');
+
+    const response = await GET(createRequest({ 'x-org-id': 'org_1' }, '?view=phase&view=realtime'));
+
+    expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '検索条件が不正です',
+      details: { view: ['view は1つだけ指定してください'] },
+    });
+    expect(cacheGetSpy).not.toHaveBeenCalled();
+    expect(careCaseFindManyMock).not.toHaveBeenCalled();
+    expect(cycleGroupByMock).not.toHaveBeenCalled();
+    expect(communicationQueueMock).not.toHaveBeenCalled();
+    expect(patientRiskQueueMock).not.toHaveBeenCalled();
+    expect(billingPreviewBatchMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a sanitized no-store 500 when workflow dashboard reads fail', async () => {
+    const rawError =
+      'raw workflow raw patient raw dashboard SQL stack trace raw-error text must not leak';
+    const unsafeError = new Error(rawError);
+    unsafeError.name = 'crafted-name.raw-workflow.raw-patient.raw-dashboard.SQL.stack.raw-error';
+    cycleGroupByMock.mockRejectedValueOnce(unsafeError);
+
     const response = await GET(createRequest({ 'x-org-id': 'org_1' }));
 
     if (!response) throw new Error('response is required');
-    expect(response.status).toBe(200);
-    expect(withRoutePerformanceMock).toHaveBeenCalledWith(
-      expect.any(NextRequest),
-      expect.any(Function),
-    );
-    expect(requireAuthContextMock).toHaveBeenCalledWith(expect.any(NextRequest), {
-      permission: 'canViewDashboard',
-      message: 'ダッシュボードの閲覧権限がありません',
-    });
-    expect(runWithRequestAuthContextMock).toHaveBeenCalledWith(
-      authContextMock,
-      expect.any(Function),
-    );
-    expectSensitiveNoStore(response);
-
-    const payload = await response.json();
-
-    expect(payload).toMatchObject({
-      data: {
-        cycle_status_counts: {
-          visit_completed: 2,
-          dispensing: 1,
-        },
-        visit_operations: {
-          overdue: 2,
-          awaiting_reports: 5,
-          missing_visit_consent: 1,
-          missing_management_plan: 1,
-          missing_first_visit_doc: expect.any(Number),
-          missing_emergency_contact: 1,
-          missing_primary_physician: 1,
-        },
-        operations_queue: {
-          visit_demands: 2,
-          callback_followups: 1,
-          intake_linkages: 1,
-          self_reports_triage: 1,
-        },
-        communication_queue: {
-          summary: expect.objectContaining({
-            pending_count: 2,
-            overdue_count: 1,
-          }),
-        },
-        home_care_feature_summary: {
-          totals: {
-            blocked: 0,
-            attention: 0,
-            monitoring: 0,
-            ready: 0,
-          },
-        },
-        patient_risk_queue: {
-          high_risk_count: 1,
-          items: [
-            expect.objectContaining({
-              patient_name: '山田 花子',
-              level: 'high',
-            }),
-          ],
-        },
-        role_inboxes: {
-          current_role: 'clerk',
-          buckets: expect.arrayContaining([
-            expect.objectContaining({
-              role: 'clerk',
-            }),
-          ]),
-        },
-        remediation_guidance: expect.arrayContaining([
-          expect.objectContaining({
-            id: 'missing_visit_consent',
-            count: 1,
-          }),
-          expect.objectContaining({
-            id: 'visit_intake_linkage',
-            count: 1,
-          }),
-          expect.objectContaining({
-            id: 'missing_primary_physician',
-            count: 1,
-          }),
-        ]),
-        unified_workbench: expect.arrayContaining([
-          expect.objectContaining({
-            id: 'task:task_1',
-            queue_label: '訪問準備',
-            action_href: '/patients/patient_1/prescriptions',
-            action_label: '原本回収を記録',
-          }),
-          expect.objectContaining({
-            id: 'self-report:report_1',
-            queue_label: 'セルフレポート',
-          }),
-        ]),
-        facility_visibility: {
-          clusters: [
-            expect.objectContaining({
-              label: 'facility_a',
-              patient_count: 2,
-            }),
-          ],
-        },
-        workload_metrics: {
-          pharmacists: [
-            expect.objectContaining({
-              pharmacist_name: '田中 薬剤師',
-              confirmed_visits: 2,
-            }),
-          ],
-        },
-        outcome_metrics: {
-          completed_last_7_days: 1,
-          disrupted_last_7_days: 1,
-          urgent_completed_last_7_days: 1,
-          awaiting_reports: 5,
-          open_exceptions: 3,
-        },
-        route_control: {
-          locked_schedules: 0,
-          pending_override_requests: 1,
-          emergency_impact_items: 0,
-        },
-        after_hours_readiness: {
-          emergency_capable_shift_count: 1,
-          holiday_gap_count: 1,
-          holiday_gaps: [
-            expect.objectContaining({
-              name: '棚卸休業',
-            }),
-          ],
-        },
-        regional_pipeline: expect.objectContaining({
-          follow_up_activities: 1,
-          intake_cases: 2,
-        }),
-        billing_prevention: expect.objectContaining({
-          review_tasks: 3,
-        }),
-        intake_linkage: [
-          expect.objectContaining({
-            patient_name: '山田 太郎',
-          }),
-        ],
-        self_reports: [
-          expect.objectContaining({
-            patient_name: '山田 花子',
-            requested_callback: true,
-          }),
-        ],
-      },
-    });
-    expect(payload).toMatchSnapshot();
-    expect(payload.data.communication_queue.summary).toMatchObject({
-      pending_count: 2,
-      overdue_count: 1,
-      self_reports: 1,
-      callback_followups: 1,
-      inbound_communications: 1,
-      open_requests: 1,
-      delivery_backlog: 1,
-      expiring_external_shares: 0,
-    });
-    expect(payload.data.communication_queue.items).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          channel: 'patient_portal',
-        }),
-      ]),
-    );
-    expect(payload.data.patient_risk_queue.items).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          level: 'high',
-        }),
-      ]),
-    );
-    expect(homeCareFeatureSummaryMock).not.toHaveBeenCalled();
-    expect(communicationQueueMock).toHaveBeenCalledWith(expect.anything(), {
-      orgId: 'org_1',
-      caseIds: ['case_1'],
-      patientIds: ['patient_1'],
-      limit: expect.any(Number),
-    });
-    expect(cycleGroupByMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({
-          org_id: 'org_1',
-          case_id: { in: ['case_1'] },
-        }),
-      }),
-    );
-    expect(visitScheduleFindManyMock).toHaveBeenNthCalledWith(
-      1,
-      expect.objectContaining({
-        where: expect.objectContaining({
-          org_id: 'org_1',
-          case_id: { in: ['case_1'] },
-        }),
-      }),
-    );
-    expect(taskFindManyMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({
-          org_id: 'org_1',
-          OR: expect.arrayContaining([
-            { assigned_to: 'user_1' },
-            { related_entity_type: 'patient', related_entity_id: { in: ['patient_1'] } },
-            { related_entity_type: 'case', related_entity_id: { in: ['case_1'] } },
-          ]),
-        }),
-      }),
-    );
-    expect(patientSelfReportFindManyMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({
-          org_id: 'org_1',
-          patient_id: { in: ['patient_1'] },
-        }),
-      }),
-    );
-    expect(patientRiskQueueMock).toHaveBeenCalledWith(expect.anything(), {
-      orgId: 'org_1',
-      patientIds: ['patient_1'],
-      caseIdsByPatient: { patient_1: ['case_1'] },
-      limit: expect.any(Number),
-      candidateLimit: expect.any(Number),
-    });
-    expect(conferenceNoteFindManyMock).not.toHaveBeenCalled();
-  });
-
-  it('flags overdue 連携依頼 against the day sentinel, not the current instant (CE07)', async () => {
-    const originalTimezone = process.env.TZ;
-    process.env.TZ = 'UTC';
-    vi.useFakeTimers();
-    try {
-      // JST 2026-06-12 08:00(UTC では 2026-06-11T23:00Z)。due_date は YYYY-MM-DD の
-      // UTC 深夜 sentinel で保存されるため、当日期限の依頼を new Date()(実時刻)と比べると
-      // JST 09:00 以降に当日誤検知していた。当日 sentinel と比較すべき。
-      vi.setSystemTime(new Date('2026-06-11T23:00:00Z'));
-
-      const response = await GET(createRequest({ 'x-org-id': 'org_1' }));
-      expect(response.status).toBe(200);
-
-      // 2 回目の communicationRequest.count が overdue 判定
-      const overdueWhere = communicationRequestCountMock.mock.calls[1]?.[0]?.where;
-      expect(overdueWhere?.due_date.lt.toISOString()).toBe('2026-06-11T00:00:00.000Z');
-    } finally {
-      vi.useRealTimers();
-      if (originalTimezone === undefined) {
-        delete process.env.TZ;
-      } else {
-        process.env.TZ = originalTimezone;
-      }
-    }
-  });
-
-  it('works when called directly without a routeContext argument', async () => {
-    const response = await rawGET(createRequest({ 'x-org-id': 'org_1' }), emptyRouteContext);
-
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(500);
     expect(withRoutePerformanceMock).toHaveBeenCalledTimes(1);
     expectSensitiveNoStore(response);
-    await expect(response.json()).resolves.toMatchObject({
-      data: {
-        role_inboxes: {
-          current_role: 'clerk',
-        },
+    const body = await response.text();
+    expect(body).toContain('INTERNAL_ERROR');
+    expect(body).not.toContain('raw workflow');
+    expect(body).not.toContain('raw patient');
+    expect(body).not.toContain('raw dashboard');
+    expect(body).not.toContain('SQL');
+    expect(body).not.toContain('stack trace');
+    expect(body).not.toContain('crafted-name');
+    expect(body).not.toContain('raw-error text');
+    expect(loggerErrorMock).toHaveBeenCalledTimes(1);
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      {
+        event: 'route_handler_unhandled_error',
+        route: '/api/dashboard/workflow',
+        method: 'GET',
       },
-    });
+      unsafeError,
+    );
+    const [routeContext, loggedError] = loggerErrorMock.mock.calls[0] ?? [];
+    expect(routeContext).not.toHaveProperty('error_name');
+    expect(loggedError).toBe(unsafeError);
+    const logged = JSON.stringify(routeContext);
+    expect(logged).not.toContain('raw workflow');
+    expect(logged).not.toContain('raw patient');
+    expect(logged).not.toContain('raw dashboard');
+    expect(logged).not.toContain('SQL');
+    expect(logged).not.toContain('stack trace');
+    expect(logged).not.toContain('crafted-name');
+    expect(logged).not.toContain('raw-error text');
   });
 
-  it('reruns authoritative workflow reads for consecutive no-store responses', async () => {
-    const cacheGetSpy = vi.spyOn(serverCache, 'get').mockImplementation(() => {
-      throw new Error('cache adapter unavailable');
-    });
+  it('keeps role-specific inbox state out of cross-role cache hits', async () => {
+    requireAuthContextMock
+      .mockResolvedValueOnce({ ctx: { ...authContextMock, role: 'clerk' } })
+      .mockResolvedValueOnce({ ctx: { ...authContextMock, role: 'pharmacist' } });
+
     const firstResponse = await GET(createRequest({ 'x-org-id': 'org_1' }));
+    const secondResponse = await GET(createRequest({ 'x-org-id': 'org_1' }));
+
+    if (!firstResponse || !secondResponse) throw new Error('response is required');
+
+    const firstPayload = await firstResponse.json();
+    const secondPayload = await secondResponse.json();
+
+    expect(firstPayload.data.role_inboxes.current_role).toBe('clerk');
+    expect(secondPayload.data.role_inboxes.current_role).toBe('pharmacist');
+  });
+
+  it('re-evaluates assignment scope and does not replay workflow PHI', async () => {
+    careCaseFindManyMock
+      .mockResolvedValueOnce([{ id: 'case_1', patient_id: 'patient_1' }])
+      .mockResolvedValueOnce([]);
+
+    const firstResponse = await GET(createRequest({ 'x-org-id': 'org_1' }));
+    visitScheduleFindManyMock.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
     const secondResponse = await GET(createRequest({ 'x-org-id': 'org_1' }));
 
     expect(firstResponse.status).toBe(200);
     expect(secondResponse.status).toBe(200);
-    expectSensitiveNoStore(firstResponse);
-    expectSensitiveNoStore(secondResponse);
-    expect(withRoutePerformanceMock).toHaveBeenCalledTimes(2);
-    expect(cacheGetSpy).not.toHaveBeenCalled();
+    expect(careCaseFindManyMock).toHaveBeenCalledTimes(2);
     expect(cycleGroupByMock).toHaveBeenCalledTimes(2);
-
-    const firstPayload = await readMeasuredJson(firstResponse);
-    const secondPayload = await readMeasuredJson(secondResponse);
-    expect(firstPayload.data.facility_visibility.clusters).toHaveLength(1);
-    expect(secondPayload.data.facility_visibility.clusters).toHaveLength(0);
-    expect(secondPayload).not.toEqual(firstPayload);
-  });
-
-  it('passes upcoming schedule local calendar dates to billing previews', async () => {
-    visitScheduleFindManyMock.mockReset();
-    visitScheduleFindManyMock
-      .mockResolvedValueOnce([
-        {
-          id: 'schedule_local_midnight',
-          case_id: 'case_1',
-          visit_type: 'regular',
-          scheduled_date: new Date(2026, 2, 28, 0, 0, 0),
-          time_window_start: new Date('1970-01-01T09:00:00Z'),
-          time_window_end: new Date('1970-01-01T10:00:00Z'),
-          confirmed_at: null,
-          schedule_status: 'planned',
-          priority: 'normal',
-          pharmacist_id: 'user_1',
-          assignment_mode: 'primary',
-          carry_items_status: null,
-          route_order: 1,
-          escalation_reason: null,
-          preparation: null,
-          override_request: null,
-          applied_override: null,
-          case_: {
-            patient: {
-              id: 'patient_1',
-              name: '山田 太郎',
-              residences: [
-                {
-                  address: '東京都港区1-1-1',
-                  building_id: 'facility_a',
-                },
-              ],
-            },
-          },
-          site: {
-            id: 'site_1',
-            name: '本店',
-          },
-        },
-      ])
-      .mockResolvedValueOnce([]);
-
-    const response = await GET(createRequest({ 'x-org-id': 'org_1' }));
-
-    expect(response.status).toBe(200);
-    expect(billingPreviewBatchMock).toHaveBeenCalledWith(
-      [
-        expect.objectContaining({
-          key: 'schedule_local_midnight',
-          proposedDate: '2026-03-28',
-        }),
-      ],
-      'org_1',
-    );
-  });
-
-  it('keeps patient-level issue cycle fallback inside assigned cases', async () => {
-    medicationIssueFindManyMock.mockResolvedValue([
-      {
-        id: 'issue_patient_level',
-        patient_id: 'patient_1',
-        case_id: null,
-        title: '服薬状況の確認が必要',
-        description: null,
-        status: 'open',
-        priority: 'high',
-        category: 'adherence',
-        identified_at: new Date('2026-03-25T00:00:00Z'),
-      },
-    ]);
-    medicationCycleFindManyMock.mockResolvedValue([
-      {
-        id: 'cycle_allowed',
-        case_id: 'case_1',
-        patient_id: 'patient_1',
-        prescription_intakes: [{ prescriber_name: '佐藤 医師' }],
-      },
-    ]);
-
-    const response = await GET(createRequest({ 'x-org-id': 'org_1' }));
-
-    expect(response.status).toBe(200);
-    expect(medicationCycleFindManyMock).toHaveBeenCalledWith(
+    expect(cycleGroupByMock).toHaveBeenNthCalledWith(
+      2,
       expect.objectContaining({
-        where: {
-          org_id: 'org_1',
-          OR: [
-            {
-              patient_id: { in: ['patient_1'] },
-              case_id: { in: ['case_1'] },
-            },
-          ],
-        },
+        where: expect.objectContaining({
+          case_id: { in: [] },
+        }),
       }),
     );
   });
