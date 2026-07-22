@@ -735,7 +735,7 @@
       },
       {
         "path": "Plans.md",
-        "sha256": "9774525d2658d8442f820cfd724026ff073112c4d438fcbc591fba30a9baffde"
+        "sha256": "949e6f58aa28c813d67dc34d3cf5aeafc686bd543dcd64fe2ca310d4a3b1c108"
       },
       {
         "path": "README.md",
@@ -903,7 +903,7 @@
       },
       {
         "path": "ops/refactor/STATE.md",
-        "sha256": "23d4843a1073e3981c900e9c378e2d1271c5e4b12cf55806e1672a4abaa91b41"
+        "sha256": "173150f97bf6c0a730e51129e6483a57ffa9c761db5c5d1d314a89a8be343f81"
       },
       {
         "path": "ops/refactor/archive/PERF_FINDINGS.md",
@@ -2450,8 +2450,12 @@
         "sha256": "d4b228cc4a1dace0eeb046fb5864ca5cd59954c9aa908b5e3183b69b43fb72c5"
       },
       {
+        "path": "tools/tests/ui-schedule-visit-report.helpers.ts",
+        "sha256": "62f9c78b7c3230e73b51bc631c94565af21059485c7383be0f45d0b25fed1fb9"
+      },
+      {
         "path": "tools/tests/ui-schedule-visit-report.spec.ts",
-        "sha256": "fcf88f0d3ab74f727780044e3973a694543b11e3fad657ac32c844afec24d2f9"
+        "sha256": "42940191560714a50c77d25c3b09baaa9a9edb0baa8eedf4a874eabd03f53796"
       },
       {
         "path": "tools/tests/ui-visual-regression.spec.ts",

@@ -781,11 +781,6 @@
       "path": "tools/tests/ui-route-mocked-smoke.spec.ts",
       "max_lines": 5272,
       "task_id": "MAINT-FILE-SIZE-1000-001"
-    },
-    {
-      "path": "tools/tests/ui-schedule-visit-report.spec.ts",
-      "max_lines": 1124,
-      "task_id": "MAINT-FILE-SIZE-1000-001"
     }
   ]
 }
