@@ -21,6 +21,7 @@ const {
   validateExternalAccessScopeForRoleMock,
   MissingExternalAccessSecretErrorMock,
   loggerWarnMock,
+  bcryptHashMock,
 } = vi.hoisted(() => ({
   currentRole: { value: 'pharmacist' },
   validateOrgReferencesMock: vi.fn(),
@@ -46,6 +47,11 @@ const {
     }
   },
   loggerWarnMock: vi.fn(),
+  bcryptHashMock: vi.fn(),
+}));
+
+vi.mock('bcryptjs', () => ({
+  default: { hash: bcryptHashMock },
 }));
 
 vi.mock('@/lib/auth/context', () => ({
@@ -221,6 +227,7 @@ describe('/api/external-access POST', () => {
       case_id: null,
     });
     validateOrgReferencesMock.mockResolvedValue({ ok: true, data: {} });
+    bcryptHashMock.mockResolvedValue('bcrypt-otp-hash');
     issueExternalAccessTokenMock.mockResolvedValue('jwt-token');
     validateExternalAccessScopeForRoleMock.mockReturnValue({
       ok: true,
@@ -442,6 +449,18 @@ describe('/api/external-access POST', () => {
     expect(response.status).toBe(201);
     expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
     expect(response.headers.get('Pragma')).toBe('no-cache');
+    expect(withOrgContextMock).toHaveBeenNthCalledWith(1, 'org_1', expect.any(Function), {
+      requestContext: { orgId: 'org_1', role: 'pharmacist', userId: 'user_1' },
+    });
+    expect(withOrgContextMock).toHaveBeenNthCalledWith(2, 'org_1', expect.any(Function), {
+      requestContext: { orgId: 'org_1', role: 'pharmacist', userId: 'user_1' },
+      isolationLevel: 'Serializable',
+    });
+    expect(validateOrgReferencesMock).toHaveBeenCalledTimes(2);
+    expect(patientFindFirstMock).toHaveBeenCalledTimes(4);
+    expect(consentRecordFindFirstMock).toHaveBeenCalledTimes(2);
+    expect(bcryptHashMock).toHaveBeenCalledTimes(1);
+    expect(bcryptHashMock).toHaveBeenCalledWith(expect.stringMatching(/^\d{6}$/), 12);
     expect(validateOrgReferencesMock).toHaveBeenCalledWith(
       'org_1',
       { patient_id: 'patient_1' },
@@ -540,6 +559,87 @@ describe('/api/external-access POST', () => {
     expect(bodyText).not.toContain('090-1234-5678');
     expect(bodyText).not.toContain('09012345678');
     expect(bodyText).not.toMatch(/token_hash|otp_hash|provisional|bcrypt/);
+  });
+
+  it('retries one Serializable conflict without duplicating grant side effects', async () => {
+    const defaultWithOrgContext = withOrgContextMock.getMockImplementation();
+    if (!defaultWithOrgContext) throw new Error('withOrgContext implementation is required');
+    withOrgContextMock
+      .mockImplementationOnce(defaultWithOrgContext)
+      .mockRejectedValueOnce({ code: 'P2034' })
+      .mockImplementationOnce(defaultWithOrgContext);
+
+    const response = await POST(
+      createRequest({
+        patient_id: 'patient_1',
+        granted_to_name: '田中ケアマネ',
+        granted_to_contact: '090-1234-5678',
+        scope: { medication_list: true },
+        expires_hours: 24,
+      }),
+      { params: Promise.resolve({}) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(201);
+    expect(withOrgContextMock).toHaveBeenCalledTimes(4);
+    expect(withOrgContextMock).toHaveBeenNthCalledWith(1, 'org_1', expect.any(Function), {
+      requestContext: { orgId: 'org_1', role: 'pharmacist', userId: 'user_1' },
+    });
+    expect(withOrgContextMock).toHaveBeenNthCalledWith(2, 'org_1', expect.any(Function), {
+      requestContext: { orgId: 'org_1', role: 'pharmacist', userId: 'user_1' },
+      isolationLevel: 'Serializable',
+    });
+    expect(withOrgContextMock).toHaveBeenNthCalledWith(3, 'org_1', expect.any(Function), {
+      requestContext: { orgId: 'org_1', role: 'pharmacist', userId: 'user_1' },
+      isolationLevel: 'Serializable',
+    });
+    expect(bcryptHashMock).toHaveBeenCalledTimes(1);
+    expect(createMock).toHaveBeenCalledTimes(1);
+    expect(issueExternalAccessTokenMock).toHaveBeenCalledTimes(1);
+    expect(sendSmsMock).toHaveBeenCalledTimes(1);
+    expect(auditLogCreateMock).toHaveBeenCalledTimes(2);
+    await expect(response.json()).resolves.toMatchObject({
+      data: { token: 'jwt-token', otp_delivery: 'sms' },
+    });
+  });
+
+  it('returns a fixed no-store conflict after exhausting Serializable retries', async () => {
+    const defaultWithOrgContext = withOrgContextMock.getMockImplementation();
+    if (!defaultWithOrgContext) throw new Error('withOrgContext implementation is required');
+    withOrgContextMock
+      .mockImplementationOnce(defaultWithOrgContext)
+      .mockRejectedValueOnce({ code: 'P2034' })
+      .mockRejectedValueOnce({ code: 'P2034' });
+
+    const response = await POST(
+      createRequest({
+        patient_id: 'patient_1',
+        granted_to_name: '田中ケアマネ',
+        granted_to_contact: '090-1234-5678',
+        scope: { medication_list: true },
+        expires_hours: 24,
+      }),
+      { params: Promise.resolve({}) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: '外部共有の発行状態が同時に更新されました。もう一度お試しください',
+    });
+    expect(JSON.stringify(body)).not.toMatch(/jwt-token|\"token\"|\"otp\"/);
+    expect(withOrgContextMock).toHaveBeenCalledTimes(3);
+    expect(bcryptHashMock).toHaveBeenCalledTimes(1);
+    expect(createMock).not.toHaveBeenCalled();
+    expect(updateMock).not.toHaveBeenCalled();
+    expect(issueExternalAccessTokenMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(sendSmsMock).not.toHaveBeenCalled();
   });
 
   it('keeps the grant creation audit when SMS is not configured and returns the OTP manually', async () => {

@@ -25,6 +25,7 @@ const {
   validateExternalAccessScopeForRoleMock,
   MissingExternalAccessSecretErrorMock,
   loggerWarnMock,
+  bcryptHashMock,
 } = vi.hoisted(() => ({
   currentRole: { value: 'pharmacist' },
   validateOrgReferencesMock: vi.fn(),
@@ -50,6 +51,11 @@ const {
     }
   },
   loggerWarnMock: vi.fn(),
+  bcryptHashMock: vi.fn(),
+}));
+
+vi.mock('bcryptjs', () => ({
+  default: { hash: bcryptHashMock },
 }));
 
 vi.mock('@/lib/auth/context', () => ({
@@ -225,6 +231,7 @@ describe('/api/external-access POST', () => {
       case_id: null,
     });
     validateOrgReferencesMock.mockResolvedValue({ ok: true, data: {} });
+    bcryptHashMock.mockResolvedValue('bcrypt-otp-hash');
     issueExternalAccessTokenMock.mockResolvedValue('jwt-token');
     validateExternalAccessScopeForRoleMock.mockReturnValue({
       ok: true,
@@ -297,8 +304,9 @@ describe('/api/external-access POST', () => {
     expect(consentRecordFindFirstMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
       requestContext: { orgId: 'org_1', role: 'pharmacist', userId: 'user_1' },
-      isolationLevel: 'Serializable',
     });
+    expect(withOrgContextMock).toHaveBeenCalledTimes(1);
+    expect(bcryptHashMock).not.toHaveBeenCalled();
     expect(createMock).not.toHaveBeenCalled();
     expect(updateMock).not.toHaveBeenCalled();
     expect(issueExternalAccessTokenMock).not.toHaveBeenCalled();
@@ -388,6 +396,8 @@ describe('/api/external-access POST', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(403);
     expect(consentRecordFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).toHaveBeenCalledTimes(1);
+    expect(bcryptHashMock).not.toHaveBeenCalled();
     expect(createMock).not.toHaveBeenCalled();
     expect(issueExternalAccessTokenMock).not.toHaveBeenCalled();
     expect(sendSmsMock).not.toHaveBeenCalled();
@@ -511,8 +521,9 @@ describe('/api/external-access POST', () => {
     });
     expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
       requestContext: { orgId: 'org_1', role: 'pharmacist', userId: 'user_1' },
-      isolationLevel: 'Serializable',
     });
+    expect(withOrgContextMock).toHaveBeenCalledTimes(1);
+    expect(bcryptHashMock).not.toHaveBeenCalled();
     expect(createMock).not.toHaveBeenCalled();
     expect(updateMock).not.toHaveBeenCalled();
     expect(auditLogCreateMock).not.toHaveBeenCalled();
@@ -569,8 +580,9 @@ describe('/api/external-access POST', () => {
     });
     expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
       requestContext: { orgId: 'org_1', role: 'pharmacist', userId: 'user_1' },
-      isolationLevel: 'Serializable',
     });
+    expect(withOrgContextMock).toHaveBeenCalledTimes(1);
+    expect(bcryptHashMock).not.toHaveBeenCalled();
     expect(createMock).not.toHaveBeenCalled();
     expect(issueExternalAccessTokenMock).not.toHaveBeenCalled();
     expect(sendSmsMock).not.toHaveBeenCalled();
