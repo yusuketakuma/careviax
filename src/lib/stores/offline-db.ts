@@ -124,6 +124,16 @@ export type OfflineVoiceMemoDraft = {
   transcriptPayload?: string;
 };
 
+export type OfflineVisitReflectionContinuation = {
+  id?: number;
+  orgId: string;
+  scheduleId: string;
+  recordId: string;
+  /** encryptOfflinePayloadRequired encrypted continuation JSON. */
+  payload: string;
+  updatedAt: Date;
+};
+
 class PhOsOfflineDB extends Dexie {
   visitDrafts!: Table<OfflineVisitDraft, number>;
   residualDrafts!: Table<OfflineResidualDraft, number>;
@@ -132,6 +142,7 @@ class PhOsOfflineDB extends Dexie {
   prescriptionDrafts!: Table<OfflinePrescriptionDraft, number>;
   evidenceDrafts!: Table<OfflineEvidenceDraft, number>;
   voiceMemoDrafts!: Table<OfflineVoiceMemoDraft, number>;
+  visitReflectionContinuations!: Table<OfflineVisitReflectionContinuation, number>;
 
   constructor() {
     super('PH-OSOffline');
@@ -242,6 +253,19 @@ class PhOsOfflineDB extends Dexie {
             }
           }),
       );
+
+    // v10: encrypted post-save patient-reflection continuations.
+    this.version(10).stores({
+      visitDrafts: '++id, scheduleId, patientId, synced',
+      residualDrafts: '++id, patientId, synced',
+      syncQueue: '++id, entityType, scope_id, retryCount, createdAt, conflict_state',
+      visitBriefCache: '++id, scheduleId, scheduledDate, patientId, updatedAt',
+      prescriptionDrafts: '++id, orgId, updatedAt',
+      evidenceDrafts: '++id, retryCount, scheduleId, patientId, createdAt',
+      voiceMemoDrafts: '++id, visitId, createdAt',
+      visitReflectionContinuations:
+        '++id, [orgId+scheduleId], &[orgId+scheduleId+recordId], updatedAt',
+    });
   }
 }
 

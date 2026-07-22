@@ -60,6 +60,8 @@ function buildPatientEditPayload(patientId = 'patient_1') {
     backup_staff_id: null,
     residences: [],
     cases: [],
+    intake_edit_target: null,
+    intake_edit_snapshot: null,
     scheduling_preference: null,
     workspace: { unused: 'must-not-enter-patient-edit-cache' },
   };
@@ -189,6 +191,8 @@ describe('PatientEditContent patient overview fetch', () => {
         backup_staff_id: null,
         residences: [],
         cases: [],
+        intake_edit_target: null,
+        intake_edit_snapshot: null,
         scheduling_preference: null,
       },
       isLoading: false,
@@ -210,6 +214,45 @@ describe('PatientEditContent patient overview fetch', () => {
         redirectTo: `/patients/${patientId}`,
       }),
     );
+  });
+
+  it('refreshes exact Patient and canonical CareCase authority for OCC recovery', async () => {
+    const initial = buildPatientEditPayload();
+    const refreshed = {
+      ...initial,
+      updated_at: '2026-03-30T10:00:00.000Z',
+      cases: [{ id: 'case_2', required_visit_support: null }],
+      intake_edit_target: {
+        care_case_id: 'case_2',
+        expected_care_case_version: 9,
+      },
+      intake_edit_snapshot: {
+        care_case_id: 'case_2',
+        required_visit_support: null,
+      },
+    };
+    const refetch = vi.fn().mockResolvedValue({ isSuccess: true, data: refreshed });
+    useOrgIdMock.mockReturnValue('org_1');
+    useQueryMock.mockReturnValue({ data: initial, isLoading: false, error: null, refetch });
+
+    render(<PatientEditContent patientId="patient_1" />);
+
+    const props = patientFormMock.mock.calls.at(-1)?.[0] as {
+      onRefreshConcurrencyAuthority?: (context: {
+        patientId: string;
+        conflictType: 'stale_patient';
+      }) => Promise<unknown>;
+    };
+    await expect(
+      props.onRefreshConcurrencyAuthority?.({
+        patientId: 'patient_1',
+        conflictType: 'stale_patient',
+      }),
+    ).resolves.toEqual({
+      expectedUpdatedAt: '2026-03-30T10:00:00.000Z',
+      selectedCareCase: { id: 'case_2', version: 9 },
+    });
+    expect(refetch).toHaveBeenCalledOnce();
   });
 
   it('keeps hostile patient ids encoded in the URL path segment only', async () => {
@@ -340,6 +383,8 @@ describe('PatientEditContent patient overview fetch', () => {
         backup_staff_id: null,
         residences: [],
         cases: [],
+        intake_edit_target: null,
+        intake_edit_snapshot: null,
         scheduling_preference: null,
       });
     } finally {

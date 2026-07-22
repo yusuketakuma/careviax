@@ -17,6 +17,8 @@ export function buildVisitRecordScheduleResponseSchema(expectedScheduleId: strin
         .object({
           id: z.literal(expectedScheduleId),
           patient_id: idSchema,
+          case_id: idSchema,
+          case_version: z.number().int().positive(),
           cycle_id: idSchema.nullable(),
           scheduled_date: dateSchema,
           schedule_status: idSchema.optional(),
@@ -58,6 +60,16 @@ export function buildVisitRecordHeaderSafetyResponseSchema(expectedPatientId: st
       data: z
         .object({
           patient_id: z.literal(expectedPatientId),
+          patient_updated_at: z.string().datetime({ offset: true }),
+          intake_edit_target: z
+            .object({
+              care_case_id: idSchema,
+              expected_care_case_version: z.number().int().positive(),
+            })
+            .strict()
+            .nullable()
+            .optional()
+            .default(null),
           safety: z
             .object({
               safety_tags: z.array(textSchema),
@@ -85,7 +97,17 @@ export function buildVisitRecordHeaderSafetyResponseSchema(expectedPatientId: st
         });
       }
     })
-    .transform(({ data }) => ({ safety: data.safety }));
+    .transform(({ data }) => ({
+      patientId: data.patient_id,
+      safety: data.safety,
+      patientUpdatedAt: data.patient_updated_at,
+      intakeEditTarget: data.intake_edit_target
+        ? {
+            careCaseId: data.intake_edit_target.care_case_id,
+            expectedCareCaseVersion: data.intake_edit_target.expected_care_case_version,
+          }
+        : null,
+    }));
 }
 
 const savedVisitRecordSchema = z

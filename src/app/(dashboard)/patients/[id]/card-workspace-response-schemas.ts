@@ -202,6 +202,14 @@ export function buildPatientHeaderSummaryResponseSchema(expectedPatientId: strin
       data: z
         .object({
           patient_id: z.literal(expectedPatientId),
+          patient_updated_at: z.string().datetime({ offset: true }),
+          intake_edit_target: z
+            .object({
+              care_case_id: idSchema,
+              expected_care_case_version: z.number().int().positive(),
+            })
+            .strict()
+            .nullable(),
           name: z.string().trim().min(1).max(500),
           name_kana: nullableTextSchema,
           birth_date: dateSchema,

@@ -1,6 +1,11 @@
 import { z } from 'zod';
 import { allergyEntrySchema } from './patient-allergy';
-import { optionalFaxNumberSchema, optionalPhoneNumberSchema } from '@/lib/validations/phone';
+import {
+  optionalFaxNumberSchema,
+  optionalNullableFaxNumberSchema,
+  optionalNullablePhoneNumberSchema,
+  optionalPhoneNumberSchema,
+} from '@/lib/validations/phone';
 import { dateKeySchema } from '@/lib/validations/date-key';
 
 const dateStringSchema = dateKeySchema('日付形式が不正です（YYYY-MM-DD）');
@@ -64,8 +69,8 @@ export const intakeRequesterSchema = z.object({
   profession: z.string().optional(),
   contact_name: z.string().optional(),
   contact_name_kana: z.string().optional(),
-  phone: optionalPhoneNumberSchema,
-  fax: optionalFaxNumberSchema,
+  phone: optionalNullablePhoneNumberSchema,
+  fax: optionalNullableFaxNumberSchema,
   pharmacy_decision_due_date: dateStringSchema.optional(),
   preferred_contact_method: z.string().optional(),
   preferred_contact_method_other: z.string().optional(),
@@ -75,16 +80,16 @@ export const intakeCareManagerSchema = z.object({
   name: z.string().optional(),
   name_kana: z.string().optional(),
   organization_name: z.string().optional(),
-  phone: optionalPhoneNumberSchema,
-  fax: optionalFaxNumberSchema,
+  phone: optionalNullablePhoneNumberSchema,
+  fax: optionalNullableFaxNumberSchema,
 });
 
 export const intakeVisitingNurseSchema = z.object({
   name: z.string().optional(),
   name_kana: z.string().optional(),
   organization_name: z.string().optional(),
-  phone: optionalPhoneNumberSchema,
-  fax: optionalFaxNumberSchema,
+  phone: optionalNullablePhoneNumberSchema,
+  fax: optionalNullableFaxNumberSchema,
 });
 
 export const homePharmacyAddOn2Schema = z.object({
@@ -140,8 +145,8 @@ export const patientIntakeSchema = z
   .object({
     age: z.number().int().min(0).max(150).optional(),
     primary_disease: z.string().optional(),
-    contact_phone: optionalPhoneNumberSchema,
-    contact_mobile: optionalPhoneNumberSchema,
+    contact_phone: optionalNullablePhoneNumberSchema,
+    contact_mobile: optionalNullablePhoneNumberSchema,
     primary_contact_preference: z.string().optional(),
     visit_before_contact_required: z.boolean().optional(),
     first_visit_preferred_date: dateStringSchema.optional(),
@@ -229,7 +234,7 @@ export const patientIntakeSchema = z
       .object({
         name: z.string().optional(),
         relation: z.string().optional(),
-        phone: optionalPhoneNumberSchema,
+        phone: optionalNullablePhoneNumberSchema,
       })
       .optional(),
     initial_transition_management_expected: z.boolean().optional(),
@@ -286,11 +291,81 @@ export const createPatientSchema = z.object({
   backup_staff_id: z.string().optional(),
 });
 
-export const updatePatientSchema = createPatientSchema.partial().extend({
-  // 反映導線(訪問記録→患者詳細)の出所。指定時は変更履歴の source を visit_record にする。
-  source_visit_record_id: z.string().optional(),
-  expected_updated_at: z.string().datetime('患者情報の版情報が不正です').optional(),
-});
+function nullableOptionalShape<T extends z.ZodRawShape>(
+  shape: T,
+): { [K in keyof T]: z.ZodOptional<z.ZodNullable<T[K]>> } {
+  return Object.fromEntries(
+    Object.keys(shape).map((key) => [key, z.optional(z.nullable(shape[key]))]),
+  ) as { [K in keyof T]: z.ZodOptional<z.ZodNullable<T[K]>> };
+}
+
+const updateHomePharmacyAddOn2Schema = z.object(
+  nullableOptionalShape(homePharmacyAddOn2Schema.shape),
+);
+const updateIntakeCareManagerSchema = z.object(
+  nullableOptionalShape(intakeCareManagerSchema.shape),
+);
+const updateIntakeVisitingNurseSchema = z.object(
+  nullableOptionalShape(intakeVisitingNurseSchema.shape),
+);
+const updateEmergencyContactSchema = z.object(
+  nullableOptionalShape(
+    z.object({
+      name: z.string().optional(),
+      relation: z.string().optional(),
+      phone: optionalNullablePhoneNumberSchema,
+    }).shape,
+  ),
+);
+const updatePatientIntakeSchema = z
+  .object({
+    ...nullableOptionalShape(patientIntakeSchema.shape),
+    home_pharmacy_add_on_2: updateHomePharmacyAddOn2Schema.nullable().optional(),
+    care_manager: updateIntakeCareManagerSchema.nullable().optional(),
+    visiting_nurse: updateIntakeVisitingNurseSchema.nullable().optional(),
+    emergency_contact: updateEmergencyContactSchema.nullable().optional(),
+  })
+  .refine(
+    (data) =>
+      data.ent_period_from == null ||
+      data.ent_period_to == null ||
+      data.ent_period_from <= data.ent_period_to,
+    {
+      message: '在宅経管栄養期間の開始日は終了日以前である必要があります',
+      path: ['ent_period_from'],
+    },
+  );
+
+export const updatePatientSchema = createPatientSchema
+  .partial()
+  .extend({
+    phone: optionalNullablePhoneNumberSchema,
+    intake: updatePatientIntakeSchema.optional(),
+    // 反映導線(訪問記録→患者詳細)の出所。指定時は変更履歴の source を visit_record にする。
+    source_visit_record_id: z.string().optional(),
+    expected_updated_at: z.string().datetime('患者情報の版情報が不正です'),
+    care_case_id: z.string().trim().min(1, 'ケースIDは必須です').nullable().optional(),
+    expected_care_case_version: z
+      .number()
+      .int('ケースの版情報が不正です')
+      .positive('ケースの版情報が不正です')
+      .nullable()
+      .optional(),
+  })
+  .superRefine((data, context) => {
+    const hasCaseId = Object.prototype.hasOwnProperty.call(data, 'care_case_id');
+    const hasCaseVersion = Object.prototype.hasOwnProperty.call(data, 'expected_care_case_version');
+    if (
+      hasCaseId !== hasCaseVersion ||
+      (data.care_case_id === null) !== (data.expected_care_case_version === null)
+    ) {
+      context.addIssue({
+        code: 'custom',
+        path: ['care_case_id'],
+        message: 'ケースIDと版情報は組で指定してください',
+      });
+    }
+  });
 
 export const updatePatientConditionsSchema = z.object({
   expected_updated_at: z.string().datetime('患者病名・問題の版情報が不正です'),

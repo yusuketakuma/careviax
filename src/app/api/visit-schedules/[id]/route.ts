@@ -184,6 +184,7 @@ async function authenticatedGET(
     },
     select: {
       patient_id: true,
+      version: true,
     },
   });
   if (!careCase) return notFound('訪問予定に紐づくケースが見つかりません');
@@ -194,6 +195,7 @@ async function authenticatedGET(
     data: {
       ...safeSchedule,
       patient_id: careCase.patient_id,
+      case_version: careCase.version,
       cycle_id: schedule.cycle_id,
     },
   });

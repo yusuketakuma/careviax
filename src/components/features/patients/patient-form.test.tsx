@@ -202,6 +202,33 @@ describe('PatientForm', () => {
     expect(screen.getByLabelText('介護認定')).toBeTruthy();
   });
 
+  it('disables care-case fields but keeps scheduling preferences editable without a target case', () => {
+    useOrgIdMock.mockReturnValue('org_1');
+    useQueryMock.mockReturnValue({ data: [], isLoading: false });
+    render(
+      <PatientForm
+        patientId="patient_1"
+        expectedUpdatedAt="2026-07-22T00:00:00.000Z"
+        selectedCareCase={null}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('tab', { name: '訪問' }));
+    expect((screen.getByLabelText('受付時年齢') as HTMLInputElement).disabled).toBe(true);
+    expect((screen.getByLabelText('初回訪問希望日') as HTMLInputElement).disabled).toBe(false);
+    fireEvent.click(screen.getByRole('tab', { name: '生活・薬学' }));
+    const caseOwnedCheckbox = screen.getByRole('checkbox', { name: 'カレンダー' });
+    expect(caseOwnedCheckbox.getAttribute('aria-disabled')).toBe('true');
+    expect(caseOwnedCheckbox.getAttribute('tabindex')).toBe('-1');
+    expect(caseOwnedCheckbox.getAttribute('aria-describedby')).toBe(
+      'patient-care-case-unavailable',
+    );
+    fireEvent.click(caseOwnedCheckbox);
+    expect(caseOwnedCheckbox.getAttribute('aria-checked')).not.toBe('true');
+    expect((screen.getByLabelText('介護認定') as HTMLSelectElement).disabled).toBe(false);
+    expect(screen.getByText(/訪問ケースが選択されていないため/)).toBeTruthy();
+  });
+
   it('renders the patient-level care team selects in edit mode and pre-populates current assignments', () => {
     useOrgIdMock.mockReturnValue('org_1');
     useQueryMock.mockImplementation((options) => careTeamQueryResult(options, true));
@@ -465,10 +492,18 @@ describe('PatientForm', () => {
     const fetchMock = vi.mocked(fetch);
     fetchMock.mockResolvedValueOnce(
       jsonResponse({
-        data: { id: hostilePatientId },
+        data: {
+          id: hostilePatientId,
+          updated_at: '2026-03-30T09:00:01.000Z',
+        },
         meta: {
           warnings: [],
           duplicate_candidates: [],
+          version_basis: {
+            patient_updated_at: '2026-03-30T09:00:01.000Z',
+            care_case_id: null,
+            care_case_version: null,
+          },
         },
       }),
     );

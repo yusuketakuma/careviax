@@ -1,15 +1,14 @@
 import { format } from 'date-fns';
 import { NextRequest } from 'next/server';
-import { withAuthContext, type AuthContext } from '@/lib/auth/context';
+import { withAuthContext, type AuthContext, type AuthRouteContext } from '@/lib/auth/context';
 import { hasPermission } from '@/lib/auth/permissions';
 import { withOrgContext } from '@/lib/db/rls';
-import { normalizeJsonInput, readJsonObject } from '@/lib/db/json';
+import { readJsonObject } from '@/lib/db/json';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
-import { conflict, success, validationError, notFound } from '@/lib/api/response';
-import { validateOrgReferences } from '@/lib/api/org-reference';
-import { updatePatientSchema, type UpdatePatientData } from '@/lib/validations/patient';
-import { prisma } from '@/lib/db/client';
+import { conflict, success, validationError } from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
+import { updatePatientSchema } from '@/lib/validations/patient';
 import { Prisma } from '@prisma/client';
 import {
   assertFacilityReference,
@@ -18,18 +17,6 @@ import {
   FacilityUnitReferenceValidationError,
   getFacilityVisitDefaults,
 } from '@/lib/patient/facility-reference';
-import {
-  getPatientPrivacyFlags,
-  maskAddressDetail,
-  maskContactValue,
-  maskInsuranceNumber,
-  maskPhoneNumber,
-} from '@/lib/patient/privacy';
-import { listCommunicationQueue } from '@/server/services/communication-queue';
-import { listBillingEvidenceBlockers } from '@/server/services/billing-evidence';
-import { getPatientHomeCareFeatureSummary } from '@/server/services/home-care-ops';
-import { getPatientRiskSummary } from '@/server/services/patient-risk';
-import { getPatientVisitBrief } from '@/server/services/visit-brief';
 import {
   writePatientFieldRevisions,
   sortJsonArrayStable,
@@ -40,1446 +27,47 @@ import { upsertOperationalTask } from '@/server/services/operational-tasks';
 import { syncStructuredHomeCare } from '@/server/services/patient-structured-care';
 import { localDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 import { getHomeVisitIntake, type HomeVisitIntake } from '@/lib/patient/home-visit-intake';
+import {
+  hasOwnKey,
+  mergeHomeVisitIntake,
+  normalizeNullableText,
+  validateMergedHomeVisitIntake,
+} from '@/lib/patient/home-visit-intake-merge';
+import { classifyHomeVisitIntakePatch } from '@/lib/patient/home-visit-intake-patch';
+import { buildExactHomeVisitIntakeCaseWhere } from '@/lib/patient/home-visit-intake-target';
 import { normalizePatientPrimaryContacts } from '@/lib/patient/care-team-contact';
+import { buildPatientDetailWhere } from '@/server/services/patient-detail-scope';
+import { authenticatedPatientGET, normalizeInputJsonObject } from './patient-get-handler';
 import {
-  findPatientDuplicateCandidates,
-  parsePatientDuplicateBirthDate,
-} from '@/lib/patient/duplicate-detection';
-import { KEY_LAB_ANALYTE_CODES } from '@/lib/patient/lab-analytes';
-import {
-  buildAssignedCareCaseWhere,
-  buildCareReportCaseScope,
-  buildPatientDetailWhere,
-  buildVisitRecordCaseScope,
-} from '@/server/services/patient-detail-scope';
-import { buildPatientOverviewBaseSelect } from '@/server/services/patient-overview-base-query';
-import {
-  buildVisibleExternalAccessGrantWhere,
-  toPublicExternalAccessScope,
-} from '@/server/services/external-access';
-import { recordPhiReadAuditForRequest } from '@/lib/audit/phi-read-audit';
-import { listPatientBillingCaseRefs } from '@/server/services/patient-detail-billing-refs';
-import {
-  canCreateTaskInDashboardAssignmentScope,
-  resolveDashboardAssignmentScope,
-} from '@/server/services/dashboard-assignment-scope';
+  normalizeExpectedUpdatedAt,
+  PatientPatchConflictError,
+  PatientPatchResponseError,
+  preparePatientPatchTransaction,
+  presentPatientPatch,
+} from './patient-patch-preflight';
 
-type FirstVisitDocumentContact = {
-  id?: string;
-  name: string;
-  relation: string | null;
-  phone: string | null;
-  email: string | null;
-  fax: string | null;
-  organization_name: string | null;
-  department: string | null;
-  is_primary: boolean;
-  is_emergency_contact: boolean;
-};
-
-function isInputJsonObject(
-  value: Prisma.InputJsonValue | null | undefined,
-): value is Prisma.InputJsonObject {
-  return (
-    typeof value === 'object' && value !== null && !Array.isArray(value) && !('toJSON' in value)
-  );
-}
-
-function normalizeInputJsonObject(value: unknown): Prisma.InputJsonObject {
-  const normalized = normalizeJsonInput(value);
-  return isInputJsonObject(normalized) ? normalized : {};
-}
-
-function normalizeFirstVisitDocumentContacts(
-  value: Prisma.JsonValue | null | undefined,
-): FirstVisitDocumentContact[] {
-  if (!Array.isArray(value)) return [];
-
-  return value.flatMap((item) => {
-    const record = readJsonObject(item);
-    if (!record) return [];
-
-    const name = typeof record.name === 'string' ? record.name : null;
-    if (!name) return [];
-
-    return [
-      {
-        id: typeof record.id === 'string' ? record.id : undefined,
-        name,
-        relation: typeof record.relation === 'string' ? record.relation : null,
-        phone: typeof record.phone === 'string' ? record.phone : null,
-        email: typeof record.email === 'string' ? record.email : null,
-        fax: typeof record.fax === 'string' ? record.fax : null,
-        organization_name:
-          typeof record.organization_name === 'string' ? record.organization_name : null,
-        department: typeof record.department === 'string' ? record.department : null,
-        is_primary: record.is_primary === true,
-        is_emergency_contact: record.is_emergency_contact === true,
-      },
-    ];
-  });
-}
-
-const OPEN_CASE_STATUSES = ['referral_received', 'assessment', 'active', 'on_hold'] as const;
-
-type PatientRequesterPatch = NonNullable<UpdatePatientData['requester']>;
-type PatientIntakePatch = NonNullable<UpdatePatientData['intake']>;
-const PATIENT_EXTERNAL_SHARE_LIMIT = 8;
-
-function presentPatientPatch(patient: { id: string }) {
-  return { id: patient.id };
-}
-
-function normalizeExpectedUpdatedAt(value: string | null | undefined): Date | null {
-  if (!value) return null;
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? null : date;
-}
-
-function normalizeCurrentUpdatedAt(value: unknown): Date | null {
-  if (value instanceof Date) return value;
-  if (typeof value !== 'string') return null;
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? null : date;
-}
-
-async function listVisibleExternalSharesForPatient(
-  db: Pick<Prisma.TransactionClient, 'externalAccessGrant'>,
-  args: {
-    orgId: string;
-    patientId: string;
-    caseIds: string[];
-  },
-) {
-  return db.externalAccessGrant.findMany({
-    where: buildVisibleExternalAccessGrantWhere(args),
-    orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
-    take: PATIENT_EXTERNAL_SHARE_LIMIT,
-    select: {
-      id: true,
-      granted_to_name: true,
-      granted_to_contact: true,
-      scope: true,
-      expires_at: true,
-      accessed_at: true,
-      created_at: true,
-    },
-  });
-}
-
-function hasOwnKey<T extends object>(value: T, key: PropertyKey): boolean {
-  return Object.prototype.hasOwnProperty.call(value, key);
-}
-
-function normalizeNullableText(value: string | null | undefined) {
-  if (typeof value !== 'string') return undefined;
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : undefined;
-}
-
-function assignOptionalField(target: object, key: string, value: unknown | undefined) {
-  const targetRecord = target as Record<string, unknown>;
-  if (value === undefined) {
-    delete targetRecord[key];
-    return;
-  }
-  targetRecord[key] = value;
-}
-
-function assignTextField(
-  target: object,
-  key: string,
-  value: string | null | undefined,
-  provided: boolean,
-) {
-  if (!provided) return;
-  const normalized = normalizeNullableText(value);
-  assignOptionalField(target, key, normalized);
-}
-
-function assignBooleanField(
-  target: object,
-  key: string,
-  value: boolean | undefined,
-  provided: boolean,
-) {
-  if (!provided) return;
-  assignOptionalField(target, key, value);
-}
-
-function assignNumberField(
-  target: object,
-  key: string,
-  value: number | undefined,
-  provided: boolean,
-) {
-  if (!provided) return;
-  assignOptionalField(
-    target,
-    key,
-    typeof value === 'number' && Number.isFinite(value) ? value : undefined,
-  );
-}
-
-function assignArrayField(
-  target: object,
-  key: string,
-  value: string[] | undefined,
-  provided: boolean,
-) {
-  if (!provided) return;
-  assignOptionalField(target, key, Array.isArray(value) ? value : undefined);
-}
-
-function compactNestedObject<T extends object>(value: T) {
-  const entries = Object.entries(value).filter(([, entry]) => entry !== undefined);
-  return entries.length > 0 ? (Object.fromEntries(entries) as T) : undefined;
-}
-
-function mergeHomeVisitIntake(args: {
-  current: HomeVisitIntake | null;
-  requester?: PatientRequesterPatch;
-  intake?: PatientIntakePatch;
-}) {
-  const next: HomeVisitIntake = { ...(args.current ?? {}) };
-
-  if (args.requester) {
-    const requester = { ...(next.requester ?? {}) };
-    assignTextField(
-      requester,
-      'organization_name',
-      args.requester.organization_name,
-      hasOwnKey(args.requester, 'organization_name'),
-    );
-    assignTextField(
-      requester,
-      'profession',
-      args.requester.profession,
-      hasOwnKey(args.requester, 'profession'),
-    );
-    assignTextField(
-      requester,
-      'contact_name',
-      args.requester.contact_name,
-      hasOwnKey(args.requester, 'contact_name'),
-    );
-    assignTextField(
-      requester,
-      'contact_name_kana',
-      args.requester.contact_name_kana,
-      hasOwnKey(args.requester, 'contact_name_kana'),
-    );
-    assignTextField(requester, 'phone', args.requester.phone, hasOwnKey(args.requester, 'phone'));
-    assignTextField(requester, 'fax', args.requester.fax, hasOwnKey(args.requester, 'fax'));
-    assignTextField(
-      requester,
-      'pharmacy_decision_due_date',
-      args.requester.pharmacy_decision_due_date,
-      hasOwnKey(args.requester, 'pharmacy_decision_due_date'),
-    );
-    assignTextField(
-      requester,
-      'preferred_contact_method',
-      args.requester.preferred_contact_method,
-      hasOwnKey(args.requester, 'preferred_contact_method'),
-    );
-    assignTextField(
-      requester,
-      'preferred_contact_method_other',
-      args.requester.preferred_contact_method_other,
-      hasOwnKey(args.requester, 'preferred_contact_method_other'),
-    );
-    next.requester = compactNestedObject(requester);
-  }
-
-  if (args.intake) {
-    assignNumberField(next, 'reported_age', args.intake.age, hasOwnKey(args.intake, 'age'));
-    assignTextField(
-      next,
-      'primary_disease',
-      args.intake.primary_disease,
-      hasOwnKey(args.intake, 'primary_disease'),
-    );
-    assignTextField(
-      next,
-      'postal_code',
-      args.intake.postal_code,
-      hasOwnKey(args.intake, 'postal_code'),
-    );
-    assignTextField(
-      next,
-      'housing_type',
-      args.intake.housing_type,
-      hasOwnKey(args.intake, 'housing_type'),
-    );
-    assignTextField(
-      next,
-      'facility_name',
-      args.intake.facility_name,
-      hasOwnKey(args.intake, 'facility_name'),
-    );
-    assignBooleanField(
-      next,
-      'mcs_linked',
-      args.intake.mcs_linked,
-      hasOwnKey(args.intake, 'mcs_linked'),
-    );
-    assignTextField(
-      next,
-      'primary_contact_preference',
-      args.intake.primary_contact_preference,
-      hasOwnKey(args.intake, 'primary_contact_preference'),
-    );
-    assignTextField(
-      next,
-      'contact_phone',
-      args.intake.contact_phone,
-      hasOwnKey(args.intake, 'contact_phone'),
-    );
-    assignTextField(
-      next,
-      'contact_mobile',
-      args.intake.contact_mobile,
-      hasOwnKey(args.intake, 'contact_mobile'),
-    );
-    assignBooleanField(
-      next,
-      'visit_before_contact_required',
-      args.intake.visit_before_contact_required,
-      hasOwnKey(args.intake, 'visit_before_contact_required'),
-    );
-    assignTextField(
-      next,
-      'first_visit_date',
-      args.intake.first_visit_preferred_date,
-      hasOwnKey(args.intake, 'first_visit_preferred_date'),
-    );
-    assignTextField(
-      next,
-      'first_visit_time_slot',
-      args.intake.first_visit_time_slot,
-      hasOwnKey(args.intake, 'first_visit_time_slot'),
-    );
-    assignTextField(
-      next,
-      'first_visit_time_note',
-      args.intake.first_visit_time_note,
-      hasOwnKey(args.intake, 'first_visit_time_note'),
-    );
-    assignTextField(
-      next,
-      'money_management',
-      args.intake.money_management,
-      hasOwnKey(args.intake, 'money_management'),
-    );
-    assignBooleanField(
-      next,
-      'parking_available',
-      args.intake.parking_available,
-      hasOwnKey(args.intake, 'parking_available'),
-    );
-    assignTextField(
-      next,
-      'family_key_person',
-      args.intake.family_key_person,
-      hasOwnKey(args.intake, 'family_key_person'),
-    );
-    assignTextField(
-      next,
-      'care_level',
-      args.intake.care_level,
-      hasOwnKey(args.intake, 'care_level'),
-    );
-    assignTextField(next, 'adl_level', args.intake.adl_level, hasOwnKey(args.intake, 'adl_level'));
-    assignTextField(
-      next,
-      'dementia_level',
-      args.intake.dementia_level,
-      hasOwnKey(args.intake, 'dementia_level'),
-    );
-    assignArrayField(
-      next,
-      'medication_support_methods',
-      args.intake.medication_support_methods,
-      hasOwnKey(args.intake, 'medication_support_methods'),
-    );
-    assignTextField(
-      next,
-      'medication_support_other',
-      args.intake.medication_support_other,
-      hasOwnKey(args.intake, 'medication_support_other'),
-    );
-    assignBooleanField(
-      next,
-      'ent_prescription',
-      args.intake.ent_prescription,
-      hasOwnKey(args.intake, 'ent_prescription'),
-    );
-    assignTextField(
-      next,
-      'ent_period_from',
-      args.intake.ent_period_from,
-      hasOwnKey(args.intake, 'ent_period_from'),
-    );
-    assignTextField(
-      next,
-      'ent_period_to',
-      args.intake.ent_period_to,
-      hasOwnKey(args.intake, 'ent_period_to'),
-    );
-    assignBooleanField(
-      next,
-      'narcotics_base',
-      args.intake.narcotics_base,
-      hasOwnKey(args.intake, 'narcotics_base'),
-    );
-    assignBooleanField(
-      next,
-      'narcotics_rescue',
-      args.intake.narcotics_rescue,
-      hasOwnKey(args.intake, 'narcotics_rescue'),
-    );
-    assignTextField(
-      next,
-      'allergy_history',
-      args.intake.allergy_history,
-      hasOwnKey(args.intake, 'allergy_history'),
-    );
-    assignTextField(
-      next,
-      'infection_isolation',
-      args.intake.infection_isolation,
-      hasOwnKey(args.intake, 'infection_isolation'),
-    );
-    assignTextField(
-      next,
-      'swallowing_route',
-      args.intake.swallowing_route,
-      hasOwnKey(args.intake, 'swallowing_route'),
-    );
-    assignTextField(
-      next,
-      'residual_medication_status',
-      args.intake.residual_medication_status,
-      hasOwnKey(args.intake, 'residual_medication_status'),
-    );
-    assignTextField(
-      next,
-      'other_clinical_notes',
-      args.intake.other_clinical_notes,
-      hasOwnKey(args.intake, 'other_clinical_notes'),
-    );
-    assignArrayField(
-      next,
-      'special_medical_procedures',
-      args.intake.special_medical_procedures,
-      hasOwnKey(args.intake, 'special_medical_procedures'),
-    );
-    assignTextField(
-      next,
-      'special_medical_notes',
-      args.intake.special_medical_notes,
-      hasOwnKey(args.intake, 'special_medical_notes'),
-    );
-    assignTextField(
-      next,
-      'home_care_status',
-      args.intake.home_care_status,
-      hasOwnKey(args.intake, 'home_care_status'),
-    );
-    assignTextField(
-      next,
-      'home_start_date',
-      args.intake.home_start_date,
-      hasOwnKey(args.intake, 'home_start_date'),
-    );
-    assignTextField(
-      next,
-      'home_end_date',
-      args.intake.home_end_date,
-      hasOwnKey(args.intake, 'home_end_date'),
-    );
-    assignTextField(
-      next,
-      'home_end_reason',
-      args.intake.home_end_reason,
-      hasOwnKey(args.intake, 'home_end_reason'),
-    );
-    assignTextField(
-      next,
-      'emergency_response',
-      args.intake.emergency_response,
-      hasOwnKey(args.intake, 'emergency_response'),
-    );
-    assignTextField(
-      next,
-      'after_hours_explanation_date',
-      args.intake.after_hours_explanation_date,
-      hasOwnKey(args.intake, 'after_hours_explanation_date'),
-    );
-    assignArrayField(
-      next,
-      'patient_tags',
-      args.intake.patient_tags,
-      hasOwnKey(args.intake, 'patient_tags'),
-    );
-    assignTextField(
-      next,
-      'visit_frequency',
-      args.intake.visit_frequency,
-      hasOwnKey(args.intake, 'visit_frequency'),
-    );
-    assignTextField(
-      next,
-      'regular_visit_slot',
-      args.intake.regular_visit_slot,
-      hasOwnKey(args.intake, 'regular_visit_slot'),
-    );
-    assignTextField(
-      next,
-      'visit_available_time_note',
-      args.intake.visit_available_time_note,
-      hasOwnKey(args.intake, 'visit_available_time_note'),
-    );
-    assignTextField(
-      next,
-      'access_key_info',
-      args.intake.access_key_info,
-      hasOwnKey(args.intake, 'access_key_info'),
-    );
-    assignTextField(
-      next,
-      'medication_handover_place',
-      args.intake.medication_handover_place,
-      hasOwnKey(args.intake, 'medication_handover_place'),
-    );
-    assignTextField(
-      next,
-      'medication_storage_location',
-      args.intake.medication_storage_location,
-      hasOwnKey(args.intake, 'medication_storage_location'),
-    );
-    assignTextField(
-      next,
-      'collection_method',
-      args.intake.collection_method,
-      hasOwnKey(args.intake, 'collection_method'),
-    );
-    assignTextField(next, 'payer', args.intake.payer, hasOwnKey(args.intake, 'payer'));
-    assignTextField(
-      next,
-      'medication_manager',
-      args.intake.medication_manager,
-      hasOwnKey(args.intake, 'medication_manager'),
-    );
-    assignTextField(
-      next,
-      'medication_ability',
-      args.intake.medication_ability,
-      hasOwnKey(args.intake, 'medication_ability'),
-    );
-    assignTextField(
-      next,
-      'missed_dose_pattern',
-      args.intake.missed_dose_pattern,
-      hasOwnKey(args.intake, 'missed_dose_pattern'),
-    );
-    assignTextField(
-      next,
-      'residual_medication_pattern',
-      args.intake.residual_medication_pattern,
-      hasOwnKey(args.intake, 'residual_medication_pattern'),
-    );
-    assignTextField(
-      next,
-      'residual_medication_checked_on',
-      args.intake.residual_medication_checked_on,
-      hasOwnKey(args.intake, 'residual_medication_checked_on'),
-    );
-    assignTextField(
-      next,
-      'residual_adjustment_status',
-      args.intake.residual_adjustment_status,
-      hasOwnKey(args.intake, 'residual_adjustment_status'),
-    );
-    assignTextField(
-      next,
-      'crushing_check_status',
-      args.intake.crushing_check_status,
-      hasOwnKey(args.intake, 'crushing_check_status'),
-    );
-    assignTextField(
-      next,
-      'simple_suspension_check_status',
-      args.intake.simple_suspension_check_status,
-      hasOwnKey(args.intake, 'simple_suspension_check_status'),
-    );
-    assignTextField(
-      next,
-      'egfr_value',
-      args.intake.egfr_value,
-      hasOwnKey(args.intake, 'egfr_value'),
-    );
-    assignTextField(
-      next,
-      'egfr_measured_on',
-      args.intake.egfr_measured_on,
-      hasOwnKey(args.intake, 'egfr_measured_on'),
-    );
-    assignTextField(next, 'weight_kg', args.intake.weight_kg, hasOwnKey(args.intake, 'weight_kg'));
-    assignTextField(
-      next,
-      'weight_measured_on',
-      args.intake.weight_measured_on,
-      hasOwnKey(args.intake, 'weight_measured_on'),
-    );
-    assignArrayField(
-      next,
-      'high_risk_drug_flags',
-      args.intake.high_risk_drug_flags,
-      hasOwnKey(args.intake, 'high_risk_drug_flags'),
-    );
-    assignArrayField(
-      next,
-      'adverse_monitoring_items',
-      args.intake.adverse_monitoring_items,
-      hasOwnKey(args.intake, 'adverse_monitoring_items'),
-    );
-    assignTextField(
-      next,
-      'pain_score',
-      args.intake.pain_score,
-      hasOwnKey(args.intake, 'pain_score'),
-    );
-    assignTextField(
-      next,
-      'rescue_use_count_recent',
-      args.intake.rescue_use_count_recent,
-      hasOwnKey(args.intake, 'rescue_use_count_recent'),
-    );
-    assignTextField(
-      next,
-      'constipation_status',
-      args.intake.constipation_status,
-      hasOwnKey(args.intake, 'constipation_status'),
-    );
-    assignTextField(
-      next,
-      'drowsiness_delirium_status',
-      args.intake.drowsiness_delirium_status,
-      hasOwnKey(args.intake, 'drowsiness_delirium_status'),
-    );
-    assignTextField(next, 'fall_risk', args.intake.fall_risk, hasOwnKey(args.intake, 'fall_risk'));
-    assignTextField(
-      next,
-      'pressure_ulcer_status',
-      args.intake.pressure_ulcer_status,
-      hasOwnKey(args.intake, 'pressure_ulcer_status'),
-    );
-    assignTextField(
-      next,
-      'medical_material_supplier',
-      args.intake.medical_material_supplier,
-      hasOwnKey(args.intake, 'medical_material_supplier'),
-    );
-    assignTextField(
-      next,
-      'material_exchange_due_note',
-      args.intake.material_exchange_due_note,
-      hasOwnKey(args.intake, 'material_exchange_due_note'),
-    );
-    assignTextField(
-      next,
-      'device_vendor_contact',
-      args.intake.device_vendor_contact,
-      hasOwnKey(args.intake, 'device_vendor_contact'),
-    );
-    assignTextField(
-      next,
-      'document_status_note',
-      args.intake.document_status_note,
-      hasOwnKey(args.intake, 'document_status_note'),
-    );
-    assignTextField(
-      next,
-      'report_destination_note',
-      args.intake.report_destination_note,
-      hasOwnKey(args.intake, 'report_destination_note'),
-    );
-    assignTextField(
-      next,
-      'emergency_policy_note',
-      args.intake.emergency_policy_note,
-      hasOwnKey(args.intake, 'emergency_policy_note'),
-    );
-    assignTextField(
-      next,
-      'interprofessional_action_note',
-      args.intake.interprofessional_action_note,
-      hasOwnKey(args.intake, 'interprofessional_action_note'),
-    );
-    if (hasOwnKey(args.intake, 'home_pharmacy_add_on_2')) {
-      const value = args.intake.home_pharmacy_add_on_2;
-      if (value) {
-        const addOn2 = { ...(next.home_pharmacy_add_on_2 ?? {}) };
-        assignTextField(addOn2, 'candidate', value.candidate, hasOwnKey(value, 'candidate'));
-        assignTextField(
-          addOn2,
-          'single_building_medical_patient_count',
-          value.single_building_medical_patient_count,
-          hasOwnKey(value, 'single_building_medical_patient_count'),
-        );
-        assignTextField(
-          addOn2,
-          'single_building_resident_count',
-          value.single_building_resident_count,
-          hasOwnKey(value, 'single_building_resident_count'),
-        );
-        assignTextField(
-          addOn2,
-          'home_care_billing_category',
-          value.home_care_billing_category,
-          hasOwnKey(value, 'home_care_billing_category'),
-        );
-        assignTextField(
-          addOn2,
-          'medical_home_management_type',
-          value.medical_home_management_type,
-          hasOwnKey(value, 'medical_home_management_type'),
-        );
-        assignTextField(
-          addOn2,
-          'medical_home_management_section',
-          value.medical_home_management_section,
-          hasOwnKey(value, 'medical_home_management_section'),
-        );
-        assignTextField(
-          addOn2,
-          'comprehensive_support_add_on',
-          value.comprehensive_support_add_on,
-          hasOwnKey(value, 'comprehensive_support_add_on'),
-        );
-        assignTextField(
-          addOn2,
-          'table_8_2_applicable',
-          value.table_8_2_applicable,
-          hasOwnKey(value, 'table_8_2_applicable'),
-        );
-        assignTextField(
-          addOn2,
-          'table_8_3_applicable',
-          value.table_8_3_applicable,
-          hasOwnKey(value, 'table_8_3_applicable'),
-        );
-        assignArrayField(
-          addOn2,
-          'narcotic_use_categories',
-          value.narcotic_use_categories,
-          hasOwnKey(value, 'narcotic_use_categories'),
-        );
-        assignTextField(
-          addOn2,
-          'aseptic_preparation_need',
-          value.aseptic_preparation_need,
-          hasOwnKey(value, 'aseptic_preparation_need'),
-        );
-        assignTextField(
-          addOn2,
-          'pediatric_home_care',
-          value.pediatric_home_care,
-          hasOwnKey(value, 'pediatric_home_care'),
-        );
-        assignTextField(
-          addOn2,
-          'infant_add_on_candidate',
-          value.infant_add_on_candidate,
-          hasOwnKey(value, 'infant_add_on_candidate'),
-        );
-        assignTextField(
-          addOn2,
-          'medical_care_child',
-          value.medical_care_child,
-          hasOwnKey(value, 'medical_care_child'),
-        );
-        assignTextField(
-          addOn2,
-          'visiting_nurse_frequency',
-          value.visiting_nurse_frequency,
-          hasOwnKey(value, 'visiting_nurse_frequency'),
-        );
-        assignTextField(
-          addOn2,
-          'weekly_visiting_nurse',
-          value.weekly_visiting_nurse,
-          hasOwnKey(value, 'weekly_visiting_nurse'),
-        );
-        assignTextField(
-          addOn2,
-          'nursing_or_family_procedure',
-          value.nursing_or_family_procedure,
-          hasOwnKey(value, 'nursing_or_family_procedure'),
-        );
-        assignTextField(
-          addOn2,
-          'medical_material_supply',
-          value.medical_material_supply,
-          hasOwnKey(value, 'medical_material_supply'),
-        );
-        assignTextField(
-          addOn2,
-          'advanced_medical_device',
-          value.advanced_medical_device,
-          hasOwnKey(value, 'advanced_medical_device'),
-        );
-        next.home_pharmacy_add_on_2 = compactNestedObject(addOn2);
-      } else {
-        delete next.home_pharmacy_add_on_2;
-      }
-    }
-    assignTextField(
-      next,
-      'intake_note',
-      args.intake.intake_note,
-      hasOwnKey(args.intake, 'intake_note'),
-    );
-    assignBooleanField(
-      next,
-      'initial_transition_management_expected',
-      args.intake.initial_transition_management_expected,
-      hasOwnKey(args.intake, 'initial_transition_management_expected'),
-    );
-
-    if (hasOwnKey(args.intake, 'emergency_contact')) {
-      const emergencyContact = { ...(next.emergency_contact ?? {}) };
-      const value = args.intake.emergency_contact;
-      if (value) {
-        assignTextField(emergencyContact, 'name', value.name, hasOwnKey(value, 'name'));
-        assignTextField(emergencyContact, 'relation', value.relation, hasOwnKey(value, 'relation'));
-        assignTextField(emergencyContact, 'phone', value.phone, hasOwnKey(value, 'phone'));
-      } else {
-        delete next.emergency_contact;
-      }
-      if (value) next.emergency_contact = compactNestedObject(emergencyContact);
-    }
-
-    if (hasOwnKey(args.intake, 'care_manager')) {
-      const careManager = { ...(next.care_manager ?? {}) };
-      const value = args.intake.care_manager;
-      if (value) {
-        assignTextField(careManager, 'name', value.name, hasOwnKey(value, 'name'));
-        assignTextField(careManager, 'name_kana', value.name_kana, hasOwnKey(value, 'name_kana'));
-        assignTextField(
-          careManager,
-          'organization_name',
-          value.organization_name,
-          hasOwnKey(value, 'organization_name'),
-        );
-        assignTextField(careManager, 'phone', value.phone, hasOwnKey(value, 'phone'));
-        assignTextField(careManager, 'fax', value.fax, hasOwnKey(value, 'fax'));
-      } else {
-        delete next.care_manager;
-      }
-      if (value) next.care_manager = compactNestedObject(careManager);
-    }
-
-    if (hasOwnKey(args.intake, 'visiting_nurse')) {
-      const visitingNurse = { ...(next.visiting_nurse ?? {}) };
-      const value = args.intake.visiting_nurse;
-      if (value) {
-        assignTextField(visitingNurse, 'name', value.name, hasOwnKey(value, 'name'));
-        assignTextField(visitingNurse, 'name_kana', value.name_kana, hasOwnKey(value, 'name_kana'));
-        assignTextField(
-          visitingNurse,
-          'organization_name',
-          value.organization_name,
-          hasOwnKey(value, 'organization_name'),
-        );
-        assignTextField(visitingNurse, 'phone', value.phone, hasOwnKey(value, 'phone'));
-        assignTextField(visitingNurse, 'fax', value.fax, hasOwnKey(value, 'fax'));
-      } else {
-        delete next.visiting_nurse;
-      }
-      if (value) next.visiting_nurse = compactNestedObject(visitingNurse);
-    }
-  }
-
-  const entries = Object.entries(next).filter(([, value]) => value !== undefined);
-  return entries.length > 0 ? (Object.fromEntries(entries) as HomeVisitIntake) : null;
-}
-
-async function authenticatedGET(
-  _req: NextRequest,
-  ctx: AuthContext,
-  { params }: { params: Promise<{ id: string }> },
-) {
-  const canManageBilling = hasPermission(ctx.role, 'canManageBilling');
-  const basePatientSharePermissions = {
-    can_create_external_share: hasPermission(ctx.role, 'canManagePatientSharing'),
-    can_create_reply_request: hasPermission(ctx.role, 'canReport'),
-    can_create_followup_task: hasPermission(ctx.role, 'canManageOperationalTasks'),
-  };
-
-  const { id: rawId } = await params;
-  const id = normalizeRequiredRouteParam(rawId);
-  if (!id) return validationError('患者IDが不正です');
-
-  return withOrgContext(
-    ctx.orgId,
-    async (tx) => {
-      const patient = await tx.patient.findFirst({
-        where: buildPatientDetailWhere({
-          orgId: ctx.orgId,
-          patientId: id,
-          role: ctx.role,
-          userId: ctx.userId,
-        }),
-        select: buildPatientOverviewBaseSelect({
-          orgId: ctx.orgId,
-          patientId: id,
-          role: ctx.role,
-          userId: ctx.userId,
-        }),
-      });
-
-      if (!patient) return notFound('患者が見つかりません');
-
-      const caseIds = (patient.cases ?? []).map((item) => item.id);
-      const [billingRefs, followupAssignmentScope] = await Promise.all([
-        canManageBilling
-          ? listPatientBillingCaseRefs(tx, { orgId: ctx.orgId, patientId: id }, caseIds)
-          : Promise.resolve({ visitRecordIds: [] as string[], cycleIds: [] as string[] }),
-        basePatientSharePermissions.can_create_followup_task
-          ? resolveDashboardAssignmentScope({
-              db: tx,
-              orgId: ctx.orgId,
-              accessContext: ctx,
-            })
-          : Promise.resolve(null),
-      ]);
-      const patientSharePermissions = {
-        ...basePatientSharePermissions,
-        can_create_followup_task:
-          followupAssignmentScope !== null &&
-          canCreateTaskInDashboardAssignmentScope(followupAssignmentScope, {
-            related_entity_type: 'patient',
-            related_entity_id: id,
-          }),
-      };
-      const billingEvidenceScope =
-        billingRefs.visitRecordIds.length === 0 && billingRefs.cycleIds.length === 0
-          ? { id: { in: [] } }
-          : {
-              OR: [
-                { visit_record_id: { in: billingRefs.visitRecordIds } },
-                { cycle_id: { in: billingRefs.cycleIds } },
-              ],
-            };
-      const billingCandidateScope =
-        billingRefs.cycleIds.length === 0
-          ? { id: { in: [] } }
-          : { cycle_id: { in: billingRefs.cycleIds } };
-      const billingEvidenceBlockersPromise = canManageBilling
-        ? listBillingEvidenceBlockers(tx, {
-            orgId: ctx.orgId,
-            patientId: id,
-            visitRecordIds: billingRefs.visitRecordIds,
-            cycleIds: billingRefs.cycleIds,
-            limit: 6,
-          })
-        : Promise.resolve([]);
-      // scheduled_date(@db.Date)比較用: ローカル今月の月初/翌月初を UTC 深夜で表す
-      const todayKey = localDateKey();
-      const [currentYear, currentMonth] = todayKey.split('-').map(Number);
-      const currentMonthStart = utcDateFromLocalKey(
-        `${currentYear}-${`${currentMonth}`.padStart(2, '0')}-01`,
-      );
-      const nextMonthStart = new Date(
-        Date.UTC(currentYear, currentMonth, 1), // monthIndex = currentMonth で翌月 1 日
-      );
-
-      const [
-        currentMedications,
-        visitSchedules,
-        currentMonthVisitCount,
-        visitRecords,
-        careReports,
-        selfReports,
-        externalShares,
-        openTasks,
-        medicationIssues,
-        billingEvidence,
-        billingEvidenceBlockers,
-        billingCandidates,
-        communicationQueue,
-        riskSummary,
-        visitBrief,
-        firstVisitDocuments,
-      ] = await Promise.all([
-        tx.medicationProfile.findMany({
-          where: {
-            org_id: ctx.orgId,
-            patient_id: id,
-            is_current: true,
-          },
-          orderBy: [{ created_at: 'desc' }],
-          take: 20,
-          select: {
-            id: true,
-            drug_name: true,
-            dose: true,
-            frequency: true,
-            start_date: true,
-            end_date: true,
-            prescriber: true,
-            is_current: true,
-            source: true,
-            created_at: true,
-          },
-        }),
-        caseIds.length === 0
-          ? Promise.resolve([])
-          : tx.visitSchedule.findMany({
-              where: {
-                org_id: ctx.orgId,
-                case_id: { in: caseIds },
-              },
-              orderBy: [{ scheduled_date: 'desc' }, { time_window_start: 'desc' }],
-              take: 12,
-              select: {
-                id: true,
-                case_id: true,
-                visit_type: true,
-                scheduled_date: true,
-                time_window_start: true,
-                time_window_end: true,
-                schedule_status: true,
-                priority: true,
-                pharmacist_id: true,
-                assignment_mode: true,
-                confirmed_at: true,
-                route_order: true,
-                created_at: true,
-                updated_at: true,
-                visit_record: {
-                  select: {
-                    id: true,
-                    outcome_status: true,
-                    visit_date: true,
-                    next_visit_suggestion_date: true,
-                    created_at: true,
-                  },
-                },
-              },
-            }),
-        caseIds.length === 0
-          ? Promise.resolve(0)
-          : tx.visitSchedule.count({
-              where: {
-                org_id: ctx.orgId,
-                case_id: { in: caseIds },
-                scheduled_date: {
-                  gte: currentMonthStart,
-                  lt: nextMonthStart,
-                },
-              },
-            }),
-        caseIds.length === 0
-          ? Promise.resolve([])
-          : tx.visitRecord.findMany({
-              where: {
-                org_id: ctx.orgId,
-                patient_id: id,
-                ...buildVisitRecordCaseScope(caseIds),
-              },
-              orderBy: [{ visit_date: 'desc' }, { created_at: 'desc' }],
-              take: 12,
-              select: {
-                id: true,
-                schedule_id: true,
-                pharmacist_id: true,
-                visit_date: true,
-                outcome_status: true,
-                next_visit_suggestion_date: true,
-                cancellation_reason: true,
-                postpone_reason: true,
-                revisit_reason: true,
-                created_at: true,
-              },
-            }),
-        tx.careReport.findMany({
-          where: {
-            org_id: ctx.orgId,
-            patient_id: id,
-            ...buildCareReportCaseScope(caseIds),
-          },
-          orderBy: [{ created_at: 'desc' }],
-          take: 8,
-          select: {
-            id: true,
-            report_type: true,
-            status: true,
-            pdf_url: true,
-            created_by: true,
-            created_at: true,
-            delivery_records: {
-              orderBy: [{ created_at: 'desc' }],
-              take: 4,
-              select: {
-                id: true,
-                channel: true,
-                recipient_name: true,
-                status: true,
-                sent_at: true,
-                confirmed_at: true,
-                created_at: true,
-              },
-            },
-          },
-        }),
-        tx.patientSelfReport.findMany({
-          where: {
-            org_id: ctx.orgId,
-            patient_id: id,
-          },
-          orderBy: [{ created_at: 'desc' }],
-          take: 8,
-          select: {
-            id: true,
-            subject: true,
-            category: true,
-            content: true,
-            relation: true,
-            status: true,
-            reported_by_name: true,
-            requested_callback: true,
-            preferred_contact_time: true,
-            created_at: true,
-          },
-        }),
-        listVisibleExternalSharesForPatient(tx, {
-          orgId: ctx.orgId,
-          patientId: id,
-          caseIds,
-        }),
-        tx.task.findMany({
-          where: {
-            org_id: ctx.orgId,
-            status: {
-              in: ['pending', 'in_progress'],
-            },
-            OR: [
-              {
-                related_entity_type: 'patient',
-                related_entity_id: id,
-              },
-              ...(caseIds.length > 0
-                ? [
-                    {
-                      related_entity_type: 'case',
-                      related_entity_id: {
-                        in: caseIds,
-                      },
-                    },
-                  ]
-                : []),
-            ],
-          },
-          orderBy: [{ sla_due_at: 'asc' }, { due_date: 'asc' }, { created_at: 'asc' }],
-          take: 8,
-          select: {
-            id: true,
-            task_type: true,
-            title: true,
-            description: true,
-            status: true,
-            priority: true,
-            due_date: true,
-            sla_due_at: true,
-            created_at: true,
-          },
-        }),
-        tx.medicationIssue.findMany({
-          where: {
-            org_id: ctx.orgId,
-            patient_id: id,
-            OR: [{ case_id: { in: caseIds } }, { case_id: null }],
-            status: {
-              in: ['open', 'in_progress'],
-            },
-          },
-          orderBy: [{ priority: 'desc' }, { identified_at: 'desc' }],
-          take: 6,
-          select: {
-            id: true,
-            title: true,
-            description: true,
-            status: true,
-            priority: true,
-            category: true,
-            identified_at: true,
-          },
-        }),
-        canManageBilling
-          ? tx.billingEvidence.findMany({
-              where: {
-                org_id: ctx.orgId,
-                patient_id: id,
-                ...billingEvidenceScope,
-              },
-              orderBy: [{ billing_month: 'desc' }, { created_at: 'desc' }],
-              take: 6,
-              select: {
-                id: true,
-                billing_month: true,
-                claimable: true,
-                exclusion_reason: true,
-                validation_notes: true,
-              },
-            })
-          : Promise.resolve([]),
-        billingEvidenceBlockersPromise,
-        canManageBilling
-          ? tx.billingCandidate.findMany({
-              where: {
-                org_id: ctx.orgId,
-                patient_id: id,
-                ...billingCandidateScope,
-              },
-              orderBy: [{ billing_month: 'desc' }, { created_at: 'desc' }],
-              take: 6,
-              select: {
-                id: true,
-                billing_month: true,
-                billing_code: true,
-                billing_name: true,
-                points: true,
-                status: true,
-                exclusion_reason: true,
-                updated_at: true,
-              },
-            })
-          : Promise.resolve([]),
-        listCommunicationQueue(tx, {
-          orgId: ctx.orgId,
-          patientId: id,
-          caseIds,
-          limit: 6,
-        }),
-        getPatientRiskSummary(tx, {
-          orgId: ctx.orgId,
-          patientId: id,
-          caseIds,
-        }),
-        canManageBilling
-          ? billingEvidenceBlockersPromise.then((blockers) =>
-              getPatientVisitBrief(tx, {
-                orgId: ctx.orgId,
-                patientId: id,
-                context: 'patient',
-                caseIds,
-                role: ctx.role,
-                userId: ctx.userId,
-                billingContext: {
-                  visitRecordIds: billingRefs.visitRecordIds,
-                  cycleIds: billingRefs.cycleIds,
-                  blockers,
-                },
-              }),
-            )
-          : getPatientVisitBrief(tx, {
-              orgId: ctx.orgId,
-              patientId: id,
-              context: 'patient',
-              caseIds,
-              role: ctx.role,
-              userId: ctx.userId,
-            }),
-        caseIds.length === 0
-          ? Promise.resolve([])
-          : tx.firstVisitDocument.findMany({
-              where: {
-                org_id: ctx.orgId,
-                patient_id: id,
-                case_id: { in: caseIds },
-              },
-              orderBy: [{ created_at: 'desc' }],
-              take: 8,
-              select: {
-                id: true,
-                case_id: true,
-                emergency_contacts: true,
-                delivered_at: true,
-                delivered_to: true,
-                created_at: true,
-                updated_at: true,
-              },
-            }),
-      ]);
-
-      const [homeCareFeatureSummary, labRows] = await Promise.all([
-        getPatientHomeCareFeatureSummary(tx, {
-          orgId: ctx.orgId,
-          patientId: id,
-        }),
-        // Lab summary: most recent value per analyte for key analytes
-        tx.patientLabObservation.findMany({
-          where: {
-            org_id: ctx.orgId,
-            patient_id: id,
-            analyte_code: { in: [...KEY_LAB_ANALYTE_CODES] },
-          },
-          orderBy: [{ measured_at: 'desc' }],
-          take: 50,
-          select: {
-            id: true,
-            analyte_code: true,
-            measured_at: true,
-            value_numeric: true,
-            value_text: true,
-            unit: true,
-            abnormal_flag: true,
-          },
-        }),
-      ]);
-
-      // Latest per analyte (labRows は上の Promise.all で並列取得済み)
-      const labSummaryMap = new Map<string, (typeof labRows)[number]>();
-      for (const row of labRows) {
-        if (!labSummaryMap.has(row.analyte_code)) {
-          labSummaryMap.set(row.analyte_code, row);
-        }
-      }
-      const labSummary = Array.from(labSummaryMap.values());
-      const privacy = getPatientPrivacyFlags(ctx.role);
-
-      // PHI 閲覧監査（3省2GL アクセス記録）。ベストエフォート、await しない。
-      recordPhiReadAuditForRequest(ctx, { patientId: id, view: 'patient_detail' });
-
-      return success({
-        data: {
-          id: patient.id,
-          display_id: patient.display_id,
-          name: patient.name,
-          name_kana: patient.name_kana,
-          birth_date: patient.birth_date,
-          gender: patient.gender,
-          billing_support_flag: patient.billing_support_flag,
-          primary_pharmacist_id: patient.primary_pharmacist_id,
-          backup_pharmacist_id: patient.backup_pharmacist_id,
-          primary_staff_id: patient.primary_staff_id,
-          backup_staff_id: patient.backup_staff_id,
-          allergy_info: patient.allergy_info,
-          notes: patient.notes,
-          archived_at: patient.archived_at,
-          archived_by: patient.archived_by,
-          created_at: patient.created_at,
-          updated_at: patient.updated_at,
-          scheduling_preference: patient.scheduling_preference,
-          phone: privacy.sensitiveFieldsMasked ? maskPhoneNumber(patient.phone) : patient.phone,
-          medical_insurance_number: privacy.sensitiveFieldsMasked
-            ? maskInsuranceNumber(patient.medical_insurance_number)
-            : patient.medical_insurance_number,
-          care_insurance_number: privacy.sensitiveFieldsMasked
-            ? maskInsuranceNumber(patient.care_insurance_number)
-            : patient.care_insurance_number,
-          residences: (patient.residences ?? []).map((residence) => ({
-            ...residence,
-            address: privacy.addressFieldsMasked
-              ? maskAddressDetail(residence.address)
-              : residence.address,
-          })),
-          contacts: (patient.contacts ?? []).map((contact) => ({
-            ...contact,
-            phone: privacy.sensitiveFieldsMasked ? maskPhoneNumber(contact.phone) : contact.phone,
-            fax: privacy.sensitiveFieldsMasked ? maskPhoneNumber(contact.fax) : contact.fax,
-            email: privacy.sensitiveFieldsMasked ? maskContactValue(contact.email) : contact.email,
-            address: privacy.addressFieldsMasked
-              ? maskAddressDetail(contact.address)
-              : contact.address,
-          })),
-          current_medications: currentMedications,
-          visit_schedules: visitSchedules,
-          monthly_visit_count: currentMonthVisitCount,
-          visit_records: visitRecords,
-          care_reports: careReports.map(({ pdf_url, ...report }) => ({
-            ...report,
-            has_pdf: typeof pdf_url === 'string' && pdf_url.trim().length > 0,
-          })),
-          self_reports: selfReports,
-          external_shares: externalShares.map((item) => ({
-            ...item,
-            scope: toPublicExternalAccessScope(item.scope),
-            granted_to_contact: privacy.sensitiveFieldsMasked
-              ? maskContactValue(item.granted_to_contact)
-              : item.granted_to_contact,
-          })),
-          open_tasks: openTasks,
-          medication_issues: medicationIssues,
-          communication_queue: communicationQueue,
-          risk_summary: riskSummary,
-          home_care_feature_summary: homeCareFeatureSummary,
-          visit_brief: visitBrief,
-          first_visit_documents: firstVisitDocuments.map((rawItem) => {
-            const item = {
-              ...rawItem,
-            } as typeof rawItem & { document_url?: unknown };
-            delete item.document_url;
-
-            return {
-              ...item,
-              emergency_contacts: normalizeFirstVisitDocumentContacts(item.emergency_contacts).map(
-                (contact) => ({
-                  ...contact,
-                  phone: privacy.sensitiveFieldsMasked
-                    ? maskPhoneNumber(contact.phone)
-                    : contact.phone,
-                  fax: privacy.sensitiveFieldsMasked ? maskPhoneNumber(contact.fax) : contact.fax,
-                  email: privacy.sensitiveFieldsMasked
-                    ? maskContactValue(contact.email)
-                    : contact.email,
-                }),
-              ),
-            };
-          }),
-          billing_summary: {
-            evidence: billingEvidence.map((item) => ({
-              ...item,
-              blockers:
-                billingEvidenceBlockers.find((blocker) => blocker.id === item.id)?.blockers ?? [],
-            })),
-            candidates: billingCandidates,
-            claimable_count: billingEvidence.filter((item) => item.claimable).length,
-            blocked_count: billingEvidence.filter((item) => !item.claimable).length,
-          },
-          lab_summary: labSummary,
-          timeline_events: [],
-          privacy: {
-            sensitive_fields_masked: privacy.sensitiveFieldsMasked,
-            address_fields_masked: privacy.addressFieldsMasked,
-            can_view_detail: privacy.canViewDetail,
-          },
-          patient_share_permissions: patientSharePermissions,
-        },
-      });
-    },
-    { requestContext: ctx },
-  );
-}
-
-export const GET = withAuthContext(authenticatedGET, {
-  permission: 'canViewDashboard',
-  message: '患者情報の閲覧権限がありません',
-});
-
-async function authenticatedPATCH(
+export const GET = withAuthContext(
+  (req, ctx, routeContext: AuthRouteContext<{ id: string }>) =>
+    authenticatedPatientGET(req, ctx, routeContext, {
+      canManageBilling: hasPermission(ctx.role, 'canManageBilling'),
+      canCreateExternalShare: hasPermission(ctx.role, 'canManagePatientSharing'),
+      canCreateReplyRequest: hasPermission(ctx.role, 'canReport'),
+      canCreateFollowupTask: hasPermission(ctx.role, 'canManageOperationalTasks'),
+    }),
+  { permission: 'canViewDashboard', message: '患者情報の閲覧権限がありません' },
+);
+export async function executeAuthenticatedPatientPatch(
   req: NextRequest,
   ctx: AuthContext,
   { params }: { params: Promise<{ id: string }> },
+  dependencies: {
+    now?: () => Date;
+    testOnlyBeforeCareCaseClaim?: (tx: Prisma.TransactionClient) => Promise<void>;
+  } = {},
 ): Promise<Response> {
   const { id: rawId } = await params;
   const id = normalizeRequiredRouteParam(rawId);
   if (!id) return validationError('患者IDが不正です');
-
   const payload = await readJsonObjectRequestBody(req);
   if (!payload) return validationError('リクエストボディが不正です');
 
@@ -1488,18 +76,6 @@ async function authenticatedPATCH(
     return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
   }
   const duplicateAcknowledged = payload.duplicate_acknowledged === true;
-
-  const existing = await prisma.patient.findFirst({
-    where: buildPatientDetailWhere({
-      orgId: ctx.orgId,
-      patientId: id,
-      role: ctx.role,
-      userId: ctx.userId,
-    }),
-  });
-  if (!existing) return notFound('患者が見つかりません');
-  if (existing.archived_at) return conflict('アーカイブ中の患者は復元するまで更新できません');
-
   const {
     address,
     birth_date,
@@ -1515,6 +91,8 @@ async function authenticatedPATCH(
     care_insurance_number,
     source_visit_record_id,
     expected_updated_at,
+    care_case_id,
+    expected_care_case_version,
     primary_pharmacist_id,
     backup_pharmacist_id,
     primary_staff_id,
@@ -1522,23 +100,37 @@ async function authenticatedPATCH(
     ...rest
   } = parsed.data;
 
-  const expectedUpdatedAt = normalizeExpectedUpdatedAt(expected_updated_at);
-  if (expected_updated_at && expectedUpdatedAt) {
-    const currentUpdatedAt = normalizeCurrentUpdatedAt(
-      (existing as { updated_at?: unknown }).updated_at,
-    );
-    if (!currentUpdatedAt || currentUpdatedAt.getTime() !== expectedUpdatedAt.getTime()) {
-      return conflict(
-        '患者情報が他の操作で更新されています。画面を再読み込みしてから保存してください',
-        {
-          conflict_type: 'stale_patient',
-          expected_updated_at,
-          current_updated_at: currentUpdatedAt?.toISOString() ?? null,
-        },
-      );
-    }
+  const intakePatch = classifyHomeVisitIntakePatch({ requester, intake });
+  const hasDirectWrites = Object.entries(parsed.data).some(
+    ([key, value]) =>
+      value !== undefined &&
+      ![
+        'expected_updated_at',
+        'care_case_id',
+        'expected_care_case_version',
+        'source_visit_record_id',
+        'requester',
+        'intake',
+      ].includes(key),
+  );
+  if (!hasDirectWrites && !intakePatch.hasAnyWrites) {
+    return validationError('更新対象の項目が指定されていません');
   }
-
+  const hasCaseClaim = care_case_id != null && expected_care_case_version != null;
+  if (
+    !intakePatch.hasAnyWrites &&
+    (care_case_id !== undefined || expected_care_case_version !== undefined)
+  ) {
+    return validationError('ケースの版情報は受付情報を更新する場合だけ指定してください');
+  }
+  if (intakePatch.hasCareCaseWrites && !hasCaseClaim) {
+    return validationError('ケースに属する受付情報を更新するにはケースの版情報が必要です');
+  }
+  if (intakePatch.hasAnyWrites && care_case_id === null && intakePatch.hasCareCaseWrites) {
+    return validationError('ケースがない患者ではケースに属する受付情報を更新できません');
+  }
+  const expectedUpdatedAt = normalizeExpectedUpdatedAt(expected_updated_at);
+  if (!expectedUpdatedAt) return validationError('患者情報の版情報が不正です');
   // 担当チーム（患者単位）: 未指定=skip / 空文字=null へ正規化し、ID は org-reference で検証する。
   const normalizeAssignmentId = (value: string | undefined) =>
     value === undefined ? undefined : value === '' ? null : value;
@@ -1553,54 +145,60 @@ async function authenticatedPATCH(
   const careTeamStaffIds = [normalizedPrimaryStaffId, normalizedBackupStaffId].filter(
     (value): value is string => Boolean(value),
   );
-  if (careTeamPharmacistIds.length > 0 || careTeamStaffIds.length > 0) {
-    const refResult = await validateOrgReferences(ctx.orgId, {
-      ...(careTeamPharmacistIds.length > 0 ? { pharmacist_ids: careTeamPharmacistIds } : {}),
-      ...(careTeamStaffIds.length > 0 ? { staff_ids: careTeamStaffIds } : {}),
-    });
-    if (!refResult.ok) return refResult.response;
-  }
-  const nextName = rest.name ?? existing.name;
-  const nextGender = rest.gender ?? existing.gender;
-  const nextBirthDateKey =
-    birth_date ??
-    (existing.birth_date instanceof Date
-      ? format(existing.birth_date, 'yyyy-MM-dd')
-      : String(existing.birth_date).slice(0, 10));
-  const identityChanged =
-    rest.name !== undefined || rest.gender !== undefined || birth_date !== undefined;
-  const duplicateBirthDate = identityChanged
-    ? parsePatientDuplicateBirthDate(nextBirthDateKey)
-    : null;
-  if (identityChanged && !duplicateBirthDate) return validationError('生年月日の形式が不正です');
-  const duplicateCandidates =
-    identityChanged && duplicateBirthDate
-      ? await findPatientDuplicateCandidates(prisma, {
-          orgId: ctx.orgId,
-          name: nextName,
-          birthDate: duplicateBirthDate,
-          gender: nextGender,
-          excludePatientId: id,
-          access: {
-            userId: ctx.userId,
-            role: ctx.role,
-          },
-        })
-      : [];
-  if (duplicateCandidates.length > 0 && !duplicateAcknowledged) {
-    return conflict('重複している可能性がある患者が存在します', {
-      duplicate_type: 'patient_identity',
-      duplicates: duplicateCandidates,
-    });
-  }
-
   try {
-    const updatedPatient = await withOrgContext(
+    const transactionResult = await withOrgContext(
       ctx.orgId,
       async (tx) => {
+        const { existing, duplicateCandidates, assignedCareCaseWhere, canonicalIntakeCase } =
+          await preparePatientPatchTransaction({
+            tx,
+            ctx,
+            patientId: id,
+            nextIdentity: { name: rest.name, gender: rest.gender, birthDate: birth_date },
+            pharmacistIds: careTeamPharmacistIds,
+            staffIds: careTeamStaffIds,
+            duplicateAcknowledged,
+            hasIntakeWrites: intakePatch.hasAnyWrites,
+            careCaseId: care_case_id,
+            expectedCareCaseVersion: expected_care_case_version,
+            hasCareCasePair:
+              Object.prototype.hasOwnProperty.call(parsed.data, 'care_case_id') &&
+              Object.prototype.hasOwnProperty.call(parsed.data, 'expected_care_case_version'),
+          });
+
+        let preparedCaseMutation: {
+          canonicalCase: NonNullable<typeof canonicalIntakeCase>;
+          nextHomeVisitIntake: HomeVisitIntake | null;
+        } | null = null;
+        if (intakePatch.hasAnyWrites && hasCaseClaim) {
+          if (
+            !canonicalIntakeCase ||
+            canonicalIntakeCase.id !== care_case_id ||
+            canonicalIntakeCase.version !== expected_care_case_version
+          ) {
+            throw new PatientPatchConflictError('stale_care_case');
+          }
+          const nextHomeVisitIntake = mergeHomeVisitIntake({
+            current: getHomeVisitIntake(canonicalIntakeCase.required_visit_support),
+            requester,
+            intake,
+          });
+          const intakeErrors = validateMergedHomeVisitIntake(nextHomeVisitIntake);
+          if (intakeErrors.length > 0) {
+            throw new PatientPatchResponseError(
+              validationError('入力値が不正です', { intake: intakeErrors }),
+            );
+          }
+          preparedCaseMutation = { canonicalCase: canonicalIntakeCase, nextHomeVisitIntake };
+        }
+
         // 患者項目の業務差分履歴(層b/層c)。各更新サイトで old→new を算出し、tx 末尾で一括追記する。
         const revisionEntries: PatientFieldRevisionEntry[] = [];
         const revisionDate = utcDateFromLocalKey(localDateKey());
+        let claimedCaseMutation: {
+          id: string;
+          nextHomeVisitIntake: HomeVisitIntake | null;
+        } | null = null;
 
         // 反映導線の出所(source_visit_record_id)は provenance 汚染を防ぐため、
         // 同一 org かつ同一患者の訪問記録に限り採用する(他患者/他org/不正IDは無視)。
@@ -1655,38 +253,99 @@ async function authenticatedPATCH(
             ? (normalizeNullableText(care_insurance_number) ?? null)
             : undefined;
 
-        const updated = await tx.patient.update({
-          where: { id },
-          data: {
-            ...(birth_date ? { birth_date: new Date(birth_date) } : {}),
-            ...(normalizedMedicalInsuranceNumber !== undefined
-              ? { medical_insurance_number: normalizedMedicalInsuranceNumber }
-              : {}),
-            ...(normalizedCareInsuranceNumber !== undefined
-              ? { care_insurance_number: normalizedCareInsuranceNumber }
-              : {}),
-            ...(normalizedPrimaryPharmacistId !== undefined
-              ? { primary_pharmacist_id: normalizedPrimaryPharmacistId }
-              : {}),
-            ...(normalizedBackupPharmacistId !== undefined
-              ? { backup_pharmacist_id: normalizedBackupPharmacistId }
-              : {}),
-            ...(normalizedPrimaryStaffId !== undefined
-              ? { primary_staff_id: normalizedPrimaryStaffId }
-              : {}),
-            ...(normalizedBackupStaffId !== undefined
-              ? { backup_staff_id: normalizedBackupStaffId }
-              : {}),
-            ...rest,
-          } as Prisma.PatientUpdateInput,
-          select: {
-            id: true,
-            phone: true,
+        const patientClaimBasis = expectedUpdatedAt;
+        const now = dependencies.now?.() ?? new Date();
+        const nextPatientUpdatedAt = new Date(
+          Math.max(now.getTime(), patientClaimBasis.getTime() + 1),
+        );
+        const patientUpdateData: Prisma.PatientUpdateManyMutationInput = {
+          ...(birth_date ? { birth_date: new Date(birth_date) } : {}),
+          ...(normalizedMedicalInsuranceNumber !== undefined
+            ? { medical_insurance_number: normalizedMedicalInsuranceNumber }
+            : {}),
+          ...(normalizedCareInsuranceNumber !== undefined
+            ? { care_insurance_number: normalizedCareInsuranceNumber }
+            : {}),
+          ...(normalizedPrimaryPharmacistId !== undefined
+            ? { primary_pharmacist_id: normalizedPrimaryPharmacistId }
+            : {}),
+          ...(normalizedBackupPharmacistId !== undefined
+            ? { backup_pharmacist_id: normalizedBackupPharmacistId }
+            : {}),
+          ...(normalizedPrimaryStaffId !== undefined
+            ? { primary_staff_id: normalizedPrimaryStaffId }
+            : {}),
+          ...(normalizedBackupStaffId !== undefined
+            ? { backup_staff_id: normalizedBackupStaffId }
+            : {}),
+          ...rest,
+          updated_at: nextPatientUpdatedAt,
+        };
+        const patientClaim = await tx.patient.updateMany({
+          where: {
+            ...buildPatientDetailWhere({
+              orgId: ctx.orgId,
+              patientId: id,
+              role: ctx.role,
+              userId: ctx.userId,
+            }),
+            updated_at: patientClaimBasis,
+            archived_at: null,
           },
+          data: patientUpdateData,
         });
+        if (patientClaim.count !== 1) {
+          throw new PatientPatchConflictError('stale_patient');
+        }
+        const updated = await tx.patient.findFirst({
+          where: buildPatientDetailWhere({
+            orgId: ctx.orgId,
+            patientId: id,
+            role: ctx.role,
+            userId: ctx.userId,
+          }),
+          select: { id: true, phone: true, updated_at: true },
+        });
+        if (!updated) throw new PatientPatchConflictError('stale_patient');
 
-        // (基本情報) Patient スカラ項目の差分を履歴化。
-        // 保険番号は PatientInsurance のテンポラル行がSoTのため、ここでは記録しない(二重実装回避)。
+        if (intakePatch.hasAnyWrites && hasCaseClaim) {
+          if (!preparedCaseMutation) throw new PatientPatchConflictError('stale_care_case');
+          await dependencies.testOnlyBeforeCareCaseClaim?.(tx);
+          const { canonicalCase, nextHomeVisitIntake } = preparedCaseMutation;
+          const currentRequiredVisitSupport = readJsonObject(canonicalCase.required_visit_support);
+          const nextRequiredVisitSupport = currentRequiredVisitSupport
+            ? { ...currentRequiredVisitSupport }
+            : {};
+          if (nextHomeVisitIntake) {
+            nextRequiredVisitSupport.home_visit_intake = nextHomeVisitIntake;
+          } else {
+            delete nextRequiredVisitSupport.home_visit_intake;
+          }
+
+          const caseClaim = await tx.careCase.updateMany({
+            where: buildExactHomeVisitIntakeCaseWhere({
+              orgId: ctx.orgId,
+              patientId: id,
+              assignedCareCaseWhere,
+              careCaseId: care_case_id,
+              expectedVersion: expected_care_case_version,
+            }),
+            data: {
+              ...(requester && hasOwnKey(requester, 'organization_name')
+                ? {
+                    referral_source: normalizeNullableText(requester.organization_name) ?? null,
+                  }
+                : {}),
+              required_visit_support: normalizeInputJsonObject(nextRequiredVisitSupport),
+              version: { increment: 1 },
+            },
+          });
+          if (caseClaim.count !== 1) {
+            throw new PatientPatchConflictError('stale_care_case');
+          }
+          claimedCaseMutation = { id: care_case_id, nextHomeVisitIntake };
+        }
+
         const basicFieldLabels: Record<string, string> = {
           name: '氏名',
           name_kana: 'フリガナ',
@@ -1720,7 +379,6 @@ async function authenticatedPATCH(
           });
         }
 
-        // 担当チーム（患者単位）の変更を履歴化（audit by default）。
         const careTeamRevisionFields: Array<{
           key:
             | 'primary_pharmacist_id'
@@ -1790,7 +448,6 @@ async function authenticatedPATCH(
             });
           }
 
-          // (居住情報) 提供された項目のみ差分を履歴化
           if (address !== undefined) {
             revisionEntries.push({
               category: 'residence',
@@ -1818,7 +475,6 @@ async function authenticatedPATCH(
               new_value: nextFacilityId,
             });
           }
-          // DB 更新条件と揃える: facility 変更で unit が暗黙クリアされる場合も履歴化する
           if (
             facility_unit_id !== undefined ||
             (facility_id !== undefined && nextFacilityId !== currentFacilityId)
@@ -1843,8 +499,6 @@ async function authenticatedPATCH(
         }
 
         if (contacts) {
-          // 破壊的置換(deleteMany+createMany)で旧値が失われるため、置換前にスナップショットを取り履歴化する。
-          // (ContactParty は audit トリガ対象外なので、本履歴が唯一の変更痕跡となる)
           const previousContacts = await tx.contactParty.findMany({
             where: { org_id: ctx.orgId, patient_id: id },
             select: {
@@ -1990,7 +644,7 @@ async function authenticatedPATCH(
         const nextPreferredContactPhone =
           normalizeNullableText(preferredContactPhoneCandidate) ?? null;
 
-        if (requester || intake) {
+        if (intakePatch.hasAnyWrites) {
           if (requester && hasOwnKey(requester, 'contact_name')) {
             const preferredContactName = normalizeNullableText(requester.contact_name) ?? null;
             schedulePreferenceCreateData.preferred_contact_name = preferredContactName;
@@ -2065,7 +719,10 @@ async function authenticatedPATCH(
             }
             if (hasOwnKey(intake, 'infection_isolation')) {
               const rawIsolation = normalizeNullableText(intake.infection_isolation);
-              if (rawIsolation !== undefined) {
+              if (rawIsolation === undefined) {
+                schedulePreferenceCreateData.infection_isolation = false;
+                schedulePreferencePatchData.infection_isolation = false;
+              } else {
                 const trueValues = [
                   '要',
                   'あり',
@@ -2139,96 +796,38 @@ async function authenticatedPATCH(
           });
         }
 
-        if (requester || intake) {
-          const assignedCareCaseWhere = buildAssignedCareCaseWhere(ctx);
-          const activeCaseBaseWhere: Prisma.CareCaseWhereInput = {
-            org_id: ctx.orgId,
-            patient_id: id,
-            ...(assignedCareCaseWhere ? { AND: [assignedCareCaseWhere] } : {}),
-          };
-          const activeCase =
-            (await tx.careCase.findFirst({
-              where: {
-                ...activeCaseBaseWhere,
-                status: { in: [...OPEN_CASE_STATUSES] },
-              },
-              orderBy: [{ updated_at: 'desc' }],
-              select: {
-                id: true,
-                required_visit_support: true,
-              },
-            })) ??
-            (await tx.careCase.findFirst({
-              where: activeCaseBaseWhere,
-              orderBy: [{ updated_at: 'desc' }],
-              select: {
-                id: true,
-                required_visit_support: true,
-              },
-            }));
-
-          if (activeCase) {
-            const nextHomeVisitIntake = mergeHomeVisitIntake({
-              current: getHomeVisitIntake(activeCase.required_visit_support),
-              requester,
-              intake,
-            });
-            const currentRequiredVisitSupport = readJsonObject(activeCase.required_visit_support);
-            const nextRequiredVisitSupport = currentRequiredVisitSupport
-              ? { ...currentRequiredVisitSupport }
-              : {};
-
-            if (nextHomeVisitIntake) {
-              nextRequiredVisitSupport.home_visit_intake = nextHomeVisitIntake;
-            } else {
-              delete nextRequiredVisitSupport.home_visit_intake;
-            }
-
-            await tx.careCase.update({
-              where: { id: activeCase.id },
-              data: {
-                ...(requester && hasOwnKey(requester, 'organization_name')
-                  ? {
-                      referral_source: normalizeNullableText(requester.organization_name) ?? null,
-                    }
-                  : {}),
-                required_visit_support: normalizeInputJsonObject(nextRequiredVisitSupport),
-                version: { increment: 1 },
-              },
-            });
-
-            // 在宅医療処置/麻薬を構造化テーブルへ反映(JSON継続SoT・追加レイヤ)。追加(=開始)は確認タスク化する。
-            const structuredCare = await syncStructuredHomeCare(tx, {
+        if (claimedCaseMutation) {
+          // 在宅医療処置/麻薬を構造化テーブルへ反映(JSON継続SoT・追加レイヤ)。追加(=開始)は確認タスク化する。
+          const structuredCare = await syncStructuredHomeCare(tx, {
+            orgId: ctx.orgId,
+            patientId: id,
+            caseId: claimedCaseMutation.id,
+            intake: claimedCaseMutation.nextHomeVisitIntake,
+            source: effectiveSourceVisitRecordId ? 'visit_record' : 'patient_detail_edit',
+            confirmedBy: ctx.userId,
+            startDate: revisionDate,
+          });
+          if (structuredCare.proceduresAdded.includes('tpn')) {
+            await upsertOperationalTask(tx, {
               orgId: ctx.orgId,
-              patientId: id,
-              caseId: activeCase.id,
-              intake: nextHomeVisitIntake,
-              source: effectiveSourceVisitRecordId ? 'visit_record' : 'patient_detail_edit',
-              confirmedBy: ctx.userId,
-              startDate: revisionDate,
+              taskType: 'patient_change_review',
+              title: 'TPN開始: 無菌調製体制・物品を確認',
+              priority: 'high',
+              dedupeKey: `patient-tpn-start-review:${id}`,
+              relatedEntityType: 'patient',
+              relatedEntityId: id,
             });
-            if (structuredCare.proceduresAdded.includes('tpn')) {
-              await upsertOperationalTask(tx, {
-                orgId: ctx.orgId,
-                taskType: 'patient_change_review',
-                title: 'TPN開始: 無菌調製体制・物品を確認',
-                priority: 'high',
-                dedupeKey: `patient-tpn-start-review:${id}`,
-                relatedEntityType: 'patient',
-                relatedEntityId: id,
-              });
-            }
-            if (structuredCare.narcoticsAdded.length > 0) {
-              await upsertOperationalTask(tx, {
-                orgId: ctx.orgId,
-                taskType: 'patient_change_review',
-                title: '麻薬開始: 残数確認・管理者・保管方法を確認',
-                priority: 'high',
-                dedupeKey: `patient-narcotic-start-review:${id}`,
-                relatedEntityType: 'patient',
-                relatedEntityId: id,
-              });
-            }
+          }
+          if (structuredCare.narcoticsAdded.length > 0) {
+            await upsertOperationalTask(tx, {
+              orgId: ctx.orgId,
+              taskType: 'patient_change_review',
+              title: '麻薬開始: 残数確認・管理者・保管方法を確認',
+              priority: 'high',
+              dedupeKey: `patient-narcotic-start-review:${id}`,
+              relatedEntityType: 'patient',
+              relatedEntityId: id,
+            });
           }
         }
 
@@ -2339,28 +938,52 @@ async function authenticatedPATCH(
           }
         }
 
-        return presentPatientPatch(updated);
+        return {
+          patient: presentPatientPatch(updated),
+          duplicateCandidates,
+          versionBasis: {
+            patient_updated_at: updated.updated_at.toISOString(),
+            care_case_id: claimedCaseMutation?.id ?? null,
+            care_case_version:
+              claimedCaseMutation && expected_care_case_version != null
+                ? expected_care_case_version + 1
+                : null,
+          },
+        };
       },
       { requestContext: ctx },
     );
 
-    return success({
-      data: updatedPatient,
-      meta: {
-        warnings:
-          duplicateCandidates.length > 0
-            ? [
-                {
-                  code: 'PATIENT_DUPLICATE_ACKNOWLEDGED',
-                  severity: 'warning',
-                  message: '重複候補を確認済みとして患者情報を更新しました。',
-                },
-              ]
-            : [],
-        duplicate_candidates: duplicateCandidates,
-      },
-    });
+    return withSensitiveNoStore(
+      success({
+        data: transactionResult.patient,
+        meta: {
+          warnings:
+            transactionResult.duplicateCandidates.length > 0
+              ? [
+                  {
+                    code: 'PATIENT_DUPLICATE_ACKNOWLEDGED',
+                    severity: 'warning',
+                    message: '重複候補を確認済みとして患者情報を更新しました。',
+                  },
+                ]
+              : [],
+          duplicate_candidates: transactionResult.duplicateCandidates,
+          version_basis: transactionResult.versionBasis,
+        },
+      }),
+    );
   } catch (error) {
+    if (error instanceof PatientPatchResponseError) {
+      return withSensitiveNoStore(error.response);
+    }
+    if (error instanceof PatientPatchConflictError) {
+      return withSensitiveNoStore(
+        conflict('患者情報が同時に更新されました。画面を再読み込みしてください', {
+          conflict_type: error.conflictType,
+        }),
+      );
+    }
     if (
       error instanceof FacilityReferenceValidationError ||
       error instanceof FacilityUnitReferenceValidationError
@@ -2371,7 +994,7 @@ async function authenticatedPATCH(
   }
 }
 
-export const PATCH = withAuthContext(authenticatedPATCH, {
+export const PATCH = withAuthContext(executeAuthenticatedPatientPatch, {
   permission: 'canVisit',
   message: '患者情報の更新権限がありません',
 });

@@ -415,9 +415,16 @@ jobs:
       - name: Prepare E2E database
         run: pnpm --config.verify-deps-before-run=false db:e2e:prepare
 
+      - name: Provision non-superuser PostgreSQL integration role (ph_os_app)
+        env:
+          # psql/libpq does not accept Prisma's `?schema=public` URL parameter.
+          RLS_PROOF_ADMIN_DATABASE_URL: postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e
+        run: pnpm --config.verify-deps-before-run=false db:e2e:rls-proof-role
+
       - name: Run required PostgreSQL integration manifest
         env:
-          POSTGRES_INTEGRATION_DATABASE_URL: ${{ env.DATABASE_URL }}
+          POSTGRES_INTEGRATION_ADMIN_DATABASE_URL: ${{ env.DATABASE_URL }}
+          POSTGRES_INTEGRATION_RLS_APP_DATABASE_URL: postgresql://ph_os_app:ph_os_app@localhost:5433/ph_os_e2e?schema=public
           POSTGRES_INTEGRATION_DISPOSABLE_DB: github-actions-postgres-service
         run: pnpm --config.verify-deps-before-run=false test:postgres-integration:manifest
 

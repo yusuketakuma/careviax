@@ -159,6 +159,7 @@ export function buildPatientOverviewBaseSelect(args: PatientDetailScopeArgs) {
       take: PATIENT_OVERVIEW_RELATION_LIMITS.cases,
       select: {
         id: true,
+        version: true,
         display_id: true,
         status: true,
         referral_source: true,

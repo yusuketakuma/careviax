@@ -83,45 +83,78 @@ const patientEditSchedulingPreferenceSchema = z.object({
   infection_isolation: z.boolean(),
 });
 
-const patientEditOverviewSchema = z.object({
-  id: z.string().min(1),
-  name: z.string().min(1),
-  name_kana: z.string(),
-  birth_date: z.union([z.string().date(), z.string().datetime()]),
-  gender: patientGenderSchema,
-  phone: z.string().nullable(),
-  medical_insurance_number: z.string().nullable(),
-  care_insurance_number: z.string().nullable(),
-  billing_support_flag: z.boolean(),
-  allergy_info: z.unknown().nullable(),
-  notes: z.string().nullable(),
-  updated_at: z.string().datetime(),
-  primary_pharmacist_id: z.string().nullable(),
-  backup_pharmacist_id: z.string().nullable(),
-  primary_staff_id: z.string().nullable(),
-  backup_staff_id: z.string().nullable(),
-  residences: z.array(
-    z.object({
-      address: z.string(),
-      building_id: z.string().nullable(),
-      facility_id: z.string().nullable(),
-      facility_unit_id: z.string().nullable(),
-      unit_name: z.string().nullable(),
-      is_primary: z.boolean(),
-    }),
-  ),
-  cases: z.array(z.object({ required_visit_support: z.unknown().nullable() })),
-  scheduling_preference: patientEditSchedulingPreferenceSchema.nullable(),
-});
+const patientEditOverviewSchema = z
+  .object({
+    id: z.string().min(1),
+    name: z.string().min(1),
+    name_kana: z.string(),
+    birth_date: z.union([z.string().date(), z.string().datetime()]),
+    gender: patientGenderSchema,
+    phone: z.string().nullable(),
+    medical_insurance_number: z.string().nullable(),
+    care_insurance_number: z.string().nullable(),
+    billing_support_flag: z.boolean(),
+    allergy_info: z.unknown().nullable(),
+    notes: z.string().nullable(),
+    updated_at: z.string().datetime(),
+    primary_pharmacist_id: z.string().nullable(),
+    backup_pharmacist_id: z.string().nullable(),
+    primary_staff_id: z.string().nullable(),
+    backup_staff_id: z.string().nullable(),
+    residences: z.array(
+      z.object({
+        address: z.string(),
+        building_id: z.string().nullable(),
+        facility_id: z.string().nullable(),
+        facility_unit_id: z.string().nullable(),
+        unit_name: z.string().nullable(),
+        is_primary: z.boolean(),
+      }),
+    ),
+    cases: z.array(
+      z.object({
+        id: z.string().trim().min(1),
+        required_visit_support: z.unknown().nullable(),
+      }),
+    ),
+    intake_edit_target: z
+      .object({
+        care_case_id: z.string().trim().min(1),
+        expected_care_case_version: z.number().int().positive(),
+      })
+      .nullable(),
+    intake_edit_snapshot: z
+      .object({
+        care_case_id: z.string().trim().min(1),
+        required_visit_support: z.unknown().nullable(),
+      })
+      .nullable(),
+    scheduling_preference: patientEditSchedulingPreferenceSchema.nullable(),
+  })
+  .superRefine((patient, context) => {
+    const authorityMatchesSnapshot = patient.intake_edit_target
+      ? patient.intake_edit_snapshot?.care_case_id === patient.intake_edit_target.care_case_id
+      : patient.intake_edit_snapshot === null;
+    if (!authorityMatchesSnapshot) {
+      context.addIssue({
+        code: 'custom',
+        path: ['intake_edit_snapshot'],
+        message: '受付情報の編集対象とスナップショットが一致しません',
+      });
+    }
+  });
 const patientEditResponseSchema = z.object({ data: patientEditOverviewSchema }).strict();
 
 type PatientEditOverview = z.infer<typeof patientEditOverviewSchema>;
 
 function buildDefaultValues(patient: PatientEditOverview): Partial<CreatePatientInput> {
   const primaryResidence = patient.residences.find((residence) => residence.is_primary) ?? null;
-  const intakeCase =
-    patient.cases.find((careCase) => getHomeVisitIntake(careCase.required_visit_support)) ?? null;
-  const intake = intakeCase ? getHomeVisitIntake(intakeCase.required_visit_support) : null;
+  const intakeSnapshot =
+    patient.intake_edit_target &&
+    patient.intake_edit_snapshot?.care_case_id === patient.intake_edit_target.care_case_id
+      ? patient.intake_edit_snapshot
+      : null;
+  const intake = intakeSnapshot ? getHomeVisitIntake(intakeSnapshot.required_visit_support) : null;
   const pref = patient.scheduling_preference;
   const hasIntakeData = Boolean(intake || pref);
   const intakeDefaults = hasIntakeData
@@ -300,6 +333,31 @@ export function PatientEditContent({ patientId }: { patientId: string }) {
         redirectTo={buildPatientHref(patientId)}
         defaultValues={buildDefaultValues(patientQuery.data)}
         expectedUpdatedAt={patientQuery.data.updated_at}
+        selectedCareCase={
+          patientQuery.data.intake_edit_target
+            ? {
+                id: patientQuery.data.intake_edit_target.care_case_id,
+                version: patientQuery.data.intake_edit_target.expected_care_case_version,
+              }
+            : null
+        }
+        onRefreshConcurrencyAuthority={async ({ patientId: conflictedPatientId }) => {
+          if (conflictedPatientId !== patientId) return null;
+          const refreshed = await patientQuery.refetch();
+          const refreshedPatient = refreshed.data;
+          if (!refreshed.isSuccess || !refreshedPatient || refreshedPatient.id !== patientId) {
+            return null;
+          }
+          return {
+            expectedUpdatedAt: refreshedPatient.updated_at,
+            selectedCareCase: refreshedPatient.intake_edit_target
+              ? {
+                  id: refreshedPatient.intake_edit_target.care_case_id,
+                  version: refreshedPatient.intake_edit_target.expected_care_case_version,
+                }
+              : null,
+          };
+        }}
       />
     </div>
   );

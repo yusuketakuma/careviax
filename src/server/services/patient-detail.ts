@@ -4,6 +4,12 @@ import { prisma } from '@/lib/db/client';
 import type { ScopedTxRunner } from '@/lib/db/rls';
 import { careLevelLabels } from '@/lib/patient/home-visit-intake';
 import {
+  findCanonicalHomeVisitIntakeCase,
+  selectCanonicalHomeVisitIntakeCase,
+  toHomeVisitIntakeEditTarget,
+  type HomeVisitIntakeEditTarget,
+} from '@/lib/patient/home-visit-intake-target';
+import {
   getPatientPrivacyFlags,
   maskAddressDetail,
   maskContactValue,
@@ -125,6 +131,8 @@ type DetailArgs = PatientDetailScopeArgs;
 
 export type PatientHeaderSummary = {
   patient_id: string;
+  patient_updated_at: string;
+  intake_edit_target: HomeVisitIntakeEditTarget | null;
   name: string;
   name_kana: string | null;
   birth_date: string;
@@ -228,7 +236,14 @@ function selectPatientHeaderPrimaryDiagnosis(conditions: PatientHeaderConditionI
 }
 
 export async function getPatientOverview(db: DbClient, args: DetailArgs) {
-  const patient = await findPatientOverviewBase(db, args);
+  const [patient, intakeEditCase] = await Promise.all([
+    findPatientOverviewBase(db, args),
+    findCanonicalHomeVisitIntakeCase(db as Prisma.TransactionClient, {
+      orgId: args.orgId,
+      patientId: args.patientId,
+      assignedCareCaseWhere: buildAssignedCareCaseWhere(args),
+    }),
+  ]);
   if (!patient) return null;
 
   const caseIds = patient.cases.map((item) => item.id);
@@ -384,6 +399,14 @@ export async function getPatientOverview(db: DbClient, args: DetailArgs) {
     archived_by: patient.archived_by,
     created_at: patient.created_at,
     updated_at: patient.updated_at,
+    patient_updated_at: patient.updated_at,
+    intake_edit_target: toHomeVisitIntakeEditTarget(intakeEditCase),
+    intake_edit_snapshot: intakeEditCase
+      ? {
+          care_case_id: intakeEditCase.id,
+          required_visit_support: intakeEditCase.required_visit_support,
+        }
+      : null,
     scheduling_preference: patient.scheduling_preference,
     archived_by_name: archivedByName,
     phone: privacy.sensitiveFieldsMasked ? maskPhoneNumber(patient.phone) : patient.phone,
@@ -437,6 +460,7 @@ export async function getPatientHeaderSummary(
     where: buildPatientDetailWhere(args),
     select: {
       id: true,
+      updated_at: true,
       name: true,
       name_kana: true,
       birth_date: true,
@@ -478,12 +502,16 @@ export async function getPatientHeaderSummary(
         orderBy: [{ updated_at: 'desc' }, { created_at: 'desc' }, { id: 'desc' }],
         select: {
           id: true,
+          version: true,
+          status: true,
           start_date: true,
         },
       },
     },
   });
   if (!patient) return null;
+
+  const intakeEditCase = selectCanonicalHomeVisitIntakeCase(patient.cases);
 
   const caseIds = patient.cases.map((item) => item.id);
   const assignedUserIds = [
@@ -571,6 +599,8 @@ export async function getPatientHeaderSummary(
 
   return {
     patient_id: patient.id,
+    patient_updated_at: patient.updated_at.toISOString(),
+    intake_edit_target: toHomeVisitIntakeEditTarget(intakeEditCase),
     name: patient.name,
     name_kana: patient.name_kana,
     birth_date: patient.birth_date.toISOString(),

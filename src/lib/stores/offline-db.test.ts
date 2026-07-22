@@ -277,4 +277,88 @@ describe('offline DB migrations', () => {
       synced: false,
     });
   });
+
+  it('keeps v9 data and enforces encrypted visit reflection continuation identity in v10', async () => {
+    const legacyDb = new Dexie('PH-OSOffline');
+    legacyDb.version(9).stores({
+      visitDrafts: '++id, scheduleId, patientId, synced',
+      residualDrafts: '++id, patientId, synced',
+      syncQueue: '++id, entityType, scope_id, retryCount, createdAt, conflict_state',
+      visitBriefCache: '++id, scheduleId, scheduledDate, patientId, updatedAt',
+      prescriptionDrafts: '++id, orgId, updatedAt',
+      evidenceDrafts: '++id, retryCount, scheduleId, patientId, createdAt',
+      voiceMemoDrafts: '++id, visitId, createdAt',
+    });
+
+    await legacyDb.open();
+    await legacyDb.table('visitDrafts').add({
+      scheduleId: 'schedule-existing',
+      patientId: 'patient-existing',
+      pharmacistId: 'pharmacist-existing',
+      structuredSoap: 'encv1:existing-visit-draft',
+      createdAt: new Date('2026-07-21T00:00:00.000Z'),
+      updatedAt: new Date('2026-07-21T00:00:00.000Z'),
+      synced: false,
+    });
+    await legacyDb.table('voiceMemoDrafts').add({
+      visitId: 'visit-existing',
+      fileName: 'memo.webm',
+      mimeType: 'audio/webm',
+      sizeBytes: 2048,
+      payload: 'encv1:existing-voice-memo',
+      durationSeconds: 12,
+      recordedAt: new Date('2026-07-21T00:00:00.000Z'),
+      createdAt: new Date('2026-07-21T00:00:00.000Z'),
+      transcriptStatus: 'pending',
+    });
+    legacyDb.close();
+
+    const { offlineDb } = await import('./offline-db');
+    await offlineDb.open();
+
+    await expect(
+      offlineDb.visitDrafts.where('scheduleId').equals('schedule-existing').first(),
+    ).resolves.toMatchObject({ structuredSoap: 'encv1:existing-visit-draft' });
+    await expect(
+      offlineDb.voiceMemoDrafts.where('visitId').equals('visit-existing').first(),
+    ).resolves.toMatchObject({ payload: 'encv1:existing-voice-memo' });
+
+    const continuation = {
+      orgId: 'org-1',
+      scheduleId: 'schedule-1',
+      recordId: 'record-1',
+      payload: 'encv1:opaque-visit-reflection-ciphertext',
+      updatedAt: new Date('2026-07-22T00:00:00.000Z'),
+    };
+    await offlineDb.visitReflectionContinuations.add(continuation);
+
+    const identity = ['org-1', 'schedule-1', 'record-1'] as const;
+    const stored = await offlineDb.visitReflectionContinuations
+      .where('[orgId+scheduleId+recordId]')
+      .equals(identity)
+      .first();
+    expect(stored).toMatchObject(continuation);
+    expect(stored?.payload).toMatch(/^encv1:/);
+    expect(stored).not.toHaveProperty('patientId');
+    expect(stored).not.toHaveProperty('reflection');
+    expect(stored).not.toHaveProperty('intake');
+
+    await expect(
+      offlineDb.visitReflectionContinuations.add({
+        ...continuation,
+        payload: 'encv1:different-ciphertext',
+      }),
+    ).rejects.toMatchObject({ name: 'ConstraintError' });
+
+    await offlineDb.visitReflectionContinuations
+      .where('[orgId+scheduleId+recordId]')
+      .equals(identity)
+      .delete();
+    await expect(
+      offlineDb.visitReflectionContinuations
+        .where('[orgId+scheduleId+recordId]')
+        .equals(identity)
+        .count(),
+    ).resolves.toBe(0);
+  });
 });

@@ -39,6 +39,8 @@ function headerSummaryResponse(patientId = 'patient_1') {
   return {
     data: {
       patient_id: patientId,
+      patient_updated_at: '2026-07-22T00:00:00.000Z',
+      intake_edit_target: null,
       name: '患者 太郎',
       name_kana: 'カンジャ タロウ',
       birth_date: '1940-01-01T00:00:00.000Z',

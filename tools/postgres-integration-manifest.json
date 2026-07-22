@@ -1,20 +1,29 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "suites": [
     {
       "path": "src/server/services/standard-clinical-sync-queue.integration.test.ts",
       "database_url_env": "CLINICAL_SYNC_QUEUE_DATABASE_URL",
+      "database_role": "admin",
       "expected_test_count": 1
     },
     {
       "path": "src/server/services/first-visit-document-version.integration.test.ts",
       "database_url_env": "FIRST_VISIT_DOCUMENT_VERSION_DATABASE_URL",
+      "database_role": "admin",
       "expected_test_count": 9
     },
     {
       "path": "src/lib/db/display-id.test.ts",
       "database_url_env": "DISPLAY_ID_DATABASE_URL",
+      "database_role": "admin",
       "expected_test_count": 27
+    },
+    {
+      "path": "src/app/api/patients/[id]/patient-patch-occ.integration.test.ts",
+      "database_url_env": "PATIENT_PATCH_OCC_DATABASE_URL",
+      "database_role": "rls_app",
+      "expected_test_count": 5
     }
   ]
 }

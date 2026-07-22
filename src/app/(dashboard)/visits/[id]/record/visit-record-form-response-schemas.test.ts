@@ -46,6 +46,8 @@ describe('visit record form response schemas', () => {
         data: {
           id: 'schedule_1',
           patient_id: 'patient_1',
+          case_id: 'case_1',
+          case_version: 4,
           cycle_id: 'cycle_1',
           scheduled_date: '2026-07-13T01:00:00.000Z',
           visit_type: 'home',
@@ -60,6 +62,8 @@ describe('visit record form response schemas', () => {
         data: {
           id: 'schedule_1',
           patient_id: 'patient_1',
+          case_id: 'case_1',
+          case_version: 4,
           cycle_id: null,
           scheduled_date: '2026-07-13',
           visit_type: 'home',
@@ -76,6 +80,11 @@ describe('visit record form response schemas', () => {
       schema.parse({
         data: {
           patient_id: 'patient_1',
+          patient_updated_at: '2026-07-22T00:00:00.000Z',
+          intake_edit_target: {
+            care_case_id: 'case_canonical',
+            expected_care_case_version: 9,
+          },
           name: '患者A',
           safety: {
             safety_tags: ['allergy', 'renal', 'fall'],
@@ -86,6 +95,9 @@ describe('visit record form response schemas', () => {
         },
       }),
     ).toEqual({
+      patientId: 'patient_1',
+      patientUpdatedAt: '2026-07-22T00:00:00.000Z',
+      intakeEditTarget: { careCaseId: 'case_canonical', expectedCareCaseVersion: 9 },
       safety: {
         safety_tags: ['allergy', 'renal', 'fall'],
         visible_safety_tags: ['allergy'],
@@ -96,6 +108,8 @@ describe('visit record form response schemas', () => {
       schema.parse({
         data: {
           patient_id: 'patient_1',
+          patient_updated_at: '2026-07-22T00:00:00.000Z',
+          intake_edit_target: null,
           safety: {
             safety_tags: ['allergy'],
             visible_safety_tags: ['allergy'],

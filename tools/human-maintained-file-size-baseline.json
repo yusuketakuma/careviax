@@ -253,16 +253,6 @@
       "task_id": "MAINT-FILE-SIZE-1000-001"
     },
     {
-      "path": "src/app/(dashboard)/visits/[id]/record/visit-record-form.test.tsx",
-      "max_lines": 2524,
-      "task_id": "MAINT-FILE-SIZE-1000-001"
-    },
-    {
-      "path": "src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx",
-      "max_lines": 3129,
-      "task_id": "MAINT-FILE-SIZE-1000-001"
-    },
-    {
       "path": "src/app/(dashboard)/visits/[id]/visit-record-detail.tsx",
       "max_lines": 1391,
       "task_id": "MAINT-FILE-SIZE-1000-001"
@@ -350,16 +340,6 @@
     {
       "path": "src/app/api/inquiry-records/[id]/route.test.ts",
       "max_lines": 1324,
-      "task_id": "MAINT-FILE-SIZE-1000-001"
-    },
-    {
-      "path": "src/app/api/patients/[id]/route.test.ts",
-      "max_lines": 2421,
-      "task_id": "MAINT-FILE-SIZE-1000-001"
-    },
-    {
-      "path": "src/app/api/patients/[id]/route.ts",
-      "max_lines": 2377,
       "task_id": "MAINT-FILE-SIZE-1000-001"
     },
     {
@@ -458,11 +438,6 @@
       "task_id": "MAINT-FILE-SIZE-1000-001"
     },
     {
-      "path": "src/app/api/visit-schedules/[id]/route.test.ts",
-      "max_lines": 2856,
-      "task_id": "MAINT-FILE-SIZE-1000-001"
-    },
-    {
       "path": "src/app/api/visit-schedules/day-board/route.test.ts",
       "max_lines": 2190,
       "task_id": "MAINT-FILE-SIZE-1000-001"
@@ -495,11 +470,6 @@
     {
       "path": "src/components/features/dispense-workbench/use-workbench-write-handlers.ts",
       "max_lines": 1835,
-      "task_id": "MAINT-FILE-SIZE-1000-001"
-    },
-    {
-      "path": "src/components/features/patients/patient-form.tsx",
-      "max_lines": 2817,
       "task_id": "MAINT-FILE-SIZE-1000-001"
     },
     {
@@ -590,11 +560,6 @@
     {
       "path": "src/server/services/notifications.test.ts",
       "max_lines": 1448,
-      "task_id": "MAINT-FILE-SIZE-1000-001"
-    },
-    {
-      "path": "src/server/services/patient-detail.test.ts",
-      "max_lines": 5864,
       "task_id": "MAINT-FILE-SIZE-1000-001"
     },
     {
