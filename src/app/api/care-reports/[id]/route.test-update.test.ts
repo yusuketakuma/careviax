@@ -1,0 +1,793 @@
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { NextRequest } from 'next/server';
+import { expectSensitiveNoStore } from '@/test/api-response-assertions';
+
+const {
+  requireAuthContextMock,
+  careReportFindFirstMock,
+  careReportUpdateManyMock,
+  auditLogCreateMock,
+  documentDeliveryRuleFindFirstMock,
+  patientFindFirstMock,
+  visitRecordFindFirstMock,
+  withOrgContextMock,
+  findLatestPrescriberInstitutionSuggestionMock,
+  findExternalProfessionalSuggestionsMock,
+  getChannelStatsByNameMock,
+  getRecommendedChannelsMock,
+  careCaseFindManyMock,
+  canAccessCareReportSourceMock,
+  recordPhiReadAuditForRequestMock,
+} = vi.hoisted(() => ({
+  requireAuthContextMock: vi.fn(),
+  careReportFindFirstMock: vi.fn(),
+  careReportUpdateManyMock: vi.fn(),
+  auditLogCreateMock: vi.fn(),
+  documentDeliveryRuleFindFirstMock: vi.fn(),
+  patientFindFirstMock: vi.fn(),
+  visitRecordFindFirstMock: vi.fn(),
+  withOrgContextMock: vi.fn(),
+  findLatestPrescriberInstitutionSuggestionMock: vi.fn(),
+  findExternalProfessionalSuggestionsMock: vi.fn(),
+  getChannelStatsByNameMock: vi.fn(),
+  getRecommendedChannelsMock: vi.fn(),
+  careCaseFindManyMock: vi.fn(),
+  canAccessCareReportSourceMock: vi.fn(),
+  recordPhiReadAuditForRequestMock: vi.fn(),
+}));
+
+vi.mock('@/lib/auth/context', () => ({
+  withAuthContext: (
+    handler: (
+      req: NextRequest,
+      ctx: { orgId: string; userId: string; role: string },
+      routeContext: { params: Promise<{ id: string }> },
+    ) => Promise<Response>,
+    options: unknown,
+  ) => {
+    return async (req: NextRequest, routeContext: { params: Promise<{ id: string }> }) => {
+      let response: Response;
+      try {
+        const authResult = await requireAuthContextMock(req, options);
+        response =
+          authResult && typeof authResult === 'object' && 'response' in authResult
+            ? authResult.response
+            : await handler(req, authResult.ctx, routeContext);
+      } catch {
+        response = new Response(
+          JSON.stringify({
+            code: 'INTERNAL_ERROR',
+            message: 'サーバー内部でエラーが発生しました',
+          }),
+          { status: 500, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
+      response.headers.set('Cache-Control', 'private, no-store, max-age=0');
+      response.headers.set('Pragma', 'no-cache');
+      response.headers.set('X-Request-Id', '00000000-0000-4000-8000-000000000001');
+      response.headers.set(
+        'X-Correlation-Id',
+        req.headers.get('x-correlation-id') ?? '00000000-0000-4000-8000-000000000001',
+      );
+      return response;
+    };
+  },
+}));
+
+vi.mock('@/lib/db/client', () => ({
+  prisma: {
+    careReport: {
+      findFirst: careReportFindFirstMock,
+    },
+    patient: {
+      findFirst: patientFindFirstMock,
+    },
+    visitRecord: {
+      findFirst: visitRecordFindFirstMock,
+    },
+    documentDeliveryRule: {
+      findFirst: documentDeliveryRuleFindFirstMock,
+    },
+  },
+}));
+
+vi.mock('@/lib/db/rls', () => ({
+  withOrgContext: withOrgContextMock,
+}));
+
+vi.mock('@/lib/audit/phi-read-audit', () => ({
+  recordPhiReadAuditForRequest: recordPhiReadAuditForRequestMock,
+}));
+
+vi.mock('@/server/services/care-report-access', () => ({
+  canAccessCareReportSource: canAccessCareReportSourceMock,
+}));
+
+vi.mock('@/lib/prescriptions/prescriber-institutions', () => ({
+  findLatestPrescriberInstitutionSuggestion: findLatestPrescriberInstitutionSuggestionMock,
+}));
+
+vi.mock('@/lib/contact-profiles', () => ({
+  findExternalProfessionalSuggestions: findExternalProfessionalSuggestionsMock,
+  getChannelStatsByName: getChannelStatsByNameMock,
+  getRecommendedChannels: getRecommendedChannelsMock,
+}));
+
+import { PATCH } from './route';
+
+const REPORT_UPDATED_AT = new Date('2026-03-30T00:10:00.000Z');
+const REPORT_UPDATED_AT_ISO = REPORT_UPDATED_AT.toISOString();
+
+function physicianReportContent() {
+  return {
+    patient: { name: '患者A', birth_date: '1940-01-01', gender: 'female' },
+    report_date: '2026-03-30',
+    visit_date: '2026-03-29',
+    pharmacist_name: '薬剤師A',
+    prescriber: { name: '医師A', institution: '医療機関A' },
+    prescriptions: [],
+    medication_management: {
+      compliance_summary: '服薬状況を確認済み',
+      adherence_score: 4,
+      self_management: '一部介助',
+      calendar_used: true,
+    },
+    adverse_events: { has_events: false, events: [] },
+    functional_assessment: {
+      sleep: '変化なし',
+      cognition: '変化なし',
+      diet_oral: '変化なし',
+      mobility: '変化なし',
+      excretion: '変化なし',
+    },
+    residual_medications: [],
+    assessment: '薬学的評価',
+    plan: '継続確認',
+    physician_communication: '確認依頼',
+    warnings: [],
+  };
+}
+
+function createRequest(body?: unknown) {
+  const effectiveBody =
+    body !== undefined &&
+    typeof body === 'object' &&
+    body !== null &&
+    !Array.isArray(body) &&
+    !('expected_updated_at' in body)
+      ? { expected_updated_at: REPORT_UPDATED_AT_ISO, ...body }
+      : body;
+  return new NextRequest('http://localhost/api/care-reports/report_1', {
+    method: body === undefined ? 'GET' : 'PATCH',
+    headers: {
+      'x-org-id': 'org_1',
+      'x-correlation-id': body === undefined ? 'care_report_get_test' : 'care_report_patch_test',
+      ...(body === undefined ? {} : { 'content-type': 'application/json' }),
+    },
+    ...(body === undefined ? {} : { body: JSON.stringify(effectiveBody) }),
+  });
+}
+
+function createMalformedPatchRequest() {
+  return new NextRequest('http://localhost/api/care-reports/report_1', {
+    method: 'PATCH',
+    headers: {
+      'x-org-id': 'org_1',
+      'x-correlation-id': 'care_report_patch_test',
+      'content-type': 'application/json',
+    },
+    body: '{"content":',
+  });
+}
+
+describe('care-reports/[id] route', () => {
+  const originalTimezone = process.env.TZ;
+
+  beforeAll(() => {
+    process.env.TZ = 'Asia/Tokyo';
+  });
+
+  afterAll(() => {
+    if (originalTimezone === undefined) {
+      delete process.env.TZ;
+    } else {
+      process.env.TZ = originalTimezone;
+    }
+  });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    requireAuthContextMock.mockResolvedValue({
+      ctx: {
+        userId: 'user_1',
+        orgId: 'org_1',
+        role: 'admin',
+      },
+    });
+    careReportFindFirstMock.mockResolvedValue({
+      id: 'report_1',
+      org_id: 'org_1',
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+      visit_record_id: 'visit_record_1',
+      report_type: 'physician_report',
+      status: 'draft',
+      content: { summary: '医師へ共有する本文' },
+      template_id: null,
+      pdf_url: '/api/files/file_1/download',
+      created_by: 'user_1',
+      created_at: new Date('2026-03-30T00:00:00.000Z'),
+      updated_at: REPORT_UPDATED_AT,
+      delivery_records: [],
+      case_: {
+        required_visit_support: null,
+      },
+    });
+    patientFindFirstMock.mockResolvedValue({
+      id: 'patient_1',
+      name: '山田 太郎',
+      name_kana: 'ヤマダ タロウ',
+      birth_date: new Date('1940-01-01T00:00:00.000Z'),
+      archived_at: null,
+    });
+    visitRecordFindFirstMock.mockResolvedValue({
+      id: 'visit_record_1',
+      visit_date: new Date('2026-03-29T09:00:00.000Z'),
+    });
+    documentDeliveryRuleFindFirstMock.mockResolvedValue(null);
+    careCaseFindManyMock.mockResolvedValue([{ id: 'case_1', patient_id: 'patient_1' }]);
+    canAccessCareReportSourceMock.mockResolvedValue(true);
+    careReportUpdateManyMock.mockResolvedValue({ count: 1 });
+    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
+      callback({
+        careReport: {
+          updateMany: careReportUpdateManyMock,
+          findFirst: careReportFindFirstMock,
+        },
+        auditLog: {
+          create: auditLogCreateMock,
+        },
+        documentDeliveryRule: {
+          findFirst: documentDeliveryRuleFindFirstMock,
+        },
+        patient: {
+          findFirst: patientFindFirstMock,
+        },
+        visitRecord: {
+          findFirst: visitRecordFindFirstMock,
+        },
+        careCase: {
+          findMany: careCaseFindManyMock,
+        },
+      }),
+    );
+    auditLogCreateMock.mockResolvedValue({ id: 'audit_1' });
+    findLatestPrescriberInstitutionSuggestionMock.mockResolvedValue({
+      id: 'institution_1',
+      name: 'みなとクリニック',
+      phone: '03-1111-2222',
+      fax: '03-1111-3333',
+      address: '東京都港区1-1-1',
+      prescribed_date: new Date('2026-03-28T00:00:00.000Z'),
+      prescriber_name: '田中 一郎',
+    });
+    findExternalProfessionalSuggestionsMock.mockResolvedValue([]);
+    getChannelStatsByNameMock.mockResolvedValue(
+      new Map([
+        [
+          'みなとクリニック',
+          {
+            fax: { success: 2, failure: 0 },
+            phone: { success: 1, failure: 1 },
+            email: { success: 0, failure: 0 },
+            ses: { success: 0, failure: 0 },
+            postal: { success: 0, failure: 0 },
+            in_person: { success: 0, failure: 0 },
+          },
+        ],
+      ]),
+    );
+    getRecommendedChannelsMock.mockReturnValue(['fax', 'phone', 'postal']);
+  });
+
+  it('rejects non-draft status updates outside the send workflow', async () => {
+    const response = await PATCH(createRequest({ status: 'sent' }), {
+      params: Promise.resolve({ id: 'report_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
+  });
+
+  it('requires report author permission before loading or updating the report', async () => {
+    requireAuthContextMock.mockResolvedValueOnce({
+      response: new Response(
+        JSON.stringify({ code: 'FORBIDDEN', message: '報告書の更新権限がありません' }),
+        { status: 403 },
+      ),
+    });
+
+    const response = await PATCH(createRequest({ content: { summary: '更新後メモ' } }), {
+      params: Promise.resolve({ id: 'report_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(403);
+    expectSensitiveNoStore(response);
+    expect(careReportFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(careReportUpdateManyMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a sanitized no-store 500 when report update auth context fails', async () => {
+    requireAuthContextMock.mockRejectedValueOnce(
+      new Error('raw report update auth patient 山田 太郎 token secret'),
+    );
+
+    const response = await PATCH(createRequest({ content: { summary: '更新後メモ' } }), {
+      params: Promise.resolve({ id: 'report_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    const bodyText = JSON.stringify(body);
+    expect(bodyText).not.toContain('raw report update auth');
+    expect(bodyText).not.toContain('山田 太郎');
+    expect(bodyText).not.toContain('token secret');
+    expect(careReportFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(careReportUpdateManyMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects blank report ids before updating the report', async () => {
+    const response = await PATCH(createRequest({ content: { summary: '更新後メモ' } }), {
+      params: Promise.resolve({ id: '   ' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '報告書IDが不正です',
+    });
+    expect(careReportFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(careReportUpdateManyMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects non-object request bodies before loading or updating the report', async () => {
+    const response = await PATCH(createRequest(['unexpected']), {
+      params: Promise.resolve({ id: 'report_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
+    expect(careReportFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(careReportUpdateManyMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed JSON before loading or updating the report', async () => {
+    const response = await PATCH(createMalformedPatchRequest(), {
+      params: Promise.resolve({ id: 'report_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'リクエストボディが不正です',
+    });
+    expect(careReportFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(careReportUpdateManyMock).not.toHaveBeenCalled();
+  });
+
+  it('requires the report version before updating the report', async () => {
+    const response = await PATCH(
+      createRequest({
+        expected_updated_at: undefined,
+        content: { summary: '更新後メモ' },
+      }),
+      {
+        params: Promise.resolve({ id: 'report_1' }),
+      },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      details: {
+        expected_updated_at: expect.any(Array),
+      },
+    });
+    expect(careReportFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(careReportUpdateManyMock).not.toHaveBeenCalled();
+  });
+
+  it('updates report content through the persisted JSON normalizer', async () => {
+    const response = await PATCH(createRequest({ content: { summary: '更新後メモ' } }), {
+      params: Promise.resolve({ id: 'report_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    expect(response.headers.get('X-Request-Id')).toBe('00000000-0000-4000-8000-000000000001');
+    expect(response.headers.get('X-Correlation-Id')).toBe('care_report_patch_test');
+    expect(careReportUpdateManyMock).toHaveBeenCalledWith({
+      where: {
+        id: 'report_1',
+        org_id: 'org_1',
+        updated_at: REPORT_UPDATED_AT,
+      },
+      data: {
+        content: { summary: '更新後メモ' },
+      },
+    });
+  });
+
+  it('rejects stale report content updates without changing the report', async () => {
+    careReportUpdateManyMock.mockResolvedValueOnce({ count: 0 });
+
+    const response = await PATCH(
+      createRequest({
+        expected_updated_at: '2026-03-30T00:09:00.000Z',
+        content: { summary: '更新後メモ' },
+      }),
+      { params: Promise.resolve({ id: 'report_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: '報告書が同時に更新されました。再読み込みしてください',
+    });
+    expect(careReportUpdateManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          updated_at: new Date('2026-03-30T00:09:00.000Z'),
+        }),
+      }),
+    );
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('preserves server-managed content keys when editing report content', async () => {
+    careReportFindFirstMock.mockResolvedValue({
+      id: 'report_1',
+      status: 'draft',
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+      visit_record_id: 'visit_record_1',
+      content: {
+        billing_context: { billing_evidence_id: 'billing_1' },
+        source_provenance: { visit_record_id: 'visit_record_1' },
+        report_delivery_targets: [{ delivery_record_id: 'delivery_1' }],
+        warnings: ['処方内容が登録されていません。'],
+      },
+    });
+
+    const response = await PATCH(
+      createRequest({
+        content: {
+          summary: '更新後メモ',
+          billing_context: null,
+          source_provenance: { forged: true },
+          report_delivery_targets: [],
+          warnings: [],
+        },
+      }),
+      { params: Promise.resolve({ id: 'report_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(careReportUpdateManyMock).toHaveBeenCalledWith({
+      where: {
+        id: 'report_1',
+        org_id: 'org_1',
+        updated_at: REPORT_UPDATED_AT,
+      },
+      data: {
+        content: {
+          summary: '更新後メモ',
+          billing_context: { billing_evidence_id: 'billing_1' },
+          source_provenance: { visit_record_id: 'visit_record_1' },
+          report_delivery_targets: [{ delivery_record_id: 'delivery_1' }],
+          warnings: ['処方内容が登録されていません。'],
+        },
+      },
+    });
+  });
+
+  it('rejects content edits after pharmacist confirmation', async () => {
+    careReportFindFirstMock.mockResolvedValue({
+      id: 'report_1',
+      status: 'confirmed',
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+      visit_record_id: 'visit_record_1',
+      content: { summary: '確認済み' },
+    });
+
+    const response = await PATCH(createRequest({ content: { summary: '改変' } }), {
+      params: Promise.resolve({ id: 'report_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '薬剤師確認後または送付後の報告書本文はこのAPIから変更できません',
+    });
+    expect(careReportUpdateManyMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects content edits after legal finalization even if the compatibility status is still draft', async () => {
+    careReportFindFirstMock.mockResolvedValue({
+      id: 'report_1',
+      status: 'draft',
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+      visit_record_id: 'visit_record_1',
+      content: { summary: '確定済み' },
+      finalized_at: new Date('2026-03-30T01:00:00.000Z'),
+      locked_at: new Date('2026-03-30T01:00:00.000Z'),
+      voided_at: null,
+    });
+
+    const response = await PATCH(createRequest({ content: { summary: '改変' } }), {
+      params: Promise.resolve({ id: 'report_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
+    expect(careReportUpdateManyMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects template changes after the report has been sent', async () => {
+    careReportFindFirstMock.mockResolvedValue({
+      id: 'report_1',
+      status: 'sent',
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+      visit_record_id: 'visit_record_1',
+      content: { summary: '送付済み' },
+    });
+
+    const response = await PATCH(createRequest({ template_id: 'template_2' }), {
+      params: Promise.resolve({ id: 'report_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    expect(careReportUpdateManyMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects report type changes because content and provenance are generated per type', async () => {
+    const response = await PATCH(createRequest({ report_type: 'care_manager_report' }), {
+      params: Promise.resolve({ id: 'report_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    expect(careReportUpdateManyMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects reverting a sent report back to draft', async () => {
+    careReportFindFirstMock.mockResolvedValue({
+      id: 'report_1',
+      status: 'sent',
+    });
+
+    const response = await PATCH(createRequest({ status: 'draft' }), {
+      params: Promise.resolve({ id: 'report_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+  });
+
+  it('confirms a draft report and writes a pharmacological-judgement audit log', async () => {
+    careReportFindFirstMock.mockResolvedValueOnce({
+      id: 'report_1',
+      org_id: 'org_1',
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+      visit_record_id: 'visit_record_1',
+      report_type: 'physician_report',
+      status: 'draft',
+      content: physicianReportContent(),
+      template_id: null,
+      pdf_url: null,
+      created_by: 'user_1',
+      created_at: new Date('2026-03-30T00:00:00.000Z'),
+      updated_at: REPORT_UPDATED_AT,
+      delivery_records: [],
+      case_: null,
+    });
+    careReportFindFirstMock.mockResolvedValueOnce({
+      id: 'report_1',
+      status: 'confirmed',
+    });
+
+    const response = await PATCH(createRequest({ status: 'confirmed' }), {
+      params: Promise.resolve({ id: 'report_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(careReportUpdateManyMock).toHaveBeenCalledWith({
+      where: {
+        id: 'report_1',
+        org_id: 'org_1',
+        updated_at: REPORT_UPDATED_AT,
+      },
+      data: {
+        status: 'confirmed',
+      },
+    });
+    expect(auditLogCreateMock).toHaveBeenCalledTimes(1);
+    expect(auditLogCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        org_id: 'org_1',
+        actor_id: 'user_1',
+        action: 'care_report_confirmed',
+        target_type: 'care_report',
+        target_id: 'report_1',
+        changes: { from: 'draft', to: 'confirmed' },
+      }),
+    });
+    await expect(response.json()).resolves.toMatchObject({
+      data: { status: 'confirmed' },
+    });
+  });
+
+  it('rejects confirming a draft whose content does not match its report type', async () => {
+    careReportFindFirstMock.mockResolvedValueOnce({
+      id: 'report_1',
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+      visit_record_id: 'visit_record_1',
+      report_type: 'physician_report',
+      status: 'draft',
+      content: {},
+      updated_at: REPORT_UPDATED_AT,
+      finalized_at: null,
+      locked_at: null,
+      voided_at: null,
+    });
+
+    const response = await PATCH(createRequest({ status: 'confirmed' }), {
+      params: Promise.resolve({ id: 'report_1' }),
+    });
+
+    expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: '報告書本文を確認できません。下書きを編集してから再試行してください',
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(careReportUpdateManyMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects pharmacist trainee pharmacological confirmation without changing the report', async () => {
+    requireAuthContextMock.mockResolvedValueOnce({
+      ctx: {
+        userId: 'trainee_1',
+        orgId: 'org_1',
+        role: 'pharmacist_trainee',
+      },
+    });
+    careReportFindFirstMock.mockResolvedValueOnce({
+      id: 'report_1',
+      org_id: 'org_1',
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+      visit_record_id: 'visit_record_1',
+      report_type: 'physician_report',
+      status: 'draft',
+      content: {},
+      template_id: null,
+      pdf_url: null,
+      created_by: 'trainee_1',
+      created_at: new Date('2026-03-30T00:00:00.000Z'),
+      updated_at: REPORT_UPDATED_AT,
+      delivery_records: [],
+      case_: null,
+      finalized_at: null,
+      locked_at: null,
+      voided_at: null,
+    });
+
+    const response = await PATCH(createRequest({ status: 'confirmed' }), {
+      params: Promise.resolve({ id: 'report_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(403);
+    expectSensitiveNoStore(response);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(careReportUpdateManyMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects stale draft confirmation without writing the confirmation audit', async () => {
+    careReportUpdateManyMock.mockResolvedValueOnce({ count: 0 });
+
+    const response = await PATCH(
+      createRequest({
+        expected_updated_at: '2026-03-30T00:09:00.000Z',
+        status: 'confirmed',
+      }),
+      { params: Promise.resolve({ id: 'report_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects confirming a report that is no longer a draft', async () => {
+    careReportFindFirstMock.mockResolvedValue({
+      id: 'report_1',
+      status: 'sent',
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+      visit_record_id: 'visit_record_1',
+    });
+
+    const response = await PATCH(createRequest({ status: 'confirmed' }), {
+      params: Promise.resolve({ id: 'report_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(careReportUpdateManyMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects confirming a legally finalized draft without changing the report', async () => {
+    careReportFindFirstMock.mockResolvedValue({
+      id: 'report_1',
+      status: 'draft',
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+      visit_record_id: 'visit_record_1',
+      content: {},
+      finalized_at: new Date('2026-03-30T01:00:00.000Z'),
+      locked_at: new Date('2026-03-30T01:00:00.000Z'),
+      voided_at: null,
+    });
+
+    const response = await PATCH(createRequest({ status: 'confirmed' }), {
+      params: Promise.resolve({ id: 'report_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(careReportUpdateManyMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+});
