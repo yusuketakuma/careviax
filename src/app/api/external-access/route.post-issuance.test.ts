@@ -77,16 +77,36 @@ vi.mock('@/lib/auth/context', () => ({
       },
     };
 
-    return (req: NextRequest, routeContext: { params: Promise<Record<string, string>> }) =>
-      options?.permission && !permissionsByRole[currentRole.value]?.[options.permission]
-        ? new Response(
-            JSON.stringify({
-              code: 'AUTH_FORBIDDEN',
-              message: options.message ?? '権限がありません',
-            }),
-            { status: 403, headers: { 'content-type': 'application/json' } },
-          )
-        : handler(req, { orgId: 'org_1', userId: 'user_1', role: currentRole.value }, routeContext);
+    return async (req: NextRequest, routeContext: { params: Promise<Record<string, string>> }) => {
+      if (options?.permission && !permissionsByRole[currentRole.value]?.[options.permission]) {
+        return new Response(
+          JSON.stringify({
+            code: 'AUTH_FORBIDDEN',
+            message: options.message ?? '権限がありません',
+          }),
+          { status: 403, headers: { 'content-type': 'application/json' } },
+        );
+      }
+
+      try {
+        return await handler(
+          req,
+          { orgId: 'org_1', userId: 'user_1', role: currentRole.value },
+          routeContext,
+        );
+      } catch {
+        return Response.json(
+          { code: 'INTERNAL_ERROR', message: 'サーバー内部でエラーが発生しました' },
+          {
+            status: 500,
+            headers: {
+              'Cache-Control': 'private, no-store, max-age=0',
+              Pragma: 'no-cache',
+            },
+          },
+        );
+      }
+    };
   },
 }));
 
@@ -174,6 +194,36 @@ function expectPharmacistPatientAssignmentWhere(patientId?: string) {
   };
 }
 
+const mockTransaction = {
+  patient: {
+    findFirst: patientFindFirstMock,
+    findMany: patientFindManyMock,
+  },
+  consentRecord: {
+    findFirst: consentRecordFindFirstMock,
+  },
+  careCase: {
+    findMany: careCaseFindManyMock,
+  },
+  externalAccessGrant: {
+    create: createMock,
+    update: updateMock,
+    findFirst: externalAccessGrantFindFirstMock,
+    findMany: externalAccessGrantFindManyMock,
+  },
+  patientSelfReport: {
+    findMany: patientSelfReportFindManyMock,
+    groupBy: patientSelfReportGroupByMock,
+  },
+  auditLog: {
+    create: auditLogCreateMock,
+  },
+};
+
+function runWithMockTransaction(_orgId: string, callback: (tx: typeof mockTransaction) => unknown) {
+  return callback(mockTransaction);
+}
+
 const EXTERNAL_ACCESS_AUDIT_ALLOWED_KEYS = [
   'actor_id',
   'expires_at',
@@ -244,33 +294,7 @@ describe('/api/external-access POST', () => {
     });
     updateMock.mockResolvedValue({ id: 'grant_1' });
     auditLogCreateMock.mockResolvedValue({ id: 'audit_1' });
-    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
-      callback({
-        patient: {
-          findFirst: patientFindFirstMock,
-          findMany: patientFindManyMock,
-        },
-        consentRecord: {
-          findFirst: consentRecordFindFirstMock,
-        },
-        careCase: {
-          findMany: careCaseFindManyMock,
-        },
-        externalAccessGrant: {
-          create: createMock,
-          update: updateMock,
-          findFirst: externalAccessGrantFindFirstMock,
-          findMany: externalAccessGrantFindManyMock,
-        },
-        patientSelfReport: {
-          findMany: patientSelfReportFindManyMock,
-          groupBy: patientSelfReportGroupByMock,
-        },
-        auditLog: {
-          create: auditLogCreateMock,
-        },
-      }),
-    );
+    withOrgContextMock.mockImplementation(runWithMockTransaction);
   });
 
   it.each(['driver', 'external_viewer'])(
@@ -634,6 +658,83 @@ describe('/api/external-access POST', () => {
     });
     expect(JSON.stringify(body)).not.toMatch(/jwt-token|\"token\"|\"otp\"/);
     expect(withOrgContextMock).toHaveBeenCalledTimes(3);
+    expect(bcryptHashMock).toHaveBeenCalledTimes(1);
+    expect(createMock).not.toHaveBeenCalled();
+    expect(updateMock).not.toHaveBeenCalled();
+    expect(issueExternalAccessTokenMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(sendSmsMock).not.toHaveBeenCalled();
+  });
+
+  it('retries a commit-time Serializable conflict without duplicating SMS delivery', async () => {
+    issueExternalAccessTokenMock
+      .mockResolvedValueOnce('rolled-back-token')
+      .mockResolvedValueOnce('successful-token');
+    withOrgContextMock
+      .mockImplementationOnce(runWithMockTransaction)
+      .mockImplementationOnce(async (_orgId, callback) => {
+        await callback(mockTransaction);
+        throw Object.assign(new Error('serialization conflict at commit'), { code: 'P2034' });
+      })
+      .mockImplementationOnce(runWithMockTransaction);
+
+    const response = await POST(
+      createRequest({
+        patient_id: 'patient_1',
+        granted_to_name: '田中ケアマネ',
+        granted_to_contact: '090-1234-5678',
+        scope: { medication_list: true },
+        expires_hours: 24,
+      }),
+      { params: Promise.resolve({}) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(201);
+    expect(withOrgContextMock).toHaveBeenCalledTimes(4);
+    expect(validateOrgReferencesMock).toHaveBeenCalledTimes(3);
+    expect(bcryptHashMock).toHaveBeenCalledTimes(1);
+    expect(createMock).toHaveBeenCalledTimes(2);
+    expect(updateMock).toHaveBeenCalledTimes(2);
+    expect(issueExternalAccessTokenMock).toHaveBeenCalledTimes(2);
+    expect(auditLogCreateMock).toHaveBeenCalledTimes(3);
+    expect(sendSmsMock).toHaveBeenCalledTimes(1);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      data: { token: 'successful-token', otp_delivery: 'sms' },
+    });
+    expect(body.data).not.toHaveProperty('otp');
+    expect(JSON.stringify(body)).not.toContain('rolled-back-token');
+  });
+
+  it('does not retry or expose a non-P2034 transaction failure', async () => {
+    const transactionFailure = new Error('database endpoint contained private details');
+    withOrgContextMock
+      .mockImplementationOnce(runWithMockTransaction)
+      .mockRejectedValueOnce(transactionFailure);
+
+    const response = await POST(
+      createRequest({
+        patient_id: 'patient_1',
+        granted_to_name: '田中ケアマネ',
+        granted_to_contact: '090-1234-5678',
+        scope: { medication_list: true },
+        expires_hours: 24,
+      }),
+      { params: Promise.resolve({}) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(500);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
+    const body = await response.json();
+    expect(body).toEqual({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    expect(JSON.stringify(body)).not.toMatch(/database endpoint|jwt-token|\"token\"|\"otp\"/);
+    expect(withOrgContextMock).toHaveBeenCalledTimes(2);
     expect(bcryptHashMock).toHaveBeenCalledTimes(1);
     expect(createMock).not.toHaveBeenCalled();
     expect(updateMock).not.toHaveBeenCalled();
