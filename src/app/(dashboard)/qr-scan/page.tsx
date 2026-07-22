@@ -17,22 +17,12 @@ import {
   CircleAlert,
   CircleX,
 } from 'lucide-react';
-import { getQrScanShortcutLinks } from '@/components/features/workflow/page-shortcut-presets';
-import { WorkflowPageIntro } from '@/components/features/workflow/workflow-page-intro';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { PageSection } from '@/components/layout/page-section';
 import { ActionRail } from '@/components/ui/action-rail';
 import { Badge } from '@/components/ui/badge';
 import { Spinner } from '@/components/ui/loading';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-} from '@/components/ui/dialog';
 import { JahisSupplementalRecordsCard } from '@/components/features/prescriptions/jahis-supplemental-records-card';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { readApiJson } from '@/lib/api/client-json';
@@ -56,18 +46,17 @@ import {
   buildQrScanDraftPayload,
   qrScanDraftSessionIdResponseSchema,
 } from './qr-scan-draft-payload';
+import {
+  QrScanContinuation,
+  QrScanMedicationList,
+  QrScanPageIntro,
+  QrScanPatientDialog,
+  type QrScanPatientMatch,
+} from './qr-scan-presentation';
 
 // ────────────────────────────────────────────────────────────────────────────
 // Types
 // ────────────────────────────────────────────────────────────────────────────
-
-interface PatientMatch {
-  id: string;
-  name: string;
-  name_kana: string;
-  birth_date: string;
-  gender: string;
-}
 
 type ScanPhase =
   | 'camera' // カメラスキャン中
@@ -106,8 +95,8 @@ export default function QRScanPage() {
   const [parseResult, setParseResult] = useState<JahisParseResult | null>(null);
 
   // Patient matching state
-  const [patients, setPatients] = useState<PatientMatch[]>([]);
-  const [selectedPatient, setSelectedPatient] = useState<PatientMatch | null>(null);
+  const [patients, setPatients] = useState<QrScanPatientMatch[]>([]);
+  const [selectedPatient, setSelectedPatient] = useState<QrScanPatientMatch | null>(null);
   const [showPatientDialog, setShowPatientDialog] = useState(false);
   // 患者照合の取得失敗を「該当なし」と区別するためのフラグ(F89)。
   // fetch エラーを空一致に潰すと、既存患者がいるのに新規患者登録へ誘導され
@@ -155,8 +144,8 @@ export default function QRScanPage() {
           },
         );
         if (!res.ok) throw new Error('患者検索に失敗しました');
-        const json = (await res.json()) as { data?: { data?: PatientMatch[] } };
-        const matched: PatientMatch[] = json.data?.data ?? [];
+        const json = (await res.json()) as { data?: { data?: QrScanPatientMatch[] } };
+        const matched: QrScanPatientMatch[] = json.data?.data ?? [];
 
         // 生年月日が一致する患者を優先
         if (data.patient.birthDate) {
@@ -492,32 +481,7 @@ export default function QRScanPage() {
   return (
     <div className="space-y-4 p-3 pb-20 md:p-4 md:pb-4 xl:p-5" data-testid="qr-scan-workspace">
       {/* Header */}
-      <WorkflowPageIntro
-        backHref="/prescriptions"
-        backLabel="処方受付へ戻る"
-        title="お薬手帳 QR スキャン"
-        description="読取後は QR 下書き一覧、処方受付、ワークフローへ横移動できます。"
-        supportingContent={
-          <div className="space-y-1">
-            <p className="text-sm font-medium text-foreground">操作の流れ</p>
-            <p className="text-sm text-muted-foreground">
-              スキャン、確認、下書き化、患者登録または受付導線への移動を順に行います。
-            </p>
-          </div>
-        }
-        className="mb-0"
-        shortcuts={getQrScanShortcutLinks()}
-        mainWorkflowSteps={['prescriptions']}
-        mainWorkflowDescription="QR スキャンは処方登録の前段支援として扱い、受付確定へ戻る位置を明示しています。"
-        actions={
-          phase !== 'camera' ? (
-            <Button variant="outline" size="sm" onClick={resetScan}>
-              <RotateCcw className="mr-1.5 h-4 w-4" />
-              やり直す
-            </Button>
-          ) : null
-        }
-      />
+      <QrScanPageIntro canReset={phase !== 'camera'} onReset={resetScan} />
 
       {/* ── カメラビュー ── */}
       {phase === 'camera' && (
@@ -601,27 +565,12 @@ export default function QRScanPage() {
 
       {/* ── スキャン完了 — 続行 or 終了 ── */}
       {phase === 'scanned' && (
-        <PageSection
-          title={progressLabel}
-          description={
-            totalQRCount != null
-              ? `このお薬手帳はQRコードが${totalQRCount}枚あります。残りをスキャンするか、この内容で送信してください。`
-              : '続けて別のQRコードをスキャンするか、この内容で送信してください。'
-          }
-          actions={<ScanLine className="h-5 w-5 text-primary" aria-hidden="true" />}
-          contentClassName="space-y-3"
-        >
-          <ActionRail align="between">
-            <Button className="flex-1" variant="outline" onClick={continueScanning}>
-              <Camera className="mr-1.5 h-4 w-4" />
-              次のQRをスキャン
-            </Button>
-            <Button className="flex-1" onClick={() => finalizeScan(scannedTexts)}>
-              <CheckCircle className="mr-1.5 h-4 w-4" />
-              スキャン完了
-            </Button>
-          </ActionRail>
-        </PageSection>
+        <QrScanContinuation
+          progressLabel={progressLabel}
+          totalQrCount={totalQRCount}
+          onContinue={continueScanning}
+          onComplete={() => finalizeScan(scannedTexts)}
+        />
       )}
 
       {/* ── パース結果 + 患者照合 ── */}
@@ -811,35 +760,7 @@ export default function QRScanPage() {
             ) : null}
 
             {/* 薬剤一覧 */}
-            <div>
-              <h3 className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                薬剤 ({mergedQRData.medications.length}件)
-              </h3>
-              {mergedQRData.medications.length === 0 ? (
-                <p className="text-sm text-muted-foreground">薬剤情報が読み取れませんでした</p>
-              ) : (
-                <ul className="space-y-2">
-                  {mergedQRData.medications.map((med, i) => (
-                    <li
-                      key={i}
-                      className="rounded-md border border-border bg-muted/30 px-3 py-2 text-sm"
-                    >
-                      <p className="font-medium">{med.drugName}</p>
-                      <div className="mt-0.5 flex flex-wrap gap-2 text-xs text-muted-foreground">
-                        {med.dose && (
-                          <span>
-                            {med.dose}
-                            {med.unit || ''}
-                          </span>
-                        )}
-                        {med.usage && <span>{med.usage}</span>}
-                        {med.daysOrTimes && <span>{med.daysOrTimes}</span>}
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
+            <QrScanMedicationList data={mergedQRData} />
           </PageSection>
 
           {/* 患者照合 — 検索中 */}
@@ -1052,50 +973,17 @@ export default function QRScanPage() {
       )}
 
       {/* ── 患者選択ダイアログ ── */}
-      <Dialog open={showPatientDialog} onOpenChange={setShowPatientDialog}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>患者を選択</DialogTitle>
-            <DialogDescription>
-              QR コードの患者情報に一致する候補が複数あります。正しい患者を選択してください。
-            </DialogDescription>
-          </DialogHeader>
-          <div className="max-h-60 space-y-2 overflow-y-auto">
-            {patients.map((p) => (
-              <button
-                key={p.id}
-                type="button"
-                className={cn(
-                  'flex w-full items-center justify-between rounded-md border p-3 text-left transition-colors',
-                  'hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                  'min-h-[44px]',
-                  selectedPatient?.id === p.id && 'border-primary bg-primary/5',
-                )}
-                onClick={() => {
-                  setSelectedPatient(p);
-                  setShowPatientDialog(false);
-                }}
-              >
-                <div>
-                  <p className="text-sm font-medium">{p.name}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {p.name_kana} / {p.birth_date}
-                  </p>
-                </div>
-                {mergedQRData?.patient.birthDate &&
-                  p.birth_date?.startsWith(mergedQRData.patient.birthDate) && (
-                    <Badge variant="secondary">生年月日一致</Badge>
-                  )}
-              </button>
-            ))}
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowPatientDialog(false)}>
-              閉じる
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <QrScanPatientDialog
+        open={showPatientDialog}
+        onOpenChange={setShowPatientDialog}
+        patients={patients}
+        selectedPatientId={selectedPatient?.id}
+        qrBirthDate={mergedQRData?.patient.birthDate}
+        onSelect={(patient) => {
+          setSelectedPatient(patient);
+          setShowPatientDialog(false);
+        }}
+      />
     </div>
   );
 }
