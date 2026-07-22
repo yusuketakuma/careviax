@@ -1,23 +1,23 @@
 ---
 type: GateResult
-title: MAINT-FILE-SIZE-1000-001BN gate before commit
+title: MAINT-FILE-SIZE-1000-001BN gate at 3eb759e5b
 task_id: MAINT-FILE-SIZE-1000-001BN
 memory_id: projects/careviax/gates/2026-07-22/maint-file-size-1000-001bn-pending
 confidence: high
 created_by: codex-lead
 expires_at: null
 project_id: careviax
+ingested_at: '2026-07-22T01:08:07.650Z'
 owner_agent: codex-lead
-commit_after: pending
+source_kind: put_page
+commit_after: 3eb759e5b
+ingested_via: put_page
 superseded_by: null
 evidence_level: gate_verified
 validity_scope:
   repo: careviax
   directories:
     - src/components/features/visits
-ingested_via: put_page
-ingested_at: '2026-07-22T01:04:38.228Z'
-source_kind: put_page
 tags:
   - codex1
   - file-size
@@ -26,7 +26,7 @@ tags:
   - visits
 ---
 
-# MAINT-FILE-SIZE-1000-001BN GateResult
+# MAINT-FILE-SIZE-1000-001BN GateResult at 3eb759e5b
 
 run_context: { os: macOS, node: 24.x, package_manager: pnpm, env: local }
 
@@ -61,3 +61,4 @@ result: partial_pass; accepted_for_next_step: true; reason: all objective code g
 
 - Files: src/components/features/visits/visit-medication-stock-observation-panel.tsx; src/components/features/visits/visit-medication-stock-observation-panel.helpers.ts; tools/human-maintained-file-size-baseline.json
 - Base commit: 005e2a476
+- Implementation commit: 3eb759e5b
