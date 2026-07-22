@@ -1,71 +1,93 @@
 ---
 type: GateResult
-title: MAINT-FILE-SIZE-1000-001BN gate at 3eb759e5b
+title: MAINT-FILE-SIZE-1000-001BN integration gate closed
+branch: codex1/continuous-optimization-20260716
+source:
+  - 'commit:2144eb10302be571972cc454b3fca7370c03c6fd'
+  - 'commit:94d6fe58e3acea60211b5bc402522d8d7a26b726'
+  - 'test:pnpm-typecheck'
+  - 'test:pnpm-typecheck-no-unused'
+  - 'test:focused-api-workflow-and-backend-regression'
+  - 'agmsg:codex2-pass-review-2026-07-22T03:02:57Z'
 task_id: MAINT-FILE-SIZE-1000-001BN
+repo_url: null
 memory_id: projects/careviax/gates/2026-07-22/maint-file-size-1000-001bn-pending
 confidence: high
+created_at: '2026-07-22T01:08:07.000Z'
 created_by: codex-lead
 expires_at: null
+feature_id: null
 project_id: careviax
-ingested_at: '2026-07-22T01:27:47.687Z'
+updated_at: '2026-07-22T03:03:00.000Z'
 owner_agent: codex-lead
-source_kind: put_page
-commit_after: 3eb759e5b
-ingested_via: put_page
+commit_after: 94d6fe58e3acea60211b5bc402522d8d7a26b726
+commit_before: 3eb759e5b
 superseded_by: null
-evidence_level: gate_verified
+evidence_level: peer_reviewed
+reviewer_agent: codex-lead
 validity_scope:
   repo: careviax
+  files:
+    - ops/refactor/STATE.md
+  tech_stack:
+    - Next.js
+    - React
+    - TypeScript
+    - Prisma
+    - Vitest
   directories:
+    - src/app/api
+    - src/server/services
+    - src/lib
+    - src/components/features/patients
     - src/components/features/visits
+ingested_via: put_page
+ingested_at: '2026-07-22T03:03:31.698Z'
+source_kind: put_page
 tags:
   - codex1
+  - codex2
   - file-size
+  - flaky-test
   - refactor
+  - route-context
+  - typecheck
   - verification
   - visits
 ---
 
-# MAINT-FILE-SIZE-1000-001BN GateResult at 3eb759e5b
-
-run_context: { os: macOS, node: 24.x, package_manager: pnpm, env: local }
+# MAINT-FILE-SIZE-1000-001BN integration gate closed
 
 ## Scope
 
-- Extracted visit medication stock observation labels, JST formatting, summary fetch, and draft helpers without changing UI or API behavior.
-- Component reduced from 1073 to 886 lines; helper is 214 lines; file-size baseline reduced from 161 to 160.
+- Closed the stock-observation extraction review after canonical typecheck exposed incomplete extracted-service imports and an incomplete AuthRouteContext migration elsewhere in the shared integration range.
+- Restored extracted backend type/import/re-export contracts in commit 2144eb103 and completed explicit route-context typing, test call contexts, no-unused parameter naming, literal fixture typing, and webhook transaction fixtures in commit 94d6fe58e.
+- No route behavior, authorization scope, patient scope, rate limit, query, dependency, or runtime fallback changed.
 
 ## Commands
 
-- pnpm exec vitest run src/components/features/visits/visit-medication-stock-observation-panel.test.tsx -> pass, 11 tests
-- targeted ESLint -> pass, zero warnings
-- pnpm format:check -> pass
-- pnpm typecheck -> pass
-- pnpm typecheck:no-unused -> pass
-- pnpm human-maintained-file-size:check -> pass
-- pnpm authz-account-model-v1:inventory:check -> pass, 964 entries and 457 browser assets
-- node tools/scripts/check-module-boundaries.mjs -> pass, zero violations
-- pnpm plans:active:check -> pass
-- pnpm build -> skipped, deferred by current STATE policy to the integration boundary
-- agent-browser -> skipped, no visual behavior changed and browser gate remains unwired
+- pnpm typecheck -> pass independently on codex1 and codex2
+- pnpm typecheck:no-unused -> pass independently on codex1 and codex2, serialized after typecheck
+- focused API/workflow tests -> pass, 10 files / 744 tests
+- isolated PatientForm tests -> pass, 1 file / 29 tests
+- backend extraction tests -> pass, 8 files / 251 tests
+- targeted ESLint -> pass on all 37 changed TypeScript paths
+- targeted Prettier -> pass
+- pnpm human-maintained-file-size:check -> pass, baseline remains 160
+- pnpm authz-account-model-v1:inventory:check -> pass before final STATE hash synchronization
+- pnpm boundaries:check, frontend-contract:check, client-json-schema:check, client-phi-log:check, plans:active:check -> pass
+- pnpm build -> skipped by current STATE policy until a larger integration boundary
+- secret scan and SAST -> skipped, not wired
 
-## Security
+## Failure classification
 
-secret_scan: skipped, not wired; dependency_audit: skipped, no dependency change
-
-## Overall
-
-result: partial_pass; accepted_for_next_step: false; reason: codex2 independently passed the implementation code and focused/static gates but found stale STATE browser-freeze evidence. Codex1 reproduced the inventory drift and reran typecheck plus typecheck:no-unused successfully; final inventory synchronization and codex2 re-review remain pending.
+- One combined 11-file run passed initially at 773 tests, then a resource-contention rerun timed out in two PatientForm tests while long TypeScript workers were concurrently active. The API subset subsequently passed 744/744 and PatientForm passed 29/29 in isolation. Treat this occurrence as load-induced, not a product regression; keep isolated rerun evidence rather than hiding the failed observation.
 
 ## Independent review
 
-- codex2 exact-path implementation verdict: pass; no behavior, patient-scope, Client boundary, API, JST, draft/idempotency, fail-closed, PHI/security, or performance regression found.
-- focused independent validation: pass, 6 files / 96 tests; targeted ESLint, Prettier, file-size, module-boundary, frontend-contract, client-json-schema, and client-PHI-log checks passed.
-- integration finding: `ops/refactor/STATE.md` changed after the recorded inventory pass, leaving its browser-asset SHA-256 stale; inventory synchronization is required after the final ledger content is fixed.
-- typecheck follow-up: codex2 audit-sandbox execution returned unrelated workspace errors, while codex1 reran the canonical `pnpm typecheck` and `pnpm typecheck:no-unused` in the unrestricted repository environment and both passed on the same HEAD.
+- codex2 reviewed range 11ff0e3eb..94d6fe58e read-only and returned PASS.
+- No authn/authz/tenant widening, any/suppression, behavior fallback, contract adapter, overlapping ownership, or untracked source change was found.
 
-## Evidence
+## Overall
 
-- Files: src/components/features/visits/visit-medication-stock-observation-panel.tsx; src/components/features/visits/visit-medication-stock-observation-panel.helpers.ts; tools/human-maintained-file-size-baseline.json
-- Base commit: 005e2a476
-- Implementation commit: 3eb759e5b
+result: pass; accepted_for_next_step: true; reason: canonical type gates, focused regressions, static gates, and independent codex2 semantic review all passed. Final STATE browser-freeze hash synchronization remains a ledger-only follow-up before the next write group.

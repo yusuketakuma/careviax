@@ -903,7 +903,7 @@
       },
       {
         "path": "ops/refactor/STATE.md",
-        "sha256": "f2b441f76a4dc4aa6b9ab8915c6540afbb1d1051fd71c133b8b00e6487d296de"
+        "sha256": "56cf4511076ac35a18e469cfcd748fe5d7e81040aa51165cc57aed0b19674ba9"
       },
       {
         "path": "ops/refactor/archive/PERF_FINDINGS.md",
@@ -1307,7 +1307,7 @@
       },
       {
         "path": "src/app/api/__tests__/workflow-prescription-to-report.test.ts",
-        "sha256": "fee94cc64a4e5269f47443f8a14d316ea3616c231a20f721b643cf76e36c079b"
+        "sha256": "fa9c292fa48be12d578470188710700aafcb98e845297c314e8264b146cf469f"
       },
       {
         "path": "src/app/api/care-reports/route.filters.ts",
@@ -30519,7 +30519,7 @@
       "path": "src/app/api/__tests__/protected-get-routes.test.ts",
       "classes": ["test"],
       "detectors": ["raw_role_semantics"],
-      "sha256": "67bcd88913093160d21e040e3e40bb7361216a8546e786ec151ac97a9d11495d"
+      "sha256": "22148b7d7a7330d1a91b0e8fa7a3ae9d084b06175967cd565e29362558e48351"
     },
     {
       "path": "src/app/api/__tests__/protected-patch-delete-routes.test.ts",
@@ -30531,19 +30531,19 @@
       "path": "src/app/api/__tests__/protected-post-routes.test.ts",
       "classes": ["test"],
       "detectors": ["mapping_precedence", "raw_role_semantics"],
-      "sha256": "24bb535e832a3462da49300f37a339b9d856762ccb1017e0e4815567129755e5"
+      "sha256": "58f982218c864eb2aeea9e5304e097952479f70f003c9ab13c9986ca02d14d70"
     },
     {
       "path": "src/app/api/__tests__/workflow-full-cycle.test.ts",
       "classes": ["test"],
       "detectors": ["mapping_precedence", "raw_role_semantics"],
-      "sha256": "88daee14e64d27ef670540d258ec45998c6adda6f599ac5524900f4870517314"
+      "sha256": "0758876ca0fc629480962861b9fecb0a0551b9fa51c34038c01f8800d1c9b17b"
     },
     {
       "path": "src/app/api/__tests__/workflow-prescription-to-report.test.ts",
       "classes": ["test"],
       "detectors": ["mapping_precedence", "raw_role_semantics"],
-      "sha256": "fee94cc64a4e5269f47443f8a14d316ea3616c231a20f721b643cf76e36c079b"
+      "sha256": "fa9c292fa48be12d578470188710700aafcb98e845297c314e8264b146cf469f"
     },
     {
       "path": "src/app/api/admin/capacity/route.test.ts",
@@ -31756,7 +31756,7 @@
       "path": "src/app/api/onboarding/renewal-board/route.test.ts",
       "classes": ["test"],
       "detectors": ["permission_capability", "raw_role_semantics"],
-      "sha256": "fb1493bf3cb9ec89a7437ecd670786cad0784038c5bd098880153ab25170c108"
+      "sha256": "4dd09fea701701e82365ed726ec7fec89492be764e0891d225d950ac540b0be0"
     },
     {
       "path": "src/app/api/org/members/route.test.ts",
@@ -32467,7 +32467,7 @@
       "path": "src/app/api/prescription-intakes/facility-batch/route.test.ts",
       "classes": ["test"],
       "detectors": ["mapping_precedence", "raw_role_semantics"],
-      "sha256": "076efc28e62a9192ef3a3914f19eba47e901a1cf22685e8069a01d53207cfabf"
+      "sha256": "4dcd8ce578ba02d3c06d492b45f8c7a425d9b2fa7aaaa710be8423ce65083c74"
     },
     {
       "path": "src/app/api/prescription-intakes/route.test.ts",
@@ -32551,7 +32551,7 @@
       "path": "src/app/api/set-audits/route.test.ts",
       "classes": ["test"],
       "detectors": ["mapping_precedence", "raw_role_semantics"],
-      "sha256": "ff26d3d952c416500ff3c2a614f5002d7db7f7f6bec68c81cc8e7ef821b5e414"
+      "sha256": "d68f9b8d9cf7fcf7ff652f9307ee12aaf691682579daad6d54b74bcf77e5ee31"
     },
     {
       "path": "src/app/api/set-batches/[id]/route.test.ts",
@@ -32563,7 +32563,7 @@
       "path": "src/app/api/set-batches/route.test.ts",
       "classes": ["test"],
       "detectors": ["mapping_precedence", "raw_role_semantics", "tenant_role"],
-      "sha256": "739228a8e11763cd29b4a693356fee98c42be7d5aaf933ef52bd87e9af5838ac"
+      "sha256": "fb86f1f23e727afd3a57abd75dd4a3a07361f7a4234827cf2424ee97dc9ce6d9"
     },
     {
       "path": "src/app/api/set-plans/[id]/batches/bulk-set/route.test.ts",
@@ -32599,7 +32599,7 @@
       "path": "src/app/api/set-plans/route.test.ts",
       "classes": ["test"],
       "detectors": ["mapping_precedence", "raw_role_semantics", "tenant_role"],
-      "sha256": "a48bd1396c85aa687a195733f580cbf4880af2c30e6bf8145564668266784806"
+      "sha256": "5e20cb462af00be0f62933a42885a92acbf1dd0a19590f8faace42fd17989084"
     },
     {
       "path": "src/app/api/settings/operational-policy/route.test.ts",
@@ -32801,7 +32801,7 @@
       "path": "src/app/api/visit-records/route.test.ts",
       "classes": ["test"],
       "detectors": ["mapping_precedence", "raw_role_semantics", "tenant_role"],
-      "sha256": "c45dc1e22836ca54df362226297693db46961c76952d2b3fcaae38f38ecf4fd3"
+      "sha256": "2e07029d931cb7a66733be96224b9ec4288e76fdb983d861e157bacc66e34173"
     },
     {
       "path": "src/app/api/visit-routes/reorder/route.test.ts",
