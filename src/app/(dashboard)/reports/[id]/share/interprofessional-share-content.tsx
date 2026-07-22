@@ -14,9 +14,8 @@ import {
 } from '@/components/features/patients/patient-write-availability-notice';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { ErrorState } from '@/components/ui/error-state';
-import { Skeleton } from '@/components/ui/loading';
 import { PageScaffold } from '@/components/layout/page-scaffold';
-import { readApiJson, type ApiJsonSchema } from '@/lib/api/client-json';
+import { readApiJson } from '@/lib/api/client-json';
 import {
   canRetainCachedDataAfterPrimaryQueryError,
   fetchPrimaryQueryJson,
@@ -46,7 +45,6 @@ import { buildCommunicationRequestsHref } from '@/lib/communications/navigation'
 import { isActiveReplyRequestStatus } from '@/lib/communications/request-status';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import {
-  isPatientArchivedWriteConflictPayload,
   isPatientArchiveWritable,
   PATIENT_ARCHIVED_WRITE_CONFLICT_MESSAGE,
 } from '@/lib/patient/archive-summary';
@@ -68,6 +66,23 @@ import {
   type ShareAudienceKey,
 } from './interprofessional-share.helpers';
 import { buildInterprofessionalShareReportResponseSchema } from './interprofessional-share-response-schema';
+import { InterprofessionalShareLoadingState } from './interprofessional-share-loading-state';
+import {
+  FOLLOWUP_TASK_CONFLICT_MESSAGE,
+  FOLLOWUP_TASK_DESCRIPTION_ID,
+  FOLLOWUP_TASK_FAILURE_MESSAGE,
+  FOLLOWUP_TASK_PERMISSION_MESSAGE,
+  REPLY_REQUEST_CONFLICT_MESSAGE,
+  REPLY_REQUEST_FAILURE_MESSAGE,
+  ShareMutationResponseError,
+  getShareMutationResponseStatus,
+  isDuplicateShareMutationConflict,
+  isPatientArchivedWriteError,
+  readShareMutationResponse,
+  shouldReconcileFollowupTaskPermission,
+  type FollowupTaskMutationInput,
+  type ReplyRequestMutationInput,
+} from './interprofessional-share-mutation';
 
 /**
  * p1_05「他職種向け共有ページ」。
@@ -75,72 +90,6 @@ import { buildInterprofessionalShareReportResponseSchema } from './interprofessi
  * 「誰に・何が見えるか」をプレビューし、相手からの返信を次回タスクへつなげる画面。
  * 3 カラム: 共有する相手 / 相手に見える内容 / 返信・確認(主操作=次回タスクにする)。
  */
-
-const FOLLOWUP_TASK_FAILURE_MESSAGE = '次回タスクの作成に失敗しました。もう一度お試しください。';
-const FOLLOWUP_TASK_CONFLICT_MESSAGE =
-  '次回タスクは既に作成されている可能性があります。タスク一覧を確認してください。';
-const FOLLOWUP_TASK_PERMISSION_MESSAGE = '運用タスクの作成権限がありません。';
-const FOLLOWUP_TASK_DESCRIPTION_ID = 'followup-task-description';
-const REPLY_REQUEST_FAILURE_MESSAGE = '返信依頼の起票に失敗しました。もう一度お試しください。';
-const REPLY_REQUEST_CONFLICT_MESSAGE =
-  '返信依頼は既に起票されている可能性があります。連携依頼の状態を確認しています。';
-
-type FollowupTaskMutationInput = {
-  audience: ShareAudienceKey;
-  responseId: string;
-  payload: ReturnType<typeof buildNextCheckTaskInput>;
-};
-
-type ReplyRequestMutationInput = {
-  audience: ShareAudienceKey;
-  payload: ReturnType<typeof buildShareCommunicationRequestInput>;
-};
-
-class ShareMutationResponseError extends Error {
-  constructor(
-    readonly status: number,
-    fallbackMessage: string,
-    readonly kind: 'patient_archived' | null = null,
-  ) {
-    super(fallbackMessage);
-    this.name = 'ShareMutationResponseError';
-  }
-}
-
-async function readShareMutationResponse<T>(
-  response: Response,
-  fallbackMessage: string,
-  schema?: ApiJsonSchema<T>,
-): Promise<T> {
-  if (!response.ok) {
-    const payload = await response.json().catch(() => null);
-    throw new ShareMutationResponseError(
-      response.status,
-      fallbackMessage,
-      response.status === 409 && isPatientArchivedWriteConflictPayload(payload)
-        ? 'patient_archived'
-        : null,
-    );
-  }
-  return readApiJson<T>(response, { fallbackMessage, schema });
-}
-
-function getShareMutationResponseStatus(error: unknown): number | null {
-  return error instanceof ShareMutationResponseError ? error.status : null;
-}
-
-function shouldReconcileFollowupTaskPermission(error: unknown): boolean {
-  const status = getShareMutationResponseStatus(error);
-  return status !== null && [400, 401, 403, 404].includes(status);
-}
-
-function isPatientArchivedWriteError(error: unknown): error is ShareMutationResponseError {
-  return error instanceof ShareMutationResponseError && error.kind === 'patient_archived';
-}
-
-function isDuplicateShareMutationConflict(error: unknown): boolean {
-  return getShareMutationResponseStatus(error) === 409 && !isPatientArchivedWriteError(error);
-}
 
 function tryBuildPatientHref(patientId: string, suffix = ''): string | null {
   try {
@@ -159,79 +108,6 @@ function canBuildPatientApiPath(patientId: string): boolean {
     if (err instanceof RangeError) return false;
     throw err;
   }
-}
-
-function InterprofessionalShareLoadingState() {
-  return (
-    <PageScaffold>
-      <div
-        className="space-y-6"
-        role="status"
-        aria-label="他職種共有ワークスペースを読み込み中"
-        aria-live="polite"
-      >
-        <div className="space-y-3">
-          <Skeleton className="h-4 w-32" />
-          <Skeleton className="h-8 w-56" />
-          <Skeleton className="h-4 w-full max-w-2xl" />
-          <div className="flex flex-wrap gap-2">
-            <Skeleton className="h-9 w-24 rounded-md" />
-            <Skeleton className="h-9 w-24 rounded-md" />
-            <Skeleton className="h-9 w-28 rounded-md" />
-          </div>
-        </div>
-
-        <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.3fr)_minmax(0,1fr)]">
-          <section className="rounded-lg border border-border/70 bg-card p-4" aria-hidden="true">
-            <Skeleton className="h-5 w-28" />
-            <div className="mt-3 space-y-2.5">
-              {Array.from({ length: 4 }).map((_, index) => (
-                <div
-                  key={index}
-                  className="rounded-lg border border-border bg-background px-4 py-3"
-                >
-                  <Skeleton className="h-4 w-28" />
-                  <Skeleton className="mt-2 h-3 w-36" />
-                </div>
-              ))}
-            </div>
-          </section>
-
-          <section className="rounded-lg border border-border/70 bg-card p-4" aria-hidden="true">
-            <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-              <Skeleton className="h-5 w-36" />
-              <Skeleton className="h-3 w-44" />
-            </div>
-            <div className="mt-3 space-y-3">
-              {Array.from({ length: 4 }).map((_, index) => (
-                <div
-                  key={index}
-                  className="rounded-lg border border-border/70 bg-background px-4 py-3"
-                >
-                  <Skeleton className="h-4 w-32" />
-                  <Skeleton className="mt-2 h-4 w-full" />
-                  <Skeleton className="mt-2 h-4 w-5/6" />
-                </div>
-              ))}
-            </div>
-          </section>
-
-          <section className="rounded-lg border border-border/70 bg-card p-4" aria-hidden="true">
-            <Skeleton className="h-5 w-24" />
-            <Skeleton className="mt-4 h-4 w-36" />
-            <div className="mt-2.5 rounded-lg border border-border/70 bg-background px-4 py-3">
-              <Skeleton className="h-4 w-full" />
-              <Skeleton className="mt-2 h-4 w-2/3" />
-              <Skeleton className="mt-3 h-3 w-40" />
-            </div>
-            <Skeleton className="mt-4 h-10 w-full rounded-md" />
-            <Skeleton className="mt-3 h-10 w-full rounded-md" />
-          </section>
-        </div>
-        <span className="sr-only">他職種共有ワークスペースを読み込み中</span>
-      </div>
-    </PageScaffold>
-  );
 }
 
 export function InterprofessionalShareContent({ reportId }: { reportId: string }) {
