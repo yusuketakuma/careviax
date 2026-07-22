@@ -289,15 +289,6 @@
       "expectedCount": 1
     },
     {
-      "path": "src/server/jobs/daily/cleanup.ts",
-      "rule": "missing_org_scope",
-      "owner": "RLS-RAW-READ-GUARD-001",
-      "debtId": "RAW-READ-ORG-033",
-      "reason": "System cron/batch job scans qrScanDraft rows across all orgs; per-org side effects re-enter withOrgContext(row.org_id).",
-      "plannedAction": "Keep cross-org scan; consider a dedicated cross-org read seam if the batch surface grows.",
-      "expectedCount": 1
-    },
-    {
       "path": "src/server/jobs/daily/compliance-expiry.ts",
       "rule": "missing_org_scope",
       "owner": "RLS-RAW-READ-GUARD-001",
@@ -305,15 +296,6 @@
       "reason": "System cron/batch job scans facilityStandardRegistration/pharmacistCredential/consentRecord rows across all orgs; per-org side effects re-enter withOrgContext(row.org_id).",
       "plannedAction": "Keep cross-org scan; consider a dedicated cross-org read seam if the batch surface grows.",
       "expectedCount": 3
-    },
-    {
-      "path": "src/server/jobs/daily/conferences.ts",
-      "rule": "missing_org_scope",
-      "owner": "RLS-RAW-READ-GUARD-001",
-      "debtId": "RAW-READ-ORG-035",
-      "reason": "System cron/batch job scans conferenceNote/careCase rows across all orgs; per-org side effects re-enter withOrgContext(row.org_id).",
-      "plannedAction": "Keep cross-org scan; consider a dedicated cross-org read seam if the batch surface grows.",
-      "expectedCount": 2
     },
     {
       "path": "src/server/jobs/daily/followups.ts",
@@ -325,15 +307,6 @@
       "expectedCount": 6
     },
     {
-      "path": "src/server/jobs/daily/patient-status.ts",
-      "rule": "missing_org_scope",
-      "owner": "RLS-RAW-READ-GUARD-001",
-      "debtId": "RAW-READ-ORG-037",
-      "reason": "System cron/batch job scans organization rows across all orgs; per-org side effects re-enter withOrgContext(row.org_id).",
-      "plannedAction": "Keep cross-org scan; consider a dedicated cross-org read seam if the batch surface grows.",
-      "expectedCount": 1
-    },
-    {
       "path": "src/server/jobs/daily/preparation.ts",
       "rule": "missing_org_scope",
       "owner": "RLS-RAW-READ-GUARD-001",
@@ -341,24 +314,6 @@
       "reason": "System cron/batch job scans visitSchedule rows across all orgs; per-org side effects re-enter withOrgContext(row.org_id).",
       "plannedAction": "Keep cross-org scan; consider a dedicated cross-org read seam if the batch surface grows.",
       "expectedCount": 3
-    },
-    {
-      "path": "src/server/jobs/daily/prescriptions.ts",
-      "rule": "missing_org_scope",
-      "owner": "RLS-RAW-READ-GUARD-001",
-      "debtId": "RAW-READ-ORG-039",
-      "reason": "System cron/batch job scans visitSchedule/prescriptionIntake rows across all orgs; per-org side effects re-enter withOrgContext(row.org_id).",
-      "plannedAction": "Keep cross-org scan; consider a dedicated cross-org read seam if the batch surface grows.",
-      "expectedCount": 4
-    },
-    {
-      "path": "src/server/jobs/daily/reports.ts",
-      "rule": "missing_org_scope",
-      "owner": "RLS-RAW-READ-GUARD-001",
-      "debtId": "RAW-READ-ORG-040",
-      "reason": "System cron/batch job scans careReport rows across all orgs; per-org side effects re-enter withOrgContext(row.org_id).",
-      "plannedAction": "Keep cross-org scan; consider a dedicated cross-org read seam if the batch surface grows.",
-      "expectedCount": 1
     },
     {
       "path": "src/server/jobs/daily/visit-support.ts",
@@ -442,22 +397,13 @@
       "expectedCount": 1
     },
     {
-      "path": "src/server/services/prescription-intake-service.ts",
+      "path": "src/server/services/prescription-intake-post-create.ts",
       "rule": "missing_org_scope",
       "owner": "RLS-RAW-READ-GUARD-001",
       "debtId": "RAW-READ-ORG-050",
       "reason": "drugMaster is a global master/infra table with no org_id column; reads are intentionally global.",
       "plannedAction": "No org filter applicable (global table); revisit only if the model becomes org-scoped.",
       "expectedCount": 1
-    },
-    {
-      "path": "src/server/jobs/daily/emergency.ts",
-      "rule": "missing_org_scope",
-      "owner": "RLS-RAW-READ-GUARD-001",
-      "debtId": "RAW-READ-ORG-051",
-      "reason": "System cron/batch job scans businessHoliday/pharmacistShift rows across all orgs; per-org side effects re-enter withOrgContext(row.org_id).",
-      "plannedAction": "Keep cross-org scan; consider a dedicated cross-org read seam if the batch surface grows.",
-      "expectedCount": 2
     },
     {
       "path": "src/server/jobs/monthly.ts",
