@@ -108,11 +108,6 @@
       "task_id": "MAINT-FILE-SIZE-1000-001"
     },
     {
-      "path": "src/app/(dashboard)/handoff/handoff-workspace.test.tsx",
-      "max_lines": 1502,
-      "task_id": "MAINT-FILE-SIZE-1000-001"
-    },
-    {
       "path": "src/app/(dashboard)/handoff/handoff-workspace.tsx",
       "max_lines": 1741,
       "task_id": "MAINT-FILE-SIZE-1000-001"

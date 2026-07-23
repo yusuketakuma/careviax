@@ -1134,12 +1134,12 @@
         "sha256": "4c453bca51393f895f982f80f76e10ca9b9f4f6600800cac421074e1a66b93e3"
       },
       {
-        "path": "src/app/(dashboard)/handoff/handoff-workspace.helpers.ts",
-        "sha256": "7d5f0f68e0a2341f25be4ceb05051148e55bd6a9efd2b63dc3659f63dc60f250"
+        "path": "src/app/(dashboard)/handoff/fixtures/handoff-workspace.test-support.tsx",
+        "sha256": "cfb50f95fa72f4e237b62332a88412ccf16a710b809429c8c3fce8e1eb75657b"
       },
       {
-        "path": "src/app/(dashboard)/handoff/handoff-workspace.test.tsx",
-        "sha256": "004e15f32b2d425773e97fa1ddc580c8747513c7ab6aca31c74f20ad678f91a3"
+        "path": "src/app/(dashboard)/handoff/handoff-workspace.helpers.ts",
+        "sha256": "7d5f0f68e0a2341f25be4ceb05051148e55bd6a9efd2b63dc3659f63dc60f250"
       },
       {
         "path": "src/app/(dashboard)/handoff/handoff-workspace.tsx",
@@ -30681,10 +30681,10 @@
       "sha256": "85ea357d49e9200f6aaa8a537af826e90a6fc87353d4b37fd3fb7135794d50e8"
     },
     {
-      "path": "src/app/(dashboard)/handoff/handoff-workspace.test.tsx",
-      "classes": ["test"],
+      "path": "src/app/(dashboard)/handoff/fixtures/handoff-workspace-incoming.cases.tsx",
+      "classes": ["fixture"],
       "detectors": ["permission_capability", "ui_role_affordance"],
-      "sha256": "004e15f32b2d425773e97fa1ddc580c8747513c7ab6aca31c74f20ad678f91a3"
+      "sha256": "0e10ea0f445e07656ef33cf86aecbb62cc3d9ea902755a602735501fb9041d37"
     },
     {
       "path": "src/app/(dashboard)/my-day/my-day-content.test.tsx",
