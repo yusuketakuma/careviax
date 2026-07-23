@@ -583,11 +583,6 @@
       "task_id": "MAINT-FILE-SIZE-1000-001"
     },
     {
-      "path": "src/server/services/visit-schedule-billing-preview.test.ts",
-      "max_lines": 1256,
-      "task_id": "MAINT-FILE-SIZE-1000-001"
-    },
-    {
       "path": "src/server/services/visit-schedule-planner.test.ts",
       "max_lines": 4395,
       "task_id": "MAINT-FILE-SIZE-1000-001"
