@@ -478,11 +478,6 @@
       "task_id": "MAINT-FILE-SIZE-1000-001"
     },
     {
-      "path": "src/server/services/drug-master-import/mhlw.test.ts",
-      "max_lines": 1609,
-      "task_id": "MAINT-FILE-SIZE-1000-001"
-    },
-    {
       "path": "src/server/services/external-access.test.ts",
       "max_lines": 1564,
       "task_id": "MAINT-FILE-SIZE-1000-001"
