@@ -128,11 +128,6 @@
       "task_id": "MAINT-FILE-SIZE-1000-001"
     },
     {
-      "path": "src/app/(dashboard)/patients/[id]/medications/medications-content.test.tsx",
-      "max_lines": 1515,
-      "task_id": "MAINT-FILE-SIZE-1000-001"
-    },
-    {
       "path": "src/app/(dashboard)/patients/[id]/medications/medications-content.tsx",
       "max_lines": 1627,
       "task_id": "MAINT-FILE-SIZE-1000-001"
