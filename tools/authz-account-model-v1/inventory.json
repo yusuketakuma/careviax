@@ -735,7 +735,7 @@
       },
       {
         "path": "Plans.md",
-        "sha256": "f94621075c525274e0765d6ac225245ab65b6e21b4d828e6489b10e4d60f2721"
+        "sha256": "1b5db1c0f16b18e224ad692c7af7b9e446e60ebc03ad5fc897b02ada898977d7"
       },
       {
         "path": "README.md",
@@ -903,7 +903,7 @@
       },
       {
         "path": "ops/refactor/STATE.md",
-        "sha256": "af082d02af1358b223b0ee1089fa22d2331fc8176a529a28fd3ffe76d25e0b7d"
+        "sha256": "cc0bcedddf273404e736f4ab78d446b97ca9f9d0a00fca0794f6a938bec69ec0"
       },
       {
         "path": "ops/refactor/archive/PERF_FINDINGS.md",
@@ -2076,6 +2076,22 @@
       {
         "path": "src/server/services/fetch-timeout.ts",
         "sha256": "4880b2d26e15452906e550060f9b4662245018cf5de3a277b2ff8646a95a3b2b"
+      },
+      {
+        "path": "src/server/services/notifications.ts",
+        "sha256": "3272f845efd7682438121fddece728553d2bb71d6acc4d33e0e9397da15adcd9"
+      },
+      {
+        "path": "src/server/services/notifications/fixtures/notifications-delivery-routing.cases.ts",
+        "sha256": "1ca478090c2095281e43013b34f7da7c52c1203d063398f93f5d8a6230ca4cd4"
+      },
+      {
+        "path": "src/server/services/notifications/fixtures/notifications-durable-delivery.cases.ts",
+        "sha256": "4326058d82be0051858713a160177cdb60fcfe00b52c96296da58e13fbef1daf"
+      },
+      {
+        "path": "src/server/services/notifications/fixtures/notifications.test-support.ts",
+        "sha256": "6bd75ef1bac1e1304aa96f4cf2c0a0c0dcc5c28e45a424c9cfaa7f58fed0053f"
       },
       {
         "path": "src/server/services/outbound-webhook.ts",
