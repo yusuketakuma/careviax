@@ -33047,10 +33047,34 @@
       "sha256": "03f5615b7c296a397373627dbf7975aa016cb38e81ede0be8b59ad0e2c0b5736"
     },
     {
-      "path": "src/app/api/visit-preparations/[scheduleId]/route.test.ts",
-      "classes": ["test"],
-      "detectors": ["mapping_precedence", "raw_role_semantics", "tenant_role"],
-      "sha256": "a4d9726264373e379d2e49eb6dd0656c99e9a8936eb9215343689e80df057fd9"
+      "path": "src/app/api/visit-preparations/[scheduleId]/fixtures/route-get-1-core.cases.ts",
+      "classes": ["fixture"],
+      "detectors": ["raw_role_semantics", "tenant_role"],
+      "sha256": "ce9d058f3037563a3abd2fe6487380b56960d028006f83f332fb219bae413b48"
+    },
+    {
+      "path": "src/app/api/visit-preparations/[scheduleId]/fixtures/route-get-2-context.cases.ts",
+      "classes": ["fixture"],
+      "detectors": ["raw_role_semantics"],
+      "sha256": "f72c90c12b82a46090f3b4781eea72ec2ff394db6d738ac6ade51fb3b068e305"
+    },
+    {
+      "path": "src/app/api/visit-preparations/[scheduleId]/fixtures/route-put-1-core.cases.ts",
+      "classes": ["fixture"],
+      "detectors": ["raw_role_semantics", "tenant_role"],
+      "sha256": "e91ae7cb0a183948562a4967caf58e455ed7d8581af23dcb5584f206d234db78"
+    },
+    {
+      "path": "src/app/api/visit-preparations/[scheduleId]/fixtures/route-put-3-capacity.cases.ts",
+      "classes": ["fixture"],
+      "detectors": ["raw_role_semantics"],
+      "sha256": "0b893bf5c32ce5a944f07b90d804549882d7076d1db775523b2017eb0de2bcf4"
+    },
+    {
+      "path": "src/app/api/visit-preparations/[scheduleId]/fixtures/route-support.ts",
+      "classes": ["fixture"],
+      "detectors": ["mapping_precedence", "raw_role_semantics"],
+      "sha256": "1176b79b3feb6b9f635204d8c9ebb2f59225ea7f6c42dbb13c0309ab852f374d"
     },
     {
       "path": "src/app/api/visit-preparations/brief-batch/route.test.ts",
