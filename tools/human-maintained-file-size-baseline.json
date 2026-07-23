@@ -198,11 +198,6 @@
       "task_id": "MAINT-FILE-SIZE-1000-001"
     },
     {
-      "path": "src/app/(dashboard)/reports/report-share-workspace.test.tsx",
-      "max_lines": 1405,
-      "task_id": "MAINT-FILE-SIZE-1000-001"
-    },
-    {
       "path": "src/app/(dashboard)/schedules/proposals/schedule-proposals-content.test.tsx",
       "max_lines": 2761,
       "task_id": "MAINT-FILE-SIZE-1000-001"
