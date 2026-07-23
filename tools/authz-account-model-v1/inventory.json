@@ -33013,22 +33013,28 @@
       "sha256": "06128e6dcf1ee92d3a951f7c657cd0963c20d483e7a735118e5f95c3d24f894d"
     },
     {
+      "path": "src/app/api/tasks/fixtures/route-get.cases.ts",
+      "classes": ["fixture"],
+      "detectors": ["permission_capability"],
+      "sha256": "da2eb0d8c0fa3d7a57dce04802d4a5a6ba239678d5e5df318a387eefea4b868a"
+    },
+    {
+      "path": "src/app/api/tasks/fixtures/route-post.cases.ts",
+      "classes": ["fixture"],
+      "detectors": ["override_flag", "permission_capability", "raw_role_semantics", "tenant_role"],
+      "sha256": "8fb94f7ff64f63946a83266c80c31cbc4df9030e9bb8b1b1f4194b3b6e0498e1"
+    },
+    {
+      "path": "src/app/api/tasks/fixtures/route.test-support.ts",
+      "classes": ["fixture"],
+      "detectors": ["mapping_precedence", "override_flag", "raw_role_semantics"],
+      "sha256": "163fd698102d1588f8b448a4362ee8dafe9a00735b384024eb33fd50281af787"
+    },
+    {
       "path": "src/app/api/tasks/health-board/route.test.ts",
       "classes": ["test"],
       "detectors": ["mapping_precedence", "permission_capability", "raw_role_semantics"],
       "sha256": "44272a9487de223fae7473e61407e84cf11d2c0dcacc9022043be51cdfa659fe"
-    },
-    {
-      "path": "src/app/api/tasks/route.test.ts",
-      "classes": ["test"],
-      "detectors": [
-        "mapping_precedence",
-        "override_flag",
-        "permission_capability",
-        "raw_role_semantics",
-        "tenant_role"
-      ],
-      "sha256": "4e75f2d4729ae8b69b200b43c181663b34ade0977ac39d21eb373fd77380b309"
     },
     {
       "path": "src/app/api/templates/[id]/route.test.ts",
