@@ -735,7 +735,7 @@
       },
       {
         "path": "Plans.md",
-        "sha256": "a33613886a37e07a0bb2deea831d2f4f5203b6a6f0e7e3a920902cacc6bec086"
+        "sha256": "8a94e644d577b0f36084ce1ead5d37e4ab1260921b28c86ed46c3fd7bf2d431b"
       },
       {
         "path": "README.md",
@@ -903,7 +903,7 @@
       },
       {
         "path": "ops/refactor/STATE.md",
-        "sha256": "20f5a74ee2de67d4fda25bf449f785c76b88977c30078ce20b31adbfdfe35900"
+        "sha256": "e67438067f21f7f27f225f8ebc3a2eb0069d041698d91d9d8763f5ec368f0a9c"
       },
       {
         "path": "ops/refactor/archive/PERF_FINDINGS.md",
@@ -915,7 +915,7 @@
       },
       {
         "path": "package.json",
-        "sha256": "0ee43579092cc43484f3a05ea8cb91cd4a58cd115e5d4d69a89385be037abbcf"
+        "sha256": "c603b5912918b0a3f51f0f8ad68c54e052c0e9b68cc6aa46e006c3d47ff0d3bc"
       },
       {
         "path": "playwright.audit.config.ts",
@@ -935,7 +935,7 @@
       },
       {
         "path": "pnpm-lock.yaml",
-        "sha256": "b1b8a4a7a90342b921800778c0b5451fd50d6acb221d477cdc1f06e4138cfc4b"
+        "sha256": "86c3dc1b7f22903e62c6d73c2545c6f5c465bb7ccd92ace584accc0fee50b62c"
       },
       {
         "path": "projects/careviax/blocked/2026-06-22/prescription-intake-transaction-timeout.md",
