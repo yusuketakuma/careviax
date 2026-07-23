@@ -27402,6 +27402,30 @@
       "capability_profile": "p_d89f555cccec"
     },
     {
+      "id": "raw_role_semantics:src/app/api/inquiry-records/[id]/route.test-support.ts",
+      "detector": "raw_role_semantics",
+      "path": "src/app/api/inquiry-records/[id]/route.test-support.ts",
+      "evidence_sha256": "1a5b91b017f92c09bf614bdea280cc212e58fb6a3b528eea691da19c6ddc03ee",
+      "principal": "human",
+      "lifecycles": ["request"],
+      "surfaces": ["rls", "writer"],
+      "exact_values_or_scopes": ["pharmacist"],
+      "route_method_purpose": "not_applicable:non-route-source:src/app/api/inquiry-records/[id]/route.test-support.ts",
+      "precedence_selection": "not_applicable:no-selection-observed:src/app/api/inquiry-records/[id]/route.test-support.ts",
+      "synthetic_derived_mapping": "not_applicable:no-synthetic-mapping-observed:src/app/api/inquiry-records/[id]/route.test-support.ts",
+      "persistence_contract": "not_applicable:no-persistence-observed:src/app/api/inquiry-records/[id]/route.test-support.ts",
+      "ttl_contract": "not_applicable:no-ttl-observed:src/app/api/inquiry-records/[id]/route.test-support.ts",
+      "mapping_disposition": "candidate_requires_human",
+      "owner": "Identity / Authz",
+      "approval_status": "pending_owner_review",
+      "test_refs": [
+        "uncovered:no-focused-test:src/app/api/inquiry-records/[id]/route.test-support.ts"
+      ],
+      "reprojection_or_removal": "owner_review_required_before_cutover:src/app/api/inquiry-records/[id]/route.test-support.ts",
+      "binding_profile": "p_2a62cb15a377",
+      "capability_profile": "p_25e54dcf8b32"
+    },
+    {
       "id": "raw_role_semantics:src/app/api/patients/[id]/route.test-support.ts",
       "detector": "raw_role_semantics",
       "path": "src/app/api/patients/[id]/route.test-support.ts",
@@ -31845,10 +31869,16 @@
       "sha256": "9a4b33bd02f18a0b24c8e336f10845ecb86f50fed63a4b72737ab0602bcc93f1"
     },
     {
-      "path": "src/app/api/inquiry-records/[id]/route.test.ts",
-      "classes": ["test"],
+      "path": "src/app/api/inquiry-records/[id]/fixtures/route-patch-core.cases.ts",
+      "classes": ["fixture"],
       "detectors": ["permission_capability", "raw_role_semantics", "tenant_role"],
-      "sha256": "3f3a49c6681141ad9777219b447ec76bfec5abf7a5450b367bedc09a88f3a8ed"
+      "sha256": "2400d8f6597110792c1a27e7478d38b9f258bde9dee656516baf62859f093b17"
+    },
+    {
+      "path": "src/app/api/inquiry-records/[id]/fixtures/route-patch-linked-line.cases.ts",
+      "classes": ["fixture"],
+      "detectors": ["raw_role_semantics"],
+      "sha256": "3445a514aeed521aae75a386bf9b7924394a63f1394979d17ae7d3a2b13ba9eb"
     },
     {
       "path": "src/app/api/inquiry-records/route.test.ts",
