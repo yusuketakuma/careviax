@@ -32870,10 +32870,16 @@
       "sha256": "ba0fb8dcd3c95fd909f3916795e42a4eb30d4ea207bc7a59798ea32c1e2e5859"
     },
     {
-      "path": "src/app/api/qr-scan-drafts/route.test.ts",
-      "classes": ["test"],
+      "path": "src/app/api/qr-scan-drafts/fixtures/route-post-transport.cases.ts",
+      "classes": ["fixture"],
+      "detectors": ["long_lived_or_offline"],
+      "sha256": "f28e52ccb56b3c4843a85993a3c4a6f677d70bc1bf2087fab4064e8ddf0e34d7"
+    },
+    {
+      "path": "src/app/api/qr-scan-drafts/fixtures/route.test-support.ts",
+      "classes": ["fixture"],
       "detectors": ["long_lived_or_offline", "raw_role_semantics"],
-      "sha256": "81b05e8283462536b04cf0e4c5b725ef36c92257d52118a22adfda49bb8757a9"
+      "sha256": "a54ae411851506a27fdea4490178c48735afc68fb6d5c83cbe141abe91d10af6"
     },
     {
       "path": "src/app/api/referrals/route.test.ts",

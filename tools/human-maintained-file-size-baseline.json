@@ -343,11 +343,6 @@
       "task_id": "MAINT-FILE-SIZE-1000-001"
     },
     {
-      "path": "src/app/api/qr-scan-drafts/route.test.ts",
-      "max_lines": 1436,
-      "task_id": "MAINT-FILE-SIZE-1000-001"
-    },
-    {
       "path": "src/app/api/set-audits/route.test.ts",
       "max_lines": 2087,
       "task_id": "MAINT-FILE-SIZE-1000-001"
