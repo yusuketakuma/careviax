@@ -2078,14 +2078,6 @@
         "sha256": "4880b2d26e15452906e550060f9b4662245018cf5de3a277b2ff8646a95a3b2b"
       },
       {
-        "path": "src/server/services/notifications.test.ts",
-        "sha256": "0364c42b0d106dceeea8d3463ec40f07234f0c3516a527ac6fc8624ac18b4495"
-      },
-      {
-        "path": "src/server/services/notifications.ts",
-        "sha256": "3272f845efd7682438121fddece728553d2bb71d6acc4d33e0e9397da15adcd9"
-      },
-      {
         "path": "src/server/services/outbound-webhook.ts",
         "sha256": "643fbaaa9e778e86da3baa37ad925a1cb918a47bf493338e36bfcf58ec1e0e1a"
       },
@@ -34366,10 +34358,22 @@
       "sha256": "9a70411f24a4f709e1a4da3c214ca12a3d48056161622a5373f0303e349bf479"
     },
     {
-      "path": "src/server/services/notifications.test.ts",
-      "classes": ["test"],
+      "path": "src/server/services/notifications/fixtures/notifications-core.cases.ts",
+      "classes": ["fixture"],
       "detectors": ["raw_role_semantics"],
-      "sha256": "0364c42b0d106dceeea8d3463ec40f07234f0c3516a527ac6fc8624ac18b4495"
+      "sha256": "6087615db13adfbc821299cde5aaf0b06c8a62457f2ade830fcaecc618cc5d2a"
+    },
+    {
+      "path": "src/server/services/notifications/fixtures/notifications-delivery-routing.cases.ts",
+      "classes": ["fixture"],
+      "detectors": ["raw_role_semantics"],
+      "sha256": "1ca478090c2095281e43013b34f7da7c52c1203d063398f93f5d8a6230ca4cd4"
+    },
+    {
+      "path": "src/server/services/notifications/fixtures/notifications-durable-delivery.cases.ts",
+      "classes": ["fixture"],
+      "detectors": ["raw_role_semantics"],
+      "sha256": "4326058d82be0051858713a160177cdb60fcfe00b52c96296da58e13fbef1daf"
     },
     {
       "path": "src/server/services/patient-access.test.ts",
