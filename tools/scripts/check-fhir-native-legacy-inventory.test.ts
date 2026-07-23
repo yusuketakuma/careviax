@@ -171,6 +171,45 @@ describe('check-fhir-native-legacy-inventory', () => {
     expect(runCheck(root, ['--print-manifest'])).toBe(runCheck(root, ['--print-manifest']));
   });
 
+  it('loads exact-key manifest fragments and rejects undeclared fragment content', () => {
+    const root = createFixture({
+      files: {
+        [SOURCE_PATH]: 'export async function load() { return db.patient.findMany({}); }\n',
+      },
+    });
+    const manifest = readManifest(root) as Record<string, unknown>;
+    const expectedPrismaAccesses = manifest.expected_prisma_accesses;
+    delete manifest.expected_prisma_accesses;
+    manifest.fragments = [
+      {
+        path: 'tools/fhir-native/fixture-prisma-accesses.json',
+        keys: ['expected_prisma_accesses'],
+      },
+    ];
+    writeRepoFile(
+      root,
+      'tools/fhir-native/fixture-prisma-accesses.json',
+      `${JSON.stringify({ expected_prisma_accesses: expectedPrismaAccesses }, null, 2)}\n`,
+    );
+    writeManifest(root, manifest);
+
+    expect(runCheck(root)).toContain('check passed');
+
+    writeRepoFile(
+      root,
+      'tools/fhir-native/fixture-prisma-accesses.json',
+      `${JSON.stringify(
+        {
+          expected_prisma_accesses: expectedPrismaAccesses,
+          expected_raw_sql_accesses: [],
+        },
+        null,
+        2,
+      )}\n`,
+    );
+    expect(() => runCheck(root)).toThrow(/keys differ from its descriptor/);
+  });
+
   it('fails when a tracked table or column definition drifts', () => {
     const root = createFixture();
     writeRepoFile(

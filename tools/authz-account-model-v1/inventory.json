@@ -2259,7 +2259,7 @@
       },
       {
         "path": "tools/scripts/check-fhir-native-legacy-inventory.mjs",
-        "sha256": "e24366ba17fa4e7021f14e05656e54afda1db9cc86d495795c58f2075e9ae666"
+        "sha256": "befd1ef3e45dceb68d6e6a13876bf2ed12d4b14b06de6dc7f2b63cd5b9cc0bc8"
       },
       {
         "path": "tools/scripts/check-format-changed-files.mjs",
@@ -2308,6 +2308,10 @@
       {
         "path": "tools/scripts/external-access-case-boundary-audit.ts",
         "sha256": "b33898e44b1005039796f613eab01c9d24d70c3ca0c4ce9c20df7b889df189d5"
+      },
+      {
+        "path": "tools/scripts/fhir-native-legacy-manifest.mjs",
+        "sha256": "601877c6570bbf7527360ff704fb94030e0709021c4aa7eb7562c7ae68e6f9bb"
       },
       {
         "path": "tools/scripts/medical-ui-e2e-preflight.test.ts",
@@ -6618,24 +6622,26 @@
       "capability_profile": "p_0f0e0a961fcf"
     },
     {
-      "id": "mapping_precedence:src/app/api/visit-preparations/[scheduleId]/route.ts",
+      "id": "mapping_precedence:src/app/api/visit-preparations/[scheduleId]/route-get.ts",
       "detector": "mapping_precedence",
-      "path": "src/app/api/visit-preparations/[scheduleId]/route.ts",
+      "path": "src/app/api/visit-preparations/[scheduleId]/route-get.ts",
       "evidence_sha256": "7da475e3afb7631b9b424389b8845b88180c94175aea1e294cec5e91ef5a1c62",
       "principal": "human",
       "lifecycles": ["request"],
       "surfaces": ["rls", "writer"],
       "exact_values_or_scopes": ["ADMIN", "admin", "owner"],
-      "route_method_purpose": "GET,PUT /api/visit-preparations/[scheduleId] purpose=legacy_unspecified_pending_review",
+      "route_method_purpose": "not_applicable:non-route-source:src/app/api/visit-preparations/[scheduleId]/route-get.ts",
       "precedence_selection": "legacy_observed_requires_human_review",
-      "synthetic_derived_mapping": "not_applicable:no-synthetic-mapping-observed:src/app/api/visit-preparations/[scheduleId]/route.ts",
-      "persistence_contract": "not_applicable:no-persistence-observed:src/app/api/visit-preparations/[scheduleId]/route.ts",
-      "ttl_contract": "not_applicable:no-ttl-observed:src/app/api/visit-preparations/[scheduleId]/route.ts",
+      "synthetic_derived_mapping": "not_applicable:no-synthetic-mapping-observed:src/app/api/visit-preparations/[scheduleId]/route-get.ts",
+      "persistence_contract": "not_applicable:no-persistence-observed:src/app/api/visit-preparations/[scheduleId]/route-get.ts",
+      "ttl_contract": "not_applicable:no-ttl-observed:src/app/api/visit-preparations/[scheduleId]/route-get.ts",
       "mapping_disposition": "candidate_requires_human",
       "owner": "Identity / Authz",
       "approval_status": "pending_owner_review",
-      "test_refs": ["src/app/api/visit-preparations/[scheduleId]/route.test.ts"],
-      "reprojection_or_removal": "owner_review_required_before_cutover:src/app/api/visit-preparations/[scheduleId]/route.ts",
+      "test_refs": [
+        "uncovered:no-focused-test:src/app/api/visit-preparations/[scheduleId]/route-get.ts"
+      ],
+      "reprojection_or_removal": "owner_review_required_before_cutover:src/app/api/visit-preparations/[scheduleId]/route-get.ts",
       "binding_profile": "p_0f38bf96fe88",
       "capability_profile": "p_25e54dcf8b32"
     },
@@ -15791,6 +15797,33 @@
       "capability_profile": "p_d89f555cccec"
     },
     {
+      "id": "permission_capability:src/app/api/visit-preparations/[scheduleId]/route-get.ts",
+      "detector": "permission_capability",
+      "path": "src/app/api/visit-preparations/[scheduleId]/route-get.ts",
+      "evidence_sha256": "81a2e93a22f29943228cdb4f66e9fec89b3968c8789e08efc1bc02d32704d338",
+      "principal": "human",
+      "lifecycles": ["request"],
+      "surfaces": ["reader_evaluator"],
+      "exact_values_or_scopes": [
+        "supporting_literal:canManageBilling",
+        "supporting_literal:canVisit"
+      ],
+      "route_method_purpose": "not_applicable:non-route-source:src/app/api/visit-preparations/[scheduleId]/route-get.ts",
+      "precedence_selection": "legacy_observed_requires_human_review",
+      "synthetic_derived_mapping": "not_applicable:no-synthetic-mapping-observed:src/app/api/visit-preparations/[scheduleId]/route-get.ts",
+      "persistence_contract": "not_applicable:no-persistence-observed:src/app/api/visit-preparations/[scheduleId]/route-get.ts",
+      "ttl_contract": "not_applicable:no-ttl-observed:src/app/api/visit-preparations/[scheduleId]/route-get.ts",
+      "mapping_disposition": "inventory_only",
+      "owner": "Permission matrix",
+      "approval_status": "pending_owner_review",
+      "test_refs": [
+        "uncovered:no-focused-test:src/app/api/visit-preparations/[scheduleId]/route-get.ts"
+      ],
+      "reprojection_or_removal": "owner_review_required_before_cutover:src/app/api/visit-preparations/[scheduleId]/route-get.ts",
+      "binding_profile": "p_0f38bf96fe88",
+      "capability_profile": "p_25e54dcf8b32"
+    },
+    {
       "id": "permission_capability:src/app/api/visit-preparations/[scheduleId]/route.ts",
       "detector": "permission_capability",
       "path": "src/app/api/visit-preparations/[scheduleId]/route.ts",
@@ -19019,24 +19052,26 @@
       "capability_profile": "p_6e2fcf09f584"
     },
     {
-      "id": "raw_role_semantics:src/app/api/visit-preparations/[scheduleId]/route.ts",
+      "id": "raw_role_semantics:src/app/api/visit-preparations/[scheduleId]/route-get.ts",
       "detector": "raw_role_semantics",
-      "path": "src/app/api/visit-preparations/[scheduleId]/route.ts",
+      "path": "src/app/api/visit-preparations/[scheduleId]/route-get.ts",
       "evidence_sha256": "c881cbc2163e8e180bd49117981e8c1b9e6218622429dbd814f1922f8d98ba6c",
       "principal": "human",
       "lifecycles": ["request"],
       "surfaces": ["rls", "writer"],
       "exact_values_or_scopes": ["admin", "owner"],
-      "route_method_purpose": "GET,PUT /api/visit-preparations/[scheduleId] purpose=legacy_unspecified_pending_review",
-      "precedence_selection": "not_applicable:no-selection-observed:src/app/api/visit-preparations/[scheduleId]/route.ts",
-      "synthetic_derived_mapping": "not_applicable:no-synthetic-mapping-observed:src/app/api/visit-preparations/[scheduleId]/route.ts",
-      "persistence_contract": "not_applicable:no-persistence-observed:src/app/api/visit-preparations/[scheduleId]/route.ts",
-      "ttl_contract": "not_applicable:no-ttl-observed:src/app/api/visit-preparations/[scheduleId]/route.ts",
+      "route_method_purpose": "not_applicable:non-route-source:src/app/api/visit-preparations/[scheduleId]/route-get.ts",
+      "precedence_selection": "not_applicable:no-selection-observed:src/app/api/visit-preparations/[scheduleId]/route-get.ts",
+      "synthetic_derived_mapping": "not_applicable:no-synthetic-mapping-observed:src/app/api/visit-preparations/[scheduleId]/route-get.ts",
+      "persistence_contract": "not_applicable:no-persistence-observed:src/app/api/visit-preparations/[scheduleId]/route-get.ts",
+      "ttl_contract": "not_applicable:no-ttl-observed:src/app/api/visit-preparations/[scheduleId]/route-get.ts",
       "mapping_disposition": "candidate_requires_human",
       "owner": "Identity / Authz",
       "approval_status": "pending_owner_review",
-      "test_refs": ["src/app/api/visit-preparations/[scheduleId]/route.test.ts"],
-      "reprojection_or_removal": "owner_review_required_before_cutover:src/app/api/visit-preparations/[scheduleId]/route.ts",
+      "test_refs": [
+        "uncovered:no-focused-test:src/app/api/visit-preparations/[scheduleId]/route-get.ts"
+      ],
+      "reprojection_or_removal": "owner_review_required_before_cutover:src/app/api/visit-preparations/[scheduleId]/route-get.ts",
       "binding_profile": "p_0f38bf96fe88",
       "capability_profile": "p_25e54dcf8b32"
     },
@@ -27291,28 +27326,50 @@
       "capability_profile": "p_182a48efe1c9"
     },
     {
-      "id": "mapping_precedence:src/app/api/patients/[id]/route.ts",
+      "id": "mapping_precedence:src/app/api/patients/[id]/patient-patch-handler.ts",
       "detector": "mapping_precedence",
-      "path": "src/app/api/patients/[id]/route.ts",
+      "path": "src/app/api/patients/[id]/patient-patch-handler.ts",
       "evidence_sha256": "6782ee68f37abc01653f9691281ca4ac733f24a62b15804d53fe863c60458e5d",
       "principal": "human",
       "lifecycles": ["request"],
       "surfaces": ["rls", "writer"],
       "exact_values_or_scopes": [
-        "not_applicable:mapping_precedence:no-enumerated-value:src/app/api/patients/[id]/route.ts"
+        "not_applicable:mapping_precedence:no-enumerated-value:src/app/api/patients/[id]/patient-patch-handler.ts"
       ],
-      "route_method_purpose": "GET,PATCH /api/patients/[id] purpose=legacy_unspecified_pending_review",
+      "route_method_purpose": "not_applicable:non-route-source:src/app/api/patients/[id]/patient-patch-handler.ts",
       "precedence_selection": "legacy_observed_requires_human_review",
-      "synthetic_derived_mapping": "not_applicable:no-synthetic-mapping-observed:src/app/api/patients/[id]/route.ts",
-      "persistence_contract": "not_applicable:no-persistence-observed:src/app/api/patients/[id]/route.ts",
-      "ttl_contract": "not_applicable:no-ttl-observed:src/app/api/patients/[id]/route.ts",
+      "synthetic_derived_mapping": "not_applicable:no-synthetic-mapping-observed:src/app/api/patients/[id]/patient-patch-handler.ts",
+      "persistence_contract": "not_applicable:no-persistence-observed:src/app/api/patients/[id]/patient-patch-handler.ts",
+      "ttl_contract": "not_applicable:no-ttl-observed:src/app/api/patients/[id]/patient-patch-handler.ts",
       "mapping_disposition": "candidate_requires_human",
       "owner": "Identity / Authz",
       "approval_status": "pending_owner_review",
-      "test_refs": ["src/app/api/patients/[id]/route.test.ts"],
-      "reprojection_or_removal": "owner_review_required_before_cutover:src/app/api/patients/[id]/route.ts",
+      "test_refs": ["uncovered:no-focused-test:src/app/api/patients/[id]/patient-patch-handler.ts"],
+      "reprojection_or_removal": "owner_review_required_before_cutover:src/app/api/patients/[id]/patient-patch-handler.ts",
       "binding_profile": "p_d3f8b85adfe7",
       "capability_profile": "p_a04a7f9d4aaf"
+    },
+    {
+      "id": "permission_capability:src/app/api/patients/[id]/patient-patch-handler.ts",
+      "detector": "permission_capability",
+      "path": "src/app/api/patients/[id]/patient-patch-handler.ts",
+      "evidence_sha256": "ef0a3751d3ddcd61719dce96153a7d0abfe83b6ba7dc8ada783c5b0a340e6194",
+      "principal": "human",
+      "lifecycles": ["request"],
+      "surfaces": ["reader_evaluator"],
+      "exact_values_or_scopes": ["supporting_literal:canVisit"],
+      "route_method_purpose": "not_applicable:non-route-source:src/app/api/patients/[id]/patient-patch-handler.ts",
+      "precedence_selection": "not_applicable:no-selection-observed:src/app/api/patients/[id]/patient-patch-handler.ts",
+      "synthetic_derived_mapping": "not_applicable:no-synthetic-mapping-observed:src/app/api/patients/[id]/patient-patch-handler.ts",
+      "persistence_contract": "not_applicable:no-persistence-observed:src/app/api/patients/[id]/patient-patch-handler.ts",
+      "ttl_contract": "not_applicable:no-ttl-observed:src/app/api/patients/[id]/patient-patch-handler.ts",
+      "mapping_disposition": "inventory_only",
+      "owner": "Permission matrix",
+      "approval_status": "pending_owner_review",
+      "test_refs": ["uncovered:no-focused-test:src/app/api/patients/[id]/patient-patch-handler.ts"],
+      "reprojection_or_removal": "owner_review_required_before_cutover:src/app/api/patients/[id]/patient-patch-handler.ts",
+      "binding_profile": "p_d30ff6d0cd63",
+      "capability_profile": "p_d89f555cccec"
     },
     {
       "id": "permission_capability:src/app/api/patients/[id]/patient-get-handler.ts",
@@ -32258,7 +32315,7 @@
       "path": "src/app/api/patients/[id]/patient-patch-occ.integration.test.ts",
       "classes": ["test"],
       "detectors": ["raw_role_semantics", "rls_authz"],
-      "sha256": "15a60329d6d60efc891fcaa94ccaf7d6db45d14605f49989fa2d437fa46aa89e"
+      "sha256": "4175a99f413a1c6ab182774933ab714079221db2e5398e2dd0092eececa08791"
     },
     {
       "path": "src/app/api/patients/[id]/prescriptions/e-prescription/route.test.ts",

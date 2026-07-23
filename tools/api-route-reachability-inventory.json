@@ -5137,7 +5137,7 @@
       "route": "/api/visit-preparations/:scheduleId",
       "method": "GET",
       "file": "src/app/api/visit-preparations/[scheduleId]/route.ts",
-      "export_kind": "direct",
+      "export_kind": "re_export",
       "classification": "reachable_ui_rsc_client",
       "reason": "Production UI, RSC, or shared client source contains a method-matched API reference.",
       "evidence": [
@@ -6324,7 +6324,7 @@
       "route": "/api/patients/:id",
       "method": "PATCH",
       "file": "src/app/api/patients/[id]/route.ts",
-      "export_kind": "direct",
+      "export_kind": "re_export",
       "classification": "owner_review_pending_orphan_retire_candidate",
       "reason": "No production consumer evidence or reserved contract prefix was found; retain only for owner review before retirement.",
       "evidence": [
@@ -9935,7 +9935,7 @@
       "reason": "Production UI, RSC, or shared client source contains a method-matched API reference.",
       "evidence": [
         {
-          "path": "src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx",
+          "path": "src/app/(dashboard)/visits/[id]/record/visit-record-form-controller.tsx",
           "kind": "network_call",
           "symbol": "fetch",
           "reference": "/api/visit-records"

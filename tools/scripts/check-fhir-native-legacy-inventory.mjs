@@ -7,6 +7,15 @@ import { pathToFileURL } from 'node:url';
 
 import ts from 'typescript';
 
+import {
+  InventoryCheckError,
+  assert,
+  assertSafeRelativePath,
+  readManifest,
+  readUtf8,
+  resolveRepoPath,
+} from './fhir-native-legacy-manifest.mjs';
+
 const DEFAULT_MANIFEST_PATH = 'tools/fhir-native/legacy-migration-inventory.json';
 const SOURCE_EXTENSIONS = new Set(['.cjs', '.js', '.jsx', '.mjs', '.ts', '.tsx']);
 const SKIPPED_DIRECTORIES = new Set([
@@ -82,17 +91,7 @@ const ACTIVITIES = new Set([
 ]);
 const DIRECTIONS = new Set(['none', 'read', 'read_write', 'transform', 'write']);
 
-export class InventoryCheckError extends Error {
-  constructor(message, details = []) {
-    super(message);
-    this.name = 'InventoryCheckError';
-    this.details = details;
-  }
-}
-
-function assert(condition, message, details = []) {
-  if (!condition) throw new InventoryCheckError(message, details);
-}
+export { InventoryCheckError };
 
 function sha256(value) {
   return createHash('sha256').update(value).digest('hex');
@@ -115,46 +114,6 @@ function escapeRegExp(value) {
 
 function normalizePath(value) {
   return value.split(path.sep).join('/');
-}
-
-function assertSafeRelativePath(value, label) {
-  assert(typeof value === 'string' && value.length > 0, `${label} must be a non-empty path`);
-  assert(!path.isAbsolute(value), `${label} must be repository-relative`, [value]);
-  const normalized = path.posix.normalize(value.replaceAll('\\', '/'));
-  assert(normalized !== '..' && !normalized.startsWith('../'), `${label} escapes the repository`, [
-    value,
-  ]);
-  return normalized;
-}
-
-function resolveRepoPath(repoRoot, relativePath, label) {
-  const safePath = assertSafeRelativePath(relativePath, label);
-  const absolutePath = path.resolve(repoRoot, safePath);
-  const relative = path.relative(repoRoot, absolutePath);
-  assert(
-    relative !== '..' && !relative.startsWith(`..${path.sep}`),
-    `${label} escapes repository`,
-    [relativePath],
-  );
-  return absolutePath;
-}
-
-function readUtf8(repoRoot, relativePath, label = 'path') {
-  const absolutePath = resolveRepoPath(repoRoot, relativePath, label);
-  assert(existsSync(absolutePath), `${label} is missing`, [relativePath]);
-  assert(lstatSync(absolutePath).isFile(), `${label} is not a regular file`, [relativePath]);
-  return readFileSync(absolutePath, 'utf8');
-}
-
-function readManifest(repoRoot, manifestPath) {
-  const raw = readUtf8(repoRoot, manifestPath, 'manifest path');
-  try {
-    return JSON.parse(raw);
-  } catch (error) {
-    throw new InventoryCheckError('manifest is not valid JSON', [
-      error instanceof Error ? error.message : String(error),
-    ]);
-  }
 }
 
 function countMatches(content, pattern, flags = 'gm') {
@@ -1314,9 +1273,10 @@ function materializeManifestBaseline(manifest, inventory) {
   const codeById = new Map(inventory.code_surfaces.map((entry) => [entry.id, entry]));
   const exportsByPath = new Map(inventory.exports.map((entry) => [entry.path, entry]));
   const callsById = new Map(inventory.calls.map((entry) => [entry.id, entry]));
+  const monolithicManifest = { ...manifest, fragments: undefined };
 
   return {
-    ...manifest,
+    ...monolithicManifest,
     schema_surfaces: manifest.schema_surfaces.map((entry) => {
       const current = schemaById.get(entry.id);
       assert(current, 'cannot materialize missing schema surface', [entry.id]);

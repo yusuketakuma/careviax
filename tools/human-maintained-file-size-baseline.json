@@ -383,11 +383,6 @@
       "task_id": "MAINT-FILE-SIZE-1000-001"
     },
     {
-      "path": "src/app/api/visit-preparations/[scheduleId]/route.ts",
-      "max_lines": 2245,
-      "task_id": "MAINT-FILE-SIZE-1000-001"
-    },
-    {
       "path": "src/app/api/visit-records/[id]/route.test.ts",
       "max_lines": 1680,
       "task_id": "MAINT-FILE-SIZE-1000-001"
@@ -614,12 +609,12 @@
     },
     {
       "path": "tools/fhir-native/legacy-migration-inventory.json",
-      "max_lines": 3408,
+      "max_lines": 2751,
       "task_id": "MAINT-FILE-SIZE-1000-001"
     },
     {
       "path": "tools/scripts/check-fhir-native-legacy-inventory.mjs",
-      "max_lines": 1469,
+      "max_lines": 1429,
       "task_id": "MAINT-FILE-SIZE-1000-001"
     },
     {

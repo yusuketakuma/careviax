@@ -6,7 +6,7 @@ import { NextRequest } from 'next/server';
 import { Pool } from 'pg';
 import type { AuthContext } from '@/lib/auth/context';
 import { prisma } from '@/lib/db/client';
-import { executeAuthenticatedPatientPatch } from './route';
+import { executeAuthenticatedPatientPatch } from './patient-patch-handler';
 
 const appDatabaseUrl = process.env.PATIENT_PATCH_OCC_DATABASE_URL;
 const adminDatabaseUrl =
