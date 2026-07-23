@@ -1982,12 +1982,20 @@
         "sha256": "c4dfb9979fe769bd8507c5e56d9b46bb443b0f0248d6400e189fecce13a1ff83"
       },
       {
+        "path": "src/phos/infra/api-gateway-lambda-cloudformation.ts",
+        "sha256": "bc3e2cf6d3b13a7f72867bcf652fcf94fef8a3455fc10dad5402cc1c540b0567"
+      },
+      {
         "path": "src/phos/infra/api-gateway-lambda-runtime.test.ts",
         "sha256": "a391d82c6550999c4cd3b2ac49aad48822cbe9460bdcd377750e9f325b4a1ac9"
       },
       {
+        "path": "src/phos/infra/api-gateway-lambda-static-resources.ts",
+        "sha256": "8cca562d00c3cf716322de56d0549d3abf7ec28514a4aba87a6e1d38b1d73c40"
+      },
+      {
         "path": "src/phos/infra/api-gateway-lambda-template.ts",
-        "sha256": "f7badfb04b6256edfb2cf8ce092bf8a9aafd826978b425f6fcef6437918caaf7"
+        "sha256": "e132bd2d75a70432eb7c9db385f2b1f367a26d70bbc852e90c8f6c76d403301b"
       },
       {
         "path": "src/phos/infra/api-gateway-routes.test.ts",
