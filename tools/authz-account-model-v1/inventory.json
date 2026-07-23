@@ -33981,16 +33981,16 @@
       "sha256": "d06ddf844cd819f4d762869397bf22dcacb0d708467a1ac51de39347c3332987"
     },
     {
+      "path": "src/phos/infra/fixtures/pr15-final-no-go-gate/infra-security.cases.ts",
+      "classes": ["fixture"],
+      "detectors": ["phos_scope", "raw_role_semantics", "service_job"],
+      "sha256": "1bc4040312d2cedc9bb0b3275e8754ef4618fa3b3beec50ec9c3228cdbb84482"
+    },
+    {
       "path": "src/phos/infra/phos-final-e2e.test.tsx",
       "classes": ["test"],
       "detectors": ["phos_role", "phos_scope", "raw_role_semantics", "role_projection"],
       "sha256": "9cb8f33559429c57cce4a99ec6e6ff696a4765e4b17711ca3a66b31b64c6add1"
-    },
-    {
-      "path": "src/phos/infra/pr15-final-no-go-gate.test.ts",
-      "classes": ["test"],
-      "detectors": ["phos_scope", "raw_role_semantics", "service_job"],
-      "sha256": "f39f12bd239fd0bbfe0693d8380f07fb3c76b0a41be7f5af362959d872f27722"
     },
     {
       "path": "src/phos/ui/board/board-client-helpers.test.ts",
