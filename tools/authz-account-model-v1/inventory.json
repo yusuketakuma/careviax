@@ -735,7 +735,7 @@
       },
       {
         "path": "Plans.md",
-        "sha256": "996e984239898a37b237eadff8bd7bbae5386b8400feb1ac647b20c111611779"
+        "sha256": "a33613886a37e07a0bb2deea831d2f4f5203b6a6f0e7e3a920902cacc6bec086"
       },
       {
         "path": "README.md",
@@ -903,7 +903,7 @@
       },
       {
         "path": "ops/refactor/STATE.md",
-        "sha256": "1ae8f9c2300088da1dfec925d46b301f46637489cc770acbf3ead181dece142c"
+        "sha256": "20f5a74ee2de67d4fda25bf449f785c76b88977c30078ce20b31adbfdfe35900"
       },
       {
         "path": "ops/refactor/archive/PERF_FINDINGS.md",
@@ -34688,7 +34688,7 @@
       "path": "tools/scripts/check-task-type-registry.test.ts",
       "classes": ["test"],
       "detectors": ["service_job"],
-      "sha256": "b1b03c0dc083a84f6332eecdd32075055dd86c82124e56a883efa9c799bf7d21"
+      "sha256": "1fd49de127f7bf5ef5be5708434c30b01141493497add7515262005a51b7c7b3"
     },
     {
       "path": "tools/scripts/run-postgres-integration-manifest.test.ts",
