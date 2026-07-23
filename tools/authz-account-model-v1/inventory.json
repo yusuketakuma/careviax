@@ -32956,10 +32956,22 @@
       "sha256": "a4f23b4e53577b4fb537a39be799c2b3df70bade3f56d55ea3e26bd317c3406d"
     },
     {
-      "path": "src/app/api/set-plans/[id]/generate-batches/route.test.ts",
-      "classes": ["test"],
+      "path": "src/app/api/set-plans/[id]/generate-batches/fixtures/route-concurrency.cases.ts",
+      "classes": ["fixture"],
+      "detectors": ["raw_role_semantics"],
+      "sha256": "47a95a6119b5d7b93c602a1c1675c0a798d60fcd9db2cf2b4ac540891a171cae"
+    },
+    {
+      "path": "src/app/api/set-plans/[id]/generate-batches/fixtures/route-guard-reuse.cases.ts",
+      "classes": ["fixture"],
+      "detectors": ["raw_role_semantics"],
+      "sha256": "806d23e7944bfb6dd04d8f972e0b2ca9eb95fd16dab982b692a340fbc92a9dac"
+    },
+    {
+      "path": "src/app/api/set-plans/[id]/generate-batches/fixtures/route.test-support.ts",
+      "classes": ["fixture"],
       "detectors": ["mapping_precedence", "raw_role_semantics"],
-      "sha256": "75757df6214393d52b7716d2d8cecd98dfd98bc118cde96d28c99869c0891652"
+      "sha256": "f72df20068811691376fc466889cfb719d4e93a93cc5244f7ada44e4b1aa000b"
     },
     {
       "path": "src/app/api/set-plans/[id]/route.test.ts",
