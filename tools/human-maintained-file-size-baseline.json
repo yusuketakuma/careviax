@@ -103,11 +103,6 @@
       "task_id": "MAINT-FILE-SIZE-1000-001"
     },
     {
-      "path": "src/app/(dashboard)/dashboard/dashboard-cockpit.test.tsx",
-      "max_lines": 1324,
-      "task_id": "MAINT-FILE-SIZE-1000-001"
-    },
-    {
       "path": "src/app/(dashboard)/dashboard/dashboard-cockpit.tsx",
       "max_lines": 1767,
       "task_id": "MAINT-FILE-SIZE-1000-001"
