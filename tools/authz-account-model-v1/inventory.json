@@ -32446,10 +32446,16 @@
       "sha256": "72ab8bf71bae39e6368157c92a4c10387b096156bec88d9c6da466b1fbce65dd"
     },
     {
-      "path": "src/app/api/patients/board/route.test.ts",
-      "classes": ["test"],
-      "detectors": ["permission_capability", "raw_role_semantics"],
-      "sha256": "dfe908ea278c9e1a74a5e2e5eb7c7226bd5f87d19ba392f285a26af8ea661ae2"
+      "path": "src/app/api/patients/board/fixtures/route-core.cases.ts",
+      "classes": ["fixture"],
+      "detectors": ["permission_capability"],
+      "sha256": "bc4a8e1769f742b38bc066cdb8ff28d844aeb8e519ac1d9b34c55848cadc6585"
+    },
+    {
+      "path": "src/app/api/patients/board/fixtures/route.test-support.ts",
+      "classes": ["fixture"],
+      "detectors": ["raw_role_semantics"],
+      "sha256": "fc80f1c9fd79c48aa80b02338b9fad2182cfd1e5aa380f3d0c41dda26e030620"
     },
     {
       "path": "src/app/api/patients/check-duplicate/route.test.ts",

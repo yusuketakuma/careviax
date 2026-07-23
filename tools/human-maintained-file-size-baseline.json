@@ -328,11 +328,6 @@
       "task_id": "MAINT-FILE-SIZE-1000-001"
     },
     {
-      "path": "src/app/api/patients/board/route.test.ts",
-      "max_lines": 1372,
-      "task_id": "MAINT-FILE-SIZE-1000-001"
-    },
-    {
       "path": "src/app/api/patients/route.test.ts",
       "max_lines": 2213,
       "task_id": "MAINT-FILE-SIZE-1000-001"
