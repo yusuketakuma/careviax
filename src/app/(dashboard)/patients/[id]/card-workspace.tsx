@@ -5754,7 +5754,10 @@ export function CardWorkspace({
         <div className="flex flex-wrap gap-2">
           <Link
             href={buildPatientHref(patientId, '/collaboration')}
-            className={buttonVariants({ variant: 'outline', className: '!h-auto !min-h-11 px-4 py-2' })}
+            className={buttonVariants({
+              variant: 'outline',
+              className: '!h-auto !min-h-11 px-4 py-2',
+            })}
             data-testid="card-open-collaboration"
           >
             いま見ている人
@@ -5770,7 +5773,10 @@ export function CardWorkspace({
           </Button>
           <Link
             href={buildPatientCompareHref(patientId)}
-            className={buttonVariants({ variant: 'outline', className: 'max-sm:hidden !h-auto !min-h-11 px-4 py-2' })}
+            className={buttonVariants({
+              variant: 'outline',
+              className: 'max-sm:hidden !h-auto !min-h-11 px-4 py-2',
+            })}
             data-testid="card-open-compare"
           >
             カードを分割表示
@@ -6019,7 +6025,9 @@ export function CardWorkspace({
         data-testid="patient-workspace-body"
         className="space-y-4"
       >
-        <h2 id="patient-workspace-body-heading" className="sr-only">患者情報と作業内容</h2>
+        <h2 id="patient-workspace-body-heading" className="sr-only">
+          患者情報と作業内容
+        </h2>
         <div className="min-w-0 space-y-6">
           {patientHeader}
 

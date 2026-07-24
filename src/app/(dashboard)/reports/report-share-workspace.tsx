@@ -864,10 +864,7 @@ export function ReportShareWorkspace() {
         description="今日書く報告、返信待ち、送付済みの状況を確認して次の共有へ進みます。"
         actions={[{ href: '/admin/document-templates', label: 'テンプレートを編集' }]}
         supportingContent={
-          <p
-            className="text-sm text-muted-foreground"
-            data-testid="report-workspace-header-meta"
-          >
+          <p className="text-sm text-muted-foreground" data-testid="report-workspace-header-meta">
             {buildHeaderMeta(now, data?.counts ?? null, data?.count_metadata ?? null)}
           </p>
         }
@@ -923,25 +920,25 @@ export function ReportShareWorkspace() {
                       : null
                   }
                 />
-              <ReportInboundCandidatesSection
-                candidates={data.inbound_report_candidates}
-                count={data.count_metadata?.report_candidates}
-                onSelectCandidate={(input) => decideInboundCandidateMutation.mutate(input)}
-                pendingDecisionKey={
-                  decideInboundCandidateMutation.isPending &&
-                  decideInboundCandidateMutation.variables
-                    ? `${decideInboundCandidateMutation.variables.signalId}:${decideInboundCandidateMutation.variables.action}`
-                    : null
-                }
-                decisionError={decideInboundCandidateMutation.isError}
-                onRetryDecision={
-                  decideInboundCandidateMutation.variables
-                    ? () =>
-                        decideInboundCandidateMutation.mutate(
-                          decideInboundCandidateMutation.variables,
-                        )
-                    : null
-                }
+                <ReportInboundCandidatesSection
+                  candidates={data.inbound_report_candidates}
+                  count={data.count_metadata?.report_candidates}
+                  onSelectCandidate={(input) => decideInboundCandidateMutation.mutate(input)}
+                  pendingDecisionKey={
+                    decideInboundCandidateMutation.isPending &&
+                    decideInboundCandidateMutation.variables
+                      ? `${decideInboundCandidateMutation.variables.signalId}:${decideInboundCandidateMutation.variables.action}`
+                      : null
+                  }
+                  decisionError={decideInboundCandidateMutation.isError}
+                  onRetryDecision={
+                    decideInboundCandidateMutation.variables
+                      ? () =>
+                          decideInboundCandidateMutation.mutate(
+                            decideInboundCandidateMutation.variables,
+                          )
+                      : null
+                  }
                 />
               </div>
               <MainWorkflowCompactNav
@@ -950,8 +947,13 @@ export function ReportShareWorkspace() {
               />
               {/* 即時対応優先(guidelines §68-76): 今日書く → 返信待ち(=止まっている/他職種待ち) →
                   残課題 → 作成済(参照)。返信待ちを上位へ繰り上げて判断を先に出す。 */}
-              <section aria-labelledby="reports-status-summary-heading" data-testid="reports-status-summary">
-                <h2 id="reports-status-summary-heading" className="sr-only">報告状況サマリー</h2>
+              <section
+                aria-labelledby="reports-status-summary-heading"
+                data-testid="reports-status-summary"
+              >
+                <h2 id="reports-status-summary-heading" className="sr-only">
+                  報告状況サマリー
+                </h2>
                 <div className="space-y-4">
                   <WaitingBoxesSection data={data} />
                   <ReportOpenIssuesSection
@@ -961,7 +963,9 @@ export function ReportShareWorkspace() {
                 </div>
               </section>
               <section aria-labelledby="reports-list-heading" data-testid="reports-list">
-                <h2 id="reports-list-heading" className="sr-only">作成済み報告書一覧</h2>
+                <h2 id="reports-list-heading" className="sr-only">
+                  作成済み報告書一覧
+                </h2>
                 <CreatedReportsSection
                   reports={data.created_reports}
                   count={data.count_metadata?.created}

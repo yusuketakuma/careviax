@@ -27,7 +27,9 @@ describe('WorkflowPageHeader', () => {
 
     expect(screen.getByText('Patient Registry')).toBeTruthy();
     expect(screen.getByRole('heading', { name: '患者一覧' })).toBeTruthy();
-    expect(screen.getByTestId('page-purpose').textContent).toContain('患者の状況を一覧で確認します。');
+    expect(screen.getByTestId('page-purpose').textContent).toContain(
+      '患者の状況を一覧で確認します。',
+    );
     fireEvent.click(screen.getByRole('button', { name: '患者一覧の説明' }));
     expect(screen.getAllByText('患者の状況を一覧で確認します。')).toHaveLength(2);
     expect(screen.getByRole('group', { name: '主要操作' })).toBeTruthy();

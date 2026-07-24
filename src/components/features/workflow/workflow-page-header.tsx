@@ -60,7 +60,10 @@ export function WorkflowPageHeader({
               </h1>
               <HelpPopover title={title} description={description} />
             </div>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground" data-testid="page-purpose">
+            <p
+              className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground"
+              data-testid="page-purpose"
+            >
               {description}
             </p>
           </div>
