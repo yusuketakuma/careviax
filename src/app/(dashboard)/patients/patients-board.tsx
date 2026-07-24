@@ -1367,33 +1367,17 @@ export function PatientsBoard() {
         }
       />
 
-      <div className="rounded-lg border border-border/70 bg-card p-4">
-        {/* 担当範囲は board 全体の集合切替(詳細フィルタより上位)。summaryTiles の直上に置く。 */}
+      <section
+        aria-labelledby="patients-filter-group-heading"
+        data-testid="patients-filter-group"
+        className="rounded-lg border border-border/70 bg-card p-4"
+      >
+        <h2 id="patients-filter-group-heading" className="sr-only">患者一覧の絞り込み</h2>
+        {/* 担当範囲は board 全体の集合切替(詳細フィルタより上位)。 */}
         <div className="flex flex-wrap items-center justify-between gap-2">
           <p className="text-xs font-medium text-muted-foreground">担当範囲</p>
-          <FilterChipBar
-            options={SCOPE_OPTIONS}
-            value={scope}
-            onChange={setScope}
-            ariaLabel="担当範囲の切替"
-          />
+          <FilterChipBar options={SCOPE_OPTIONS} value={scope} onChange={setScope} ariaLabel="担当範囲の切替" />
         </div>
-
-        {summaryTiles.length > 0 ? (
-          <div
-            className="mt-3 grid grid-cols-2 gap-2 sm:mt-4 sm:grid-cols-2 xl:grid-cols-4"
-            aria-label="今日の患者判断サマリー"
-          >
-            {summaryTiles.map((tile) => (
-              <SummaryTileButton
-                key={tile.key}
-                tile={tile}
-                selected={chip === tile.chip}
-                onSelect={setChip}
-              />
-            ))}
-          </div>
-        ) : null}
 
         <div className="mt-4 border-t border-border/70 pt-3">
           <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
@@ -1461,9 +1445,24 @@ export function PatientsBoard() {
             </div>
           </div>
         </div>
-      </div>
+      </section>
 
-      <div>
+      {summaryTiles.length > 0 ? (
+        <section aria-labelledby="patients-summary-group-heading" data-testid="patients-summary-group" className="rounded-lg border border-border/70 bg-card p-4">
+          <h2 id="patients-summary-group-heading" className="text-sm font-semibold text-foreground">今日の患者判断サマリー</h2>
+          <div
+            className="mt-3 grid grid-cols-2 gap-2 sm:mt-4 sm:grid-cols-2 xl:grid-cols-4"
+            aria-label="今日の患者判断サマリー"
+          >
+            {summaryTiles.map((tile) => (
+              <SummaryTileButton key={tile.key} tile={tile} selected={chip === tile.chip} onSelect={setChip} />
+            ))}
+          </div>
+        </section>
+      ) : null}
+
+      <section aria-labelledby="patients-table-heading" data-testid="patients-table">
+        <h2 id="patients-table-heading" className="sr-only">患者一覧</h2>
         {isBootstrappingOrg || boardQuery.isLoading ? (
           <PatientBoardLoadingShell />
         ) : !data ? (
@@ -1597,7 +1596,7 @@ export function PatientsBoard() {
             />
           </div>
         )}
-      </div>
+      </section>
     </section>
   );
 }

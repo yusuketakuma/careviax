@@ -11,6 +11,7 @@ import { ErrorState } from '@/components/ui/error-state';
 import { Skeleton } from '@/components/ui/loading';
 import { FilterChipBar } from '@/components/features/workspace/filter-chip-bar';
 import { ListOpenCard } from '@/components/features/workspace/list-open-card';
+import { WorkflowPageHeader } from '@/components/features/workflow/workflow-page-header';
 import {
   classifyNotification,
   NOTIFICATION_CATEGORY_BADGE_CLASSES,
@@ -56,17 +57,14 @@ type NotificationsContentProps = {
 function NotificationsLoadingState() {
   return (
     <div className="w-full space-y-5" data-testid="notifications-inbox-loading">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground">お知らせ</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            急ぎの確認、返信待ち、未同期をまとめて見ます。
-          </p>
-        </div>
+      <WorkflowPageHeader
+        title="お知らせ"
+        description="急ぎの確認、返信待ち、未同期をまとめて見ます。"
+      >
         <Button type="button" variant="outline" size="sm" className="!h-auto !min-h-11" disabled>
           全て既読にする
         </Button>
-      </div>
+      </WorkflowPageHeader>
 
       <div className="flex flex-wrap gap-2" aria-hidden="true">
         {[72, 64, 96, 104, 88, 80].map((width) => (
@@ -254,13 +252,10 @@ export function NotificationsContent({ initialCategory = 'all' }: NotificationsC
 
   return (
     <div className="w-full space-y-5" data-testid="notifications-inbox">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground">お知らせ</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            急ぎの確認、返信待ち、未同期をまとめて見ます。
-          </p>
-        </div>
+      <WorkflowPageHeader
+        title="お知らせ"
+        description="急ぎの確認、返信待ち、未同期をまとめて見ます。"
+      >
         <Button
           type="button"
           variant="outline"
@@ -271,7 +266,7 @@ export function NotificationsContent({ initialCategory = 'all' }: NotificationsC
         >
           全て既読にする
         </Button>
-      </div>
+      </WorkflowPageHeader>
 
       <FilterChipBar
         ariaLabel="お知らせの絞り込み"

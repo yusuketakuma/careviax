@@ -27,9 +27,11 @@ describe('WorkflowPageHeader', () => {
 
     expect(screen.getByText('Patient Registry')).toBeTruthy();
     expect(screen.getByRole('heading', { name: '患者一覧' })).toBeTruthy();
-    expect(screen.queryByText('患者の状況を一覧で確認します。')).toBeNull();
+    expect(screen.getByTestId('page-purpose').textContent).toContain('患者の状況を一覧で確認します。');
     fireEvent.click(screen.getByRole('button', { name: '患者一覧の説明' }));
-    expect(screen.getByText('患者の状況を一覧で確認します。')).toBeTruthy();
+    expect(screen.getAllByText('患者の状況を一覧で確認します。')).toHaveLength(2);
+    expect(screen.getByRole('group', { name: '主要操作' })).toBeTruthy();
+    expect(screen.getByRole('group', { name: '補助情報' })).toBeTruthy();
     expect(screen.getByText('高リスクと同意不足を先に確認します。')).toBeTruthy();
     const primaryAction = screen.getByRole('link', { name: '新規登録' });
     expect(primaryAction.getAttribute('href')).toBe('/patients/new');

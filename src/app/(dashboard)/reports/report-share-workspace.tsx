@@ -11,6 +11,7 @@ import { Skeleton } from '@/components/ui/loading';
 import { SegmentError, SegmentStaleBanner } from '@/components/ui/segment-state';
 import { GuardedWorkspaceActionRail } from '@/components/features/workspace/action-rail';
 import { MainWorkflowCompactNav } from '@/components/features/workflow/main-workflow-route';
+import { WorkflowPageHeader } from '@/components/features/workflow/workflow-page-header';
 import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
@@ -857,24 +858,20 @@ export function ReportShareWorkspace() {
 
   return (
     <section aria-label="報告・共有ワークスペース" data-testid="report-share-workspace">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-          <h1 className="text-xl font-bold text-foreground">報告・共有</h1>
-          <p className="text-sm text-muted-foreground" data-testid="report-workspace-header-meta">
+      <WorkflowPageHeader
+        eyebrow="REPORT WORKSPACE"
+        title="報告・共有"
+        description="今日書く報告、返信待ち、送付済みの状況を確認して次の共有へ進みます。"
+        actions={[{ href: '/admin/document-templates', label: 'テンプレートを編集' }]}
+        supportingContent={
+          <p
+            className="text-sm text-muted-foreground"
+            data-testid="report-workspace-header-meta"
+          >
             {buildHeaderMeta(now, data?.counts ?? null, data?.count_metadata ?? null)}
           </p>
-        </div>
-        <Link
-          href="/admin/document-templates"
-          className={buttonVariants({
-            variant: 'outline',
-            className: '!h-auto !min-h-[44px] sm:!h-auto sm:!min-h-[44px]',
-          })}
-          data-testid="report-edit-templates"
-        >
-          テンプレートを編集
-        </Link>
-      </div>
+        }
+      />
 
       <div className="mt-4">
         {isBootstrappingOrg || workspaceState.isInitialLoading ? (
@@ -907,23 +904,25 @@ export function ReportShareWorkspace() {
                   onRetry={() => void workspaceQuery.refetch()}
                 />
               ) : null}
-              <TodayDraftsCard
-                data={data}
-                onGenerateDraft={(input) => generateDraftMutation.mutate(input)}
-                generatingDraftKey={
-                  generateDraftMutation.isPending
-                    ? generateDraftMutation.variables
-                      ? `${generateDraftMutation.variables.visitRecordId}:${generateDraftMutation.variables.reportType}`
+              <div className="space-y-4" data-testid="reports-table">
+                <h2 className="sr-only">報告書一覧</h2>
+                <TodayDraftsCard
+                  data={data}
+                  onGenerateDraft={(input) => generateDraftMutation.mutate(input)}
+                  generatingDraftKey={
+                    generateDraftMutation.isPending
+                      ? generateDraftMutation.variables
+                        ? `${generateDraftMutation.variables.visitRecordId}:${generateDraftMutation.variables.reportType}`
+                        : null
                       : null
-                    : null
-                }
-                generationError={generateDraftMutation.isError}
-                onRetryGeneration={
-                  generateDraftMutation.variables
-                    ? () => generateDraftMutation.mutate(generateDraftMutation.variables)
-                    : null
-                }
-              />
+                  }
+                  generationError={generateDraftMutation.isError}
+                  onRetryGeneration={
+                    generateDraftMutation.variables
+                      ? () => generateDraftMutation.mutate(generateDraftMutation.variables)
+                      : null
+                  }
+                />
               <ReportInboundCandidatesSection
                 candidates={data.inbound_report_candidates}
                 count={data.count_metadata?.report_candidates}
@@ -943,22 +942,31 @@ export function ReportShareWorkspace() {
                         )
                     : null
                 }
-              />
+                />
+              </div>
               <MainWorkflowCompactNav
                 currentSteps={['reports']}
                 description="報告・共有は処方から訪問後報告までの主業務フローの終点です。前工程の訪問記録へ戻って根拠を確認できます。"
               />
               {/* 即時対応優先(guidelines §68-76): 今日書く → 返信待ち(=止まっている/他職種待ち) →
                   残課題 → 作成済(参照)。返信待ちを上位へ繰り上げて判断を先に出す。 */}
-              <WaitingBoxesSection data={data} />
-              <ReportOpenIssuesSection
-                issues={data.open_issues}
-                count={data.count_metadata?.open_issues}
-              />
-              <CreatedReportsSection
-                reports={data.created_reports}
-                count={data.count_metadata?.created}
-              />
+              <section aria-labelledby="reports-status-summary-heading" data-testid="reports-status-summary">
+                <h2 id="reports-status-summary-heading" className="sr-only">報告状況サマリー</h2>
+                <div className="space-y-4">
+                  <WaitingBoxesSection data={data} />
+                  <ReportOpenIssuesSection
+                    issues={data.open_issues}
+                    count={data.count_metadata?.open_issues}
+                  />
+                </div>
+              </section>
+              <section aria-labelledby="reports-list-heading" data-testid="reports-list">
+                <h2 id="reports-list-heading" className="sr-only">作成済み報告書一覧</h2>
+                <CreatedReportsSection
+                  reports={data.created_reports}
+                  count={data.count_metadata?.created}
+                />
+              </section>
               <p
                 className="rounded-lg border-l-4 border-border/70 border-l-tag-info bg-card px-4 py-3 text-sm leading-6 text-tag-info"
                 data-testid="report-template-policy-bar"

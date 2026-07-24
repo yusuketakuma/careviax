@@ -140,7 +140,9 @@ describe('workbench color-token contract (F-011 Stage1b)', () => {
     expect(packetSection).toContain('var(--wb-packet-bg)');
     // packet checkbox の塗り accent は setp 工程（頓服 category ではない）。heading の setp-strong に
     // 引っ張られず、checkbox の look() 引数を直接固定する。
-    expect(packetSection).toContain("look(pk.checked, 'var(--wb-phase-setp-strong)')");
+    expect(packetSection).toContain(
+      "rightPaneCheckboxLook(pk.checked, 'var(--wb-phase-setp-strong)')",
+    );
     expect(packetSection, 'visit-carry-packet section must not reuse tonyo tokens').not.toMatch(
       /--wb-tag-tonyo/,
     );

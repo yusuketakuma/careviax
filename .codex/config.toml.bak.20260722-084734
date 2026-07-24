@@ -33,10 +33,17 @@ browser_use = false
 browser_use_external = false
 computer_use = false
 in_app_browser = false
-multi_agent_v2 = true
+
+[features.multi_agent_v2]
+enabled = true
+expose_spawn_agent_model_overrides = true
+max_concurrent_threads_per_session = 32
+default_wait_timeout_ms = 30000
+min_wait_timeout_ms = 10000
+max_wait_timeout_ms = 3600000
 
 [agents]
-# app-server-compat disabled: enabled = true
+enabled = true
 
 [sandbox_workspace_write]
 writable_roots = []

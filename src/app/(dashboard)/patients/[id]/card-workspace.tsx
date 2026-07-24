@@ -46,6 +46,7 @@ import {
 import { ProcessChips } from '@/components/features/workspace/process-chips';
 import { ListOpenCard } from '@/components/features/workspace/list-open-card';
 import { PatientHeader } from '@/components/features/patients/patient-header';
+import { WorkflowPageIntro } from '@/components/features/workflow/workflow-page-intro';
 import type { PatientHeaderSummary } from '@/server/services/patient-detail';
 import {
   BlockedReasonsPanel,
@@ -5740,49 +5741,43 @@ export function CardWorkspace({
   );
 
   const headerRow = (
-    <div className="flex flex-wrap items-start justify-between gap-3">
-      <div>
-        <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-          <h1 className="text-xl font-bold leading-snug text-foreground">処方カード作業台</h1>
-          {rxNumber ? (
-            <p className="text-sm tabular-nums text-muted-foreground">{rxNumber}</p>
-          ) : null}
+    <WorkflowPageIntro
+      backHref="/patients"
+      backLabel="患者一覧へ戻る"
+      eyebrow="PATIENT WORKSPACE"
+      title="処方カード作業台"
+      description="患者単位で正本、処方、訪問、共有の状況を確認し、次の作業へ進みます。"
+      supportingContent={
+        rxNumber ? <p className="text-sm tabular-nums text-muted-foreground">{rxNumber}</p> : null
+      }
+      controls={
+        <div className="flex flex-wrap gap-2">
+          <Link
+            href={buildPatientHref(patientId, '/collaboration')}
+            className={buttonVariants({ variant: 'outline', className: '!h-auto !min-h-11 px-4 py-2' })}
+            data-testid="card-open-collaboration"
+          >
+            いま見ている人
+          </Link>
+          <Button
+            type="button"
+            variant="outline"
+            className="!h-auto !min-h-11 px-4 py-2"
+            data-testid="card-open-profile"
+            onClick={() => activateDetailTab('foundation')}
+          >
+            プロフィールを確認
+          </Button>
+          <Link
+            href={buildPatientCompareHref(patientId)}
+            className={buttonVariants({ variant: 'outline', className: 'max-sm:hidden !h-auto !min-h-11 px-4 py-2' })}
+            data-testid="card-open-compare"
+          >
+            カードを分割表示
+          </Link>
         </div>
-      </div>
-      <div className="flex flex-wrap gap-2">
-        <Link
-          href={buildPatientHref(patientId, '/collaboration')}
-          className={buttonVariants({
-            variant: 'outline',
-            className: '!h-auto !min-h-11 px-4 py-2',
-          })}
-          data-testid="card-open-collaboration"
-        >
-          いま見ている人
-        </Link>
-        <Button
-          type="button"
-          variant="outline"
-          className="!h-auto !min-h-11 px-4 py-2"
-          data-testid="card-open-profile"
-          onClick={() => activateDetailTab('foundation')}
-        >
-          プロフィールを確認
-        </Button>
-        {/* カードの分割表示は side-by-side で幅が要るデスクトップ機能。狭い画面では
-            プレミアムな上部スペースを使わないよう非表示にする(モバイルは最小情報優先)。 */}
-        <Link
-          href={buildPatientCompareHref(patientId)}
-          className={buttonVariants({
-            variant: 'outline',
-            className: 'max-sm:hidden !h-auto !min-h-11 px-4 py-2',
-          })}
-          data-testid="card-open-compare"
-        >
-          カードを分割表示
-        </Link>
-      </div>
-    </div>
+      }
+    />
   );
 
   const caseRiskCommand = buildCaseRiskCommandPanelModel(caseRiskCockpit);
@@ -6019,7 +6014,12 @@ export function CardWorkspace({
       {headerRow}
 
       {/* 本文を圧迫しないため、補助3点セットは上部バーから開く右ドロワーへ移す。 */}
-      <div className="space-y-4">
+      <section
+        aria-labelledby="patient-workspace-body-heading"
+        data-testid="patient-workspace-body"
+        className="space-y-4"
+      >
+        <h2 id="patient-workspace-body-heading" className="sr-only">患者情報と作業内容</h2>
         <div className="min-w-0 space-y-6">
           {patientHeader}
 
@@ -6228,7 +6228,7 @@ export function CardWorkspace({
           evidence={evidence}
           evidenceOpenLabel="開く"
         />
-      </div>
+      </section>
     </div>
   );
 }

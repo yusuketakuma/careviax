@@ -60,16 +60,27 @@ export function WorkflowPageHeader({
               </h1>
               <HelpPopover title={title} description={description} />
             </div>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground" data-testid="page-purpose">
+              {description}
+            </p>
           </div>
           {supportingContent ? (
-            <div className="rounded-md border border-border/70 bg-muted/20 px-4 py-3">
+            <div
+              aria-label="補助情報"
+              role="group"
+              className="rounded-md border border-border/70 bg-muted/20 px-4 py-3"
+            >
               {supportingContent}
             </div>
           ) : null}
         </div>
 
         {resolvedActions.length > 0 ? (
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <div
+            aria-label="主要操作"
+            role="group"
+            className="flex flex-col gap-2 sm:flex-row sm:items-center"
+          >
             {resolvedActions.map((item, index) => (
               <Link
                 key={item.href}

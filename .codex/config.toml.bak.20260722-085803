@@ -36,7 +36,7 @@ in_app_browser = false
 multi_agent_v2 = true
 
 [agents]
-# app-server-compat disabled: enabled = true
+enabled = true
 
 [sandbox_workspace_write]
 writable_roots = []
